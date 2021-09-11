@@ -5,7 +5,7 @@ import time
 import pytest
 from PIL import Image
 
-from gamelib.atlas import TextureAtlas, PILAllocator, PILWriter
+from src.gamelib import TextureAtlas, PILAllocator, PILWriter
 
 TMP = pathlib.Path(tempfile.gettempdir())
 
