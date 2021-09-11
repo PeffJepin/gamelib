@@ -1,9 +1,10 @@
 import pathlib
-import time
-import pytest
 import tempfile
+import time
 
+import pytest
 from PIL import Image
+
 from gamelib.atlas import TextureAtlas, PILAllocator, PILWriter
 
 TMP = pathlib.Path(tempfile.gettempdir())
@@ -11,14 +12,11 @@ TMP = pathlib.Path(tempfile.gettempdir())
 
 class TestTextureAtlas:
     def test_can_be_indexed_for_assets_by_label(self, ctx):
-        src = {
-            'label1': make_image_file((4, 4)),
-            'label2': make_image_file((8, 8))
-        }
+        src = {"label1": make_image_file((4, 4)), "label2": make_image_file((8, 8))}
         atlas = TextureAtlas(ctx, src, max_size=(12, 12), allocation_step=8)
 
-        asset = atlas['label2']
-        assert asset.path == src['label2'] and asset.size == (8, 8)
+        asset = atlas["label2"]
+        assert asset.path == src["label2"] and asset.size == (8, 8)
 
     @pytest.fixture
     def ctx(self, mocker):
@@ -30,20 +28,15 @@ class TestPILWriter:
     def test_crops_image_to_appropriate_size(self):
         allocator = PILAllocator(max_size=(64, 64), allocation_step=8)
         writer = PILWriter(allocator)
-        src_files = {
-            i: make_image_file((8, 8))
-            for i in range(4)
-        }
+        src_files = {i: make_image_file((8, 8)) for i in range(4)}
+
         _, dims, _ = writer.stitch_texture(src_files)
         assert dims == (32, 8)
 
     def test_returns_assets_that_reference_each_src_image(self):
         allocator = PILAllocator(max_size=(64, 64), allocation_step=8)
         writer = PILWriter(allocator)
-        src_files = {
-            i: make_image_file((8, 8))
-            for i in range(4)
-        }
+        src_files = {i: make_image_file((8, 8)) for i in range(4)}
         _, _, assets = writer.stitch_texture(src_files)
 
         for i in range(4):
@@ -110,15 +103,15 @@ class TestPILAllocator:
 
 
 def make_image_file(size) -> pathlib.Path:
-    path = TMP / (str(time.time()) + '.png')
-    im = Image.new('RGBA', size)
+    path = TMP / (str(time.time()) + ".png")
+    im = Image.new("RGBA", size)
     im.save(path)
     return path
 
 
 def make_image(size) -> Image:
-    return Image.new('RGBA', size)
+    return Image.new("RGBA", size)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     pytest.main()
