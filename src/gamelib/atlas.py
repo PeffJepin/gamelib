@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import pathlib
 import abc
+import pathlib
 import sys
-import moderngl
-import PIL
-
 from typing import Tuple, Dict
+
+import PIL
+import moderngl
 
 
 class TextureAtlas:
