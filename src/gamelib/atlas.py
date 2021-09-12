@@ -28,7 +28,7 @@ class TextureAtlas:
         source_images,
         max_size=(2048, 2048),
         allocation_step=16,
-        writer=None
+        writer=None,
     ):
         """
         Parameters
@@ -113,7 +113,7 @@ class Asset:
         return self._px_size
 
     def __repr__(self):
-        return f'<Asset({self.path})>'
+        return f"<Asset({self.path})>"
 
 
 class AtlasWriter(abc.ABC):
