@@ -47,7 +47,7 @@ class TextureAtlas:
         """
         # helper classes for creating the texture
         if writer is None:
-            allocator = PILAllocator(max_size, allocation_step)
+            allocator = SimpleRowAllocator(max_size, allocation_step)
             writer = PILWriter(allocator)
         else:
             writer = writer
@@ -150,12 +150,12 @@ class AtlasAllocator(abc.ABC):
 
     max_size: Tuple[int, int]
 
-    def allocate(self, image):
+    def allocate(self, image_size):
         """
         Parameters
         ----------
-        image
-            The current image requesting allocation.
+        image_size : tuple[int, int]
+            The size of the current image requesting allocation.
 
         Returns
         -------
@@ -170,7 +170,7 @@ class AtlasAllocator(abc.ABC):
 
 
 class PILWriter(AtlasWriter):
-    def __init__(self, allocator: PILAllocator, mode="RGBA"):
+    def __init__(self, allocator: SimpleRowAllocator, mode="RGBA"):
         self._allocator = allocator
         self._atlas_image = PIL.Image.new(mode, allocator.max_size)
         self._metadata = dict()
@@ -179,7 +179,7 @@ class PILWriter(AtlasWriter):
     def stitch_texture(self, src_image_files):
         for label, path in src_image_files.items():
             current_image = PIL.Image.open(path).transpose(PIL.Image.FLIP_TOP_BOTTOM)
-            x, y = self._allocator.allocate(current_image)
+            x, y = self._allocator.allocate(current_image.size)
             self._metadata[label] = (path, (x, y, *current_image.size))
             self._atlas_image.paste(current_image, (x, y))
 
@@ -204,7 +204,7 @@ class PILWriter(AtlasWriter):
         return Asset(normalized_texture_coordinates, path, (w, h))
 
 
-class PILAllocator(AtlasAllocator):
+class SimpleRowAllocator(AtlasAllocator):
     def __init__(self, max_size: Tuple[int, int], allocation_step: int):
         self.highest_x = 0
         self.current_y = 0
@@ -213,27 +213,27 @@ class PILAllocator(AtlasAllocator):
         self._max_w, self._max_h = max_size
         self._rows = dict()
 
-    def allocate(self, image: PIL.Image):
-        height = image.height
+    def allocate(self, image_size):
+        height = image_size[1]
         amount_over_interval = height % self._step
         if amount_over_interval:
             height += self._step - amount_over_interval
 
         # try to allocate to existing row first
         if row_pointer := self._rows.get(height):
-            if allocation := self._get_allocation(image, row_pointer, height):
+            if allocation := self._get_allocation(image_size, row_pointer, height):
                 return allocation
 
         # create a new row and allocate there
         row_pointer = self._begin_new_row(height)
-        if allocation := self._get_allocation(image, row_pointer, height):
+        if allocation := self._get_allocation(image_size, row_pointer, height):
             return allocation
 
-        raise MemoryError(f"Unable to allocate to a newly created row. {image.size=}")
+        raise MemoryError(f"Unable to allocate to a newly created row. {image_size=}")
 
-    def _get_allocation(self, image, row_pointer, height):
+    def _get_allocation(self, image_size, row_pointer, height):
         row_x, row_y = row_pointer
-        new_x = row_x + image.width
+        new_x = row_x + image_size[0]
         if new_x <= self._max_w:
             self._rows[height] = (new_x, row_y)
             if new_x > self.highest_x:

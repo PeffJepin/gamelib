@@ -5,9 +5,9 @@ import numpy as np
 
 
 class SharedArrays:
-    ArrayStructure = Tuple[str, tuple, np.dtype]
+    ArraySpecification = Tuple[str, tuple, np.dtype]
 
-    def __init__(self, blocks: List[ArrayStructure], create: bool = False):
+    def __init__(self, blocks: List[ArraySpecification], create: bool = False):
         self._mem_lookup, self._arr_lookup = dict(), dict()
         for id_, shape, dtype in blocks:
             empty_array = np.empty(shape, dtype)

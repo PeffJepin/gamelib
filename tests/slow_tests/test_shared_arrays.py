@@ -1,9 +1,9 @@
 import multiprocessing as mp
 
 import numpy as np
-import pytest
 
 from src.gamelib.sharedmem import SharedArrays
+from tests.conftest import isolated_test_run
 
 
 class TestSharedArrays:
@@ -25,4 +25,4 @@ class TestSharedArrays:
 
 
 if __name__ == "__main__":
-    pytest.main()
+    isolated_test_run()

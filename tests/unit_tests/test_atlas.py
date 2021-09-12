@@ -5,7 +5,8 @@ import time
 import pytest
 from PIL import Image
 
-from src.gamelib.atlas import TextureAtlas, PILAllocator, PILWriter
+from src.gamelib.atlas import TextureAtlas, SimpleRowAllocator, PILWriter
+from tests.conftest import isolated_test_run
 
 TMP = pathlib.Path(tempfile.gettempdir())
 
@@ -26,7 +27,7 @@ class TestTextureAtlas:
 
 class TestPILWriter:
     def test_crops_image_to_appropriate_size(self):
-        allocator = PILAllocator(max_size=(64, 64), allocation_step=8)
+        allocator = SimpleRowAllocator(max_size=(64, 64), allocation_step=8)
         writer = PILWriter(allocator)
         src_files = {i: make_image_file((8, 8)) for i in range(4)}
 
@@ -34,7 +35,7 @@ class TestPILWriter:
         assert dims == (32, 8)
 
     def test_returns_assets_that_reference_each_src_image(self):
-        allocator = PILAllocator(max_size=(64, 64), allocation_step=8)
+        allocator = SimpleRowAllocator(max_size=(64, 64), allocation_step=8)
         writer = PILWriter(allocator)
         src_files = {i: make_image_file((8, 8)) for i in range(4)}
         _, _, assets = writer.stitch_texture(src_files)
@@ -43,70 +44,61 @@ class TestPILWriter:
             assert assets[i].path == src_files[i]
 
 
-class TestPILAllocator:
+class TestSimpleRowAllocator:
     def test_allocates_in_existing_row_if_possible(self):
-        allocator = PILAllocator(max_size=(32, 32), allocation_step=4)
-        im4 = make_image((4, 4))
+        allocator = SimpleRowAllocator(max_size=(32, 32), allocation_step=4)
 
-        first_allocation = allocator.allocate(im4)
-        second_allocation = allocator.allocate(im4)
+        first_allocation = allocator.allocate((4, 4))
+        second_allocation = allocator.allocate((4, 4))
 
         assert second_allocation[1] == first_allocation[1]
 
     def test_allocates_in_new_row_if_existing_row_is_full(self):
-        allocator = PILAllocator(max_size=(16, 16), allocation_step=4)
-        im4 = make_image((4, 4))
+        allocator = SimpleRowAllocator(max_size=(16, 16), allocation_step=4)
 
         for _ in range(4):
-            allocator.allocate(im4)
-        fifth_allocation = allocator.allocate(im4)
+            allocator.allocate((4, 4))
+        fifth_allocation = allocator.allocate((4, 4))
 
         assert fifth_allocation == (0, 4)  # new row
 
     def test_allocates_in_rows_limited_in_size_by_step(self):
-        allocator = PILAllocator(max_size=(128, 128), allocation_step=8)
-        im8 = make_image((8, 8))
-        im10 = make_image((10, 10))
-        im12 = make_image((12, 12))
-        im30 = make_image((18, 18))
+        allocator = SimpleRowAllocator(max_size=(128, 128), allocation_step=8)
 
         h1 = 8
-        _, y1 = allocator.allocate(im8)
-        _, y2 = allocator.allocate(im8)
+        _, y1 = allocator.allocate((8, 8))
+        _, y2 = allocator.allocate((8, 8))
         assert y1 == y2 == 0
 
         h2 = 16
-        _, y3 = allocator.allocate(im10)
-        _, y4 = allocator.allocate(im12)
+        _, y3 = allocator.allocate((10, 10))
+        _, y4 = allocator.allocate((12, 12))
         assert y3 == y4 == h1
 
         h3 = 32
-        _, y5 = allocator.allocate(im30)
+        _, y5 = allocator.allocate((30, 30))
         assert y5 == h1 + h2
 
     def test_raises_memory_error_with_too_wide_image(self):
-        allocator = PILAllocator(max_size=(32, 32), allocation_step=4)
-        im_wide = make_image((100, 10))
+        allocator = SimpleRowAllocator(max_size=(32, 32), allocation_step=4)
 
         with pytest.raises(MemoryError):
-            allocator.allocate(im_wide)
+            allocator.allocate((100, 10))
 
     def test_raises_memory_error_with_too_tall_image(self):
-        allocator = PILAllocator(max_size=(32, 32), allocation_step=4)
-        im_tall = make_image((10, 100))
+        allocator = SimpleRowAllocator(max_size=(32, 32), allocation_step=4)
 
         with pytest.raises(MemoryError):
-            allocator.allocate(im_tall)
+            allocator.allocate((10, 100))
 
     def test_raises_memory_error_with_many_small_images(self):
-        allocator = PILAllocator(max_size=(32, 32), allocation_step=4)
-        im8 = make_image((8, 8))
+        allocator = SimpleRowAllocator(max_size=(32, 32), allocation_step=4)
 
         for _ in range(16):
-            allocator.allocate(im8)
+            allocator.allocate((8, 8))
 
         with pytest.raises(MemoryError):
-            allocator.allocate(im8)
+            allocator.allocate((8, 8))
 
 
 def make_image_file(size) -> pathlib.Path:
@@ -116,9 +108,5 @@ def make_image_file(size) -> pathlib.Path:
     return path
 
 
-def make_image(size) -> Image:
-    return Image.new("RGBA", size)
-
-
 if __name__ == "__main__":
-    pytest.main()
+    isolated_test_run()
