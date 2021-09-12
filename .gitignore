@@ -1,1 +1,8 @@
 /venv/
+*.bat
+.idea/
+.tox/
+htmlcov
+/.coverage
+/null.ini
+/src/gamelib.egg-info/
