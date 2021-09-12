@@ -84,12 +84,19 @@ class TestPILAllocator:
         _, y5 = allocator.allocate(im30)
         assert y5 == h1 + h2
 
-    def test_raises_memory_error_with_one_large_image(self):
+    def test_raises_memory_error_with_too_wide_image(self):
         allocator = PILAllocator(max_size=(32, 32), allocation_step=4)
-        im64 = make_image((64, 64))
+        im_wide = make_image((100, 10))
 
         with pytest.raises(MemoryError):
-            allocator.allocate(im64)
+            allocator.allocate(im_wide)
+
+    def test_raises_memory_error_with_too_tall_image(self):
+        allocator = PILAllocator(max_size=(32, 32), allocation_step=4)
+        im_tall = make_image((10, 100))
+
+        with pytest.raises(MemoryError):
+            allocator.allocate(im_tall)
 
     def test_raises_memory_error_with_many_small_images(self):
         allocator = PILAllocator(max_size=(32, 32), allocation_step=4)
