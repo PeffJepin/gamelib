@@ -11,10 +11,11 @@ class Event:
 
 
 class MessageBus:
-    handlers: Dict[Type[Event], List[Callable]]
-
-    def __init__(self):
+    def __init__(self, initial_handlers: Dict[Type[Event], List[Callable]] = None):
         self.handlers = defaultdict(list)
+        if initial_handlers:
+            for k, list_ in initial_handlers.items():
+                self.handlers[k].extend(list_)
         self._adapters = dict()
 
     def register(self, event_type: Type[Event], callback: Callable):
@@ -50,6 +51,10 @@ class _ConnectionAdapter:
         threading.Thread(target=self._listen, daemon=True).start()
 
     def _listen(self):
+        # TODO:
+        #   This will need some smarter Exception handling at some point. What happens if the connection is lost?
+        #   Should the program just error out? Or is that okay and this thread can just exit peacefully?
+        #   Once logging is set up it should at least be logged.
         try:
             while self.is_active:
                 while self.conn.poll(0):

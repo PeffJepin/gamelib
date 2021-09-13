@@ -1,19 +1,11 @@
-import pathlib
-import tempfile
-import time
-
 import pytest
-from PIL import Image
 
 from src.gamelib.atlas import TextureAtlas, SimpleRowAllocator, PILWriter
-from tests.conftest import isolated_test_run
-
-TMP = pathlib.Path(tempfile.gettempdir())
 
 
 class TestTextureAtlas:
-    def test_can_be_indexed_for_assets_by_label(self, ctx):
-        src = {"label1": make_image_file((4, 4)), "label2": make_image_file((8, 8))}
+    def test_can_be_indexed_for_assets_by_label(self, ctx, image_file_maker):
+        src = {"label1": image_file_maker((4, 4)), "label2": image_file_maker((8, 8))}
         atlas = TextureAtlas(ctx, src, max_size=(12, 12), allocation_step=8)
 
         asset = atlas["label2"]
@@ -26,18 +18,18 @@ class TestTextureAtlas:
 
 
 class TestPILWriter:
-    def test_crops_image_to_appropriate_size(self):
+    def test_crops_image_to_appropriate_size(self, image_file_maker):
         allocator = SimpleRowAllocator(max_size=(64, 64), allocation_step=8)
         writer = PILWriter(allocator)
-        src_files = {i: make_image_file((8, 8)) for i in range(4)}
+        src_files = {i: image_file_maker((8, 8)) for i in range(4)}
 
         _, dims, _ = writer.stitch_texture(src_files)
         assert dims == (32, 8)
 
-    def test_returns_assets_that_reference_each_src_image(self):
+    def test_returns_assets_that_reference_each_src_image(self, image_file_maker):
         allocator = SimpleRowAllocator(max_size=(64, 64), allocation_step=8)
         writer = PILWriter(allocator)
-        src_files = {i: make_image_file((8, 8)) for i in range(4)}
+        src_files = {i: image_file_maker((8, 8)) for i in range(4)}
         _, _, assets = writer.stitch_texture(src_files)
 
         for i in range(4):
@@ -99,14 +91,3 @@ class TestSimpleRowAllocator:
 
         with pytest.raises(MemoryError):
             allocator.allocate((8, 8))
-
-
-def make_image_file(size) -> pathlib.Path:
-    path = TMP / (str(time.time()) + ".png")
-    im = Image.new("RGBA", size)
-    im.save(path)
-    return path
-
-
-if __name__ == "__main__":
-    isolated_test_run()

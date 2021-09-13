@@ -3,7 +3,6 @@ import multiprocessing as mp
 import numpy as np
 
 from src.gamelib.sharedmem import SharedArrays
-from tests.conftest import isolated_test_run
 
 
 class TestSharedArrays:
@@ -22,7 +21,3 @@ class TestSharedArrays:
     def run_in_process(cls, array_spec):
         shared_arrays = SharedArrays([array_spec])
         shared_arrays["test"][:, :] = 100
-
-
-if __name__ == "__main__":
-    isolated_test_run()

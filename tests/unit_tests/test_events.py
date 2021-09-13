@@ -79,3 +79,11 @@ class TestMessageBus:
         mb.handle(example_event)
 
         assert not b.poll(0)
+
+    def test_initial_handlers_can_be_passed_to_init_method(self, example_event, recorded_callback):
+        handlers = {type(example_event): [recorded_callback]}
+        mb = MessageBus(handlers)
+
+        mb.handle(example_event)
+
+        assert recorded_callback.called

@@ -1,25 +1,13 @@
 import pathlib
+import time
+from collections import Callable
 from dataclasses import dataclass
+from typing import Tuple
 
 import pytest
+from PIL import Image
 
 from src.gamelib.events import Event
-
-
-@pytest.fixture
-def recorded_callback():
-    return RecordedCallback()
-
-
-@pytest.fixture
-def example_event():
-    return ExampleEvent('1', 1)
-
-
-def isolated_test_run():
-    # run tests in a file without default project config
-    null_ini_path = pathlib.Path(__file__).parent.parent / 'null.ini'
-    pytest.main(["-c", str(null_ini_path)])
 
 
 class RecordedCallback:
@@ -40,3 +28,21 @@ class ExampleEvent(Event):
     int_field: int
 
 
+@pytest.fixture
+def recorded_callback() -> RecordedCallback:
+    return RecordedCallback()
+
+
+@pytest.fixture
+def example_event() -> Event:
+    return ExampleEvent('1', 1)
+
+
+@pytest.fixture
+def image_file_maker(tmpdir) -> Callable[[Tuple[int, int]], pathlib.Path]:
+    def _maker(size):
+        path = pathlib.Path(tmpdir) / (str(time.time()) + '.png')
+        img = Image.new('RGBA', size)
+        img.save(path)
+        return path
+    return _maker
