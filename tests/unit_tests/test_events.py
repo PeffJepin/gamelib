@@ -27,3 +27,12 @@ class TestMessageBus:
 
         assert recorded_callback.args[0] is event
 
+    def test_event_callback_stops_being_called_if_unregistered(self, recorded_callback):
+        event = self.ExampleEvent('1', 1)
+        mb = MessageBus()
+        mb.register(self.ExampleEvent, recorded_callback)
+
+        mb.unregister(self.ExampleEvent, recorded_callback)
+        mb.handle(event)
+
+        assert not recorded_callback.called
