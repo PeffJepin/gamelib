@@ -44,10 +44,13 @@ class _ConnectionAdapter:
         threading.Thread(target=self._listen, daemon=True).start()
 
     def _listen(self):
-        while self.is_active:
-            while self.conn.poll(0):
-                self.mb.handle(self.conn.recv())
-            time.sleep(self.freq)
+        try:
+            while self.is_active:
+                while self.conn.poll(0):
+                    self.mb.handle(self.conn.recv())
+                time.sleep(self.freq / 1_000)
+        except (BrokenPipeError, EOFError):
+            self.is_active = False
 
     def __call__(self, event):
         self.conn.send(event)
