@@ -1,11 +1,19 @@
 import pathlib
+from dataclasses import dataclass
 
 import pytest
+
+from src.gamelib.events import Event
 
 
 @pytest.fixture
 def recorded_callback():
     return RecordedCallback()
+
+
+@pytest.fixture
+def example_event():
+    return ExampleEvent('1', 1)
 
 
 def isolated_test_run():
@@ -24,5 +32,11 @@ class RecordedCallback:
         self.args = args
         self.kwargs = kwargs
         self.called = True
+
+
+@dataclass
+class ExampleEvent(Event):
+    string_field: str
+    int_field: int
 
 
