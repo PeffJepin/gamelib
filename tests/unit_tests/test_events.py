@@ -69,3 +69,13 @@ class TestMessageBus:
                 raise AssertionError("The Event remains in the pipe and is not being handled.")
 
         assert recorded_callback.called
+
+    def test_a_pipe_stops_receiving_events_when_its_service_has_stopped(self, example_event):
+        a, b = Pipe()
+        mb = MessageBus()
+        mb.service_connection(a, [type(example_event)])
+
+        mb.stop_connection_service(a)
+        mb.handle(example_event)
+
+        assert not b.poll(0)

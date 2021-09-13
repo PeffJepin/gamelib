@@ -15,7 +15,7 @@ class MessageBus:
 
     def __init__(self):
         self.handlers = defaultdict(list)
-        self._adapters = []
+        self._adapters = dict()
 
     def register(self, event_type: Type[Event], callback: Callable):
         self.handlers[event_type].append(callback)
@@ -31,7 +31,13 @@ class MessageBus:
         adapter = _ConnectionAdapter(self, conn, event_types)
         for type_ in event_types:
             self.register(type_, adapter)
-        self._adapters.append(adapter)
+        self._adapters[conn] = adapter
+
+    def stop_connection_service(self, conn: PipeConnection):
+        adapter = self._adapters.pop(conn)
+        for type_ in adapter.event_types:
+            self.unregister(type_, adapter)
+        adapter.is_active = False
 
 
 class _ConnectionAdapter:
@@ -54,6 +60,3 @@ class _ConnectionAdapter:
 
     def __call__(self, event):
         self.conn.send(event)
-
-    def __eq__(self, other: PipeConnection):
-        return self.conn == other
