@@ -5,3 +5,4 @@
 htmlcov
 /.coverage
 /src/gamelib.egg-info/
+null.ini
