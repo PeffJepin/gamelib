@@ -1,9 +1,8 @@
 import pathlib
 import time
-from collections import Callable
 from dataclasses import dataclass
 from multiprocessing.connection import PipeConnection
-from typing import Tuple
+from typing import Tuple, Callable
 
 import pytest
 from PIL import Image
@@ -36,29 +35,38 @@ def recorded_callback() -> RecordedCallback:
 
 @pytest.fixture
 def example_event() -> Event:
-    return ExampleEvent('1', 1)
+    return ExampleEvent("1", 1)
 
 
 @pytest.fixture
 def image_file_maker(tmpdir) -> Callable[[Tuple[int, int]], pathlib.Path]:
     def _maker(size):
-        path = pathlib.Path(tmpdir) / (str(time.time()) + '.png')
-        img = Image.new('RGBA', size)
+        path = pathlib.Path(tmpdir) / (str(time.time()) + ".png")
+        img = Image.new("RGBA", size)
         img.save(path)
         return path
+
     return _maker
 
 
 @pytest.fixture
 def pipe_reader():
-    def _reader(conn: PipeConnection, timeout=10):
-        """Tries to return value read from pipe within timeout ms. Returns value read or None."""
+    def _reader(conn: PipeConnection, timeout=1000):
+        """
+        Tries to return value read from pipe within timeout ms. Returns value read or None.
+
+        Default timeout potentially a little high for quick testing, but in practice it should
+        return after only a few cycles on a passing test, and really only aught to take the full
+        1s on failures. This should ensure that test results aren't flaky due to not having enough time
+        to read the pipe.
+        """
         value = None
         for _ in range(timeout):
             if not conn.poll(0):
-                time.sleep(1/1_000)
+                time.sleep(1 / 1_000)
                 continue
             value = conn.recv()
             break
         return value
+
     return _reader

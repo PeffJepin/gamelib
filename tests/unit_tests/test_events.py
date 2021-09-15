@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from multiprocessing.connection import Pipe
 
+from src.gamelib import events
 from src.gamelib.events import MessageBus, Event, handler, find_handlers
 
 
@@ -15,7 +16,9 @@ class SomeOtherEvent(Event):
 
 
 class TestMessageBus:
-    def test_calls_registered_callbacks_when_an_event_is_received(self, recorded_callback, example_event):
+    def test_calls_registered_callbacks_when_an_event_is_received(
+        self, recorded_callback, example_event
+    ):
         mb = MessageBus()
         mb.register(type(example_event), recorded_callback)
 
@@ -23,7 +26,9 @@ class TestMessageBus:
 
         assert recorded_callback.called
 
-    def test_event_callback_receives_event_as_an_argument(self, recorded_callback, example_event):
+    def test_event_callback_receives_event_as_an_argument(
+        self, recorded_callback, example_event
+    ):
         mb = MessageBus()
         mb.register(type(example_event), recorded_callback)
 
@@ -31,7 +36,9 @@ class TestMessageBus:
 
         assert recorded_callback.args[0] is example_event
 
-    def test_event_callback_stops_being_called_if_unregistered(self, recorded_callback, example_event):
+    def test_event_callback_stops_being_called_if_unregistered(
+        self, recorded_callback, example_event
+    ):
         mb = MessageBus()
         mb.register(type(example_event), recorded_callback)
 
@@ -40,7 +47,9 @@ class TestMessageBus:
 
         assert not recorded_callback.called
 
-    def test_callback_is_not_called_upon_handling_a_different_type_of_event(self, example_event, recorded_callback):
+    def test_callback_is_not_called_upon_handling_a_different_type_of_event(
+        self, example_event, recorded_callback
+    ):
         class NotExampleEvent(Event):
             pass
 
@@ -61,7 +70,9 @@ class TestMessageBus:
 
         assert b.recv() == example_event
 
-    def test_will_handle_events_that_get_sent_through_a_serviced_pipe(self, example_event, recorded_callback):
+    def test_will_handle_events_that_get_sent_through_a_serviced_pipe(
+        self, example_event, recorded_callback
+    ):
         a, b = Pipe()
         mb = MessageBus()
         mb.service_connection(a, [type(example_event)])
@@ -80,7 +91,9 @@ class TestMessageBus:
 
         assert recorded_callback.called
 
-    def test_a_pipe_stops_receiving_events_when_its_service_has_stopped(self, example_event):
+    def test_a_pipe_stops_receiving_events_when_its_service_has_stopped(
+        self, example_event
+    ):
         a, b = Pipe()
         mb = MessageBus()
         mb.service_connection(a, [type(example_event)])
@@ -90,7 +103,9 @@ class TestMessageBus:
 
         assert not b.poll(0)
 
-    def test_initial_handlers_can_be_passed_to_init_method(self, example_event, recorded_callback):
+    def test_initial_handlers_can_be_passed_to_init_method(
+        self, example_event, recorded_callback
+    ):
         handlers = {type(example_event): [recorded_callback]}
         mb = MessageBus(handlers)
 
@@ -117,10 +132,13 @@ class TestHandlerDecorator:
 
     def test_handler_marks_methods_on_type_object(self):
         expected = {
-            SomeEvent: [self.ExampleUsage.field_incrementer, self.ExampleUsage.some_dummy_method],
-            SomeOtherEvent: [self.ExampleUsage.another_dummy_method]
+            SomeEvent: [
+                self.ExampleUsage.field_incrementer,
+                self.ExampleUsage.some_dummy_method,
+            ],
+            SomeOtherEvent: [self.ExampleUsage.another_dummy_method],
         }
-        assert expected == getattr(self.ExampleUsage, '__gamelib_handlers__')
+        assert expected == getattr(self.ExampleUsage, events._HANDLER_INJECTION_NAME)
 
     def test_methods_marked_as_handlers_can_be_called_normally(self):
         inst = self.ExampleUsage()

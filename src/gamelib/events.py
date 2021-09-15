@@ -6,7 +6,7 @@ from multiprocessing.connection import PipeConnection
 from types import MethodType
 from typing import Dict, Type, List, Callable
 
-_HANDLER_INJECTION_NAME = '__gamelib_handlers__'
+_HANDLER_INJECTION_NAME = "_gamelib_handlers_"
 
 
 class Event:
@@ -52,7 +52,13 @@ class MessageBus:
 
 
 class _ConnectionAdapter:
-    def __init__(self, mb: MessageBus, conn: PipeConnection, event_types: List[Type[Event]], recv_freq: int = 1):
+    def __init__(
+        self,
+        mb: MessageBus,
+        conn: PipeConnection,
+        event_types: List[Type[Event]],
+        recv_freq: int = 1,
+    ):
         self.mb = mb
         self.freq = recv_freq
         self.conn = conn
@@ -86,6 +92,7 @@ def handler(event_type: Type[Event]):
 
     https://docs.python.org/3/reference/datamodel.html#creating-the-class-object
     """
+
     class Marker:
         def __init__(self, fn):
             self.fn = fn
