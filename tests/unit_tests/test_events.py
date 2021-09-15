@@ -1,7 +1,17 @@
+from __future__ import annotations
+
 import time
 from multiprocessing.connection import Pipe
 
-from src.gamelib.events import MessageBus, Event
+from src.gamelib.events import MessageBus, Event, handler, find_handlers
+
+
+class SomeEvent(Event):
+    pass
+
+
+class SomeOtherEvent(Event):
+    pass
 
 
 class TestMessageBus:
@@ -60,13 +70,13 @@ class TestMessageBus:
         b.send(example_event)
         i = 0
         while True:
-            # wait no longer than 10ms for pipe to clear
+            # wait up to 10ms for pipe to clear
             if not a.poll(0):
                 break
             time.sleep(0.001)
             i += 1
             if i > 10:
-                raise AssertionError("The Event remains in the pipe and is not being handled.")
+                raise AssertionError("The Event is not being read from the pipe.")
 
         assert recorded_callback.called
 
@@ -87,3 +97,41 @@ class TestMessageBus:
         mb.handle(example_event)
 
         assert recorded_callback.called
+
+
+class TestHandlerDecorator:
+    class ExampleUsage:
+        field: int = 0
+
+        @handler(SomeEvent)
+        def field_incrementer(self, event):
+            self.field += 1
+
+        @handler(SomeEvent)
+        def some_dummy_method(self, event):
+            pass
+
+        @handler(SomeOtherEvent)
+        def another_dummy_method(self, event):
+            pass
+
+    def test_handler_marks_methods_on_type_object(self):
+        expected = {
+            SomeEvent: [self.ExampleUsage.field_incrementer, self.ExampleUsage.some_dummy_method],
+            SomeOtherEvent: [self.ExampleUsage.another_dummy_method]
+        }
+        assert expected == getattr(self.ExampleUsage, '__gamelib_handlers__')
+
+    def test_methods_marked_as_handlers_can_be_called_normally(self):
+        inst = self.ExampleUsage()
+        inst.field_incrementer(SomeEvent())
+
+        assert inst.field == 1
+
+    def test_methods_discovered_by_events_module_are_bound_to_the_given_instance(self):
+        inst = self.ExampleUsage()
+        handlers = find_handlers(inst)
+        for handler_ in handlers[SomeEvent]:
+            handler_(SomeEvent())
+
+        assert inst.field == 1
