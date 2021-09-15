@@ -34,7 +34,7 @@ class TestSystem:
         system.start()
 
         a.send(StopEvent())
-        system.join(1)
+        system.join(5)
 
         assert system.exitcode == 0
 

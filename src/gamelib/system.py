@@ -9,7 +9,7 @@ from typing import Type
 from . import events
 
 
-@dataclass()
+@dataclass
 class StopEvent(events.Event):
     pass
 
@@ -42,6 +42,7 @@ class System(mp.Process):
             handler(event)
 
     def _post_event(self, event: events.Event):
+        """Send event back to main process."""
         self._conn.send(event)
 
     @events.handler(events.Update)
