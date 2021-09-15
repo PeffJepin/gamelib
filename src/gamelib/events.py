@@ -3,7 +3,7 @@ import time
 import warnings
 
 from collections import defaultdict
-from multiprocessing.connection import PipeConnection
+from multiprocessing.connection import Connection
 from types import MethodType
 from typing import Dict, Type, List, Callable
 
@@ -62,7 +62,7 @@ class MessageBus:
                 f"Tried to unregister {callback!r} from {self!r} when it was not registered"
             )
 
-    def publish_event(self, event: Event) -> None:
+    def publish_event(self, event) -> None:
         """
         Calls all callbacks registered to the type of this event. This includes pushing
         the event out through currently serviced connections.
@@ -71,8 +71,8 @@ class MessageBus:
         ----------
         event : Event
         """
-        for handler_ in self.handlers[type(event)]:
-            handler_(event)
+        for handler in self.handlers[type(event)]:
+            handler(event)
 
     def service_connection(self, conn, event_types) -> None:
         """
@@ -103,11 +103,56 @@ class MessageBus:
         adapter.is_active = False
 
 
+def handlermethod(event_type: Type[Event]):
+    """
+    FOR USE ON METHODS
+
+    Wraps a method declaration until its class object is created.
+    Once created, the marker injects the class object to track handlers in __set_name__.
+
+    https://docs.python.org/3/reference/datamodel.html#creating-the-class-object
+    """
+    class Marker:
+        def __init__(self, fn):
+            self.fn = fn
+
+        def __set_name__(self, owner, name):
+            fn, self.fn = self.fn, None
+            setattr(owner, name, fn)
+            if not (handlers := getattr(owner, _HANDLER_INJECTION_NAME, None)):
+                handlers = defaultdict(list)
+                setattr(owner, _HANDLER_INJECTION_NAME, handlers)
+            handlers[event_type].append(getattr(owner, name))
+    return Marker
+
+
+def find_handlers(obj):
+    """
+    Helper function so other modules don't need to worry about how handler implements method marking.
+    Since handlers are defined at class creation time, the functions need to be bound to the given instance.
+
+    Parameters
+    ----------
+    obj : object
+
+    Returns
+    -------
+    handlers : Dict[Type[Event], List[EventHandler]]
+        Returns the injected handler dictionary if it is there, otherwise an empty version.
+    """
+    handlers = getattr(obj, _HANDLER_INJECTION_NAME, None) or defaultdict(list)
+    for k, list_ in handlers.items():
+        for i, handler_ in enumerate(list_):
+            bound_method = MethodType(handler_, obj)
+            list_[i] = bound_method
+    return handlers
+
+
 class _ConnectionAdapter:
     def __init__(
         self,
         mb: MessageBus,
-        conn: PipeConnection,
+        conn: Connection,
         event_types: List[Type[Event]],
         recv_freq: int = 1,
     ):
@@ -133,50 +178,3 @@ class _ConnectionAdapter:
 
     def __call__(self, event):
         self.conn.send(event)
-
-
-def handler(event_type: Type[Event]):
-    """
-    FOR USE ON CLASS METHODS
-
-    Wraps a method declaration until its class object is created.
-    Once created, the marker injects the class object to track handlers in __set_name__.
-
-    https://docs.python.org/3/reference/datamodel.html#creating-the-class-object
-    """
-
-    class Marker:
-        def __init__(self, fn):
-            self.fn = fn
-
-        def __set_name__(self, owner, name):
-            fn, self.fn = self.fn, None
-            setattr(owner, name, fn)
-            if not (handlers := getattr(owner, _HANDLER_INJECTION_NAME, None)):
-                handlers = defaultdict(list)
-                setattr(owner, _HANDLER_INJECTION_NAME, handlers)
-            handlers[event_type].append(getattr(owner, name))
-
-    return Marker
-
-
-def find_handlers(obj):
-    """
-    Helper function so other modules don't need to worry about how handler implements method marking.
-    Since handlers are defined at class creation time, the functions need to be bound to the given instance.
-
-    Parameters
-    ----------
-    obj : object
-
-    Returns
-    -------
-    handlers : Dict[Type[Event], List[EventHandler]]
-        Returns the injected handler dictionary if it is there, otherwise an empty version.
-    """
-    handlers = getattr(obj, _HANDLER_INJECTION_NAME, None) or defaultdict(list)
-    for k, list_ in handlers.items():
-        for i, handler_ in enumerate(list_):
-            bound_method = MethodType(handler_, obj)
-            list_[i] = bound_method
-    return handlers

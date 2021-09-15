@@ -1,7 +1,7 @@
 import pathlib
 import time
 from dataclasses import dataclass
-from multiprocessing.connection import PipeConnection
+from multiprocessing.connection import Connection
 from typing import Tuple, Callable
 
 import pytest
@@ -51,7 +51,7 @@ def image_file_maker(tmpdir) -> Callable[[Tuple[int, int]], pathlib.Path]:
 
 @pytest.fixture
 def pipe_reader():
-    def _reader(conn: PipeConnection, timeout=1000):
+    def _reader(conn: Connection, timeout=1000):
         """
         Tries to return value read from pipe within timeout ms. Returns value read or None.
 

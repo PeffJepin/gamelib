@@ -4,7 +4,7 @@ import time
 from multiprocessing.connection import Pipe
 
 from src.gamelib import events
-from src.gamelib.events import MessageBus, Event, handler, find_handlers
+from src.gamelib.events import MessageBus, Event, handlermethod, find_handlers
 
 
 class SomeEvent(Event):
@@ -118,15 +118,15 @@ class TestHandlerDecorator:
     class ExampleUsage:
         field: int = 0
 
-        @handler(SomeEvent)
+        @handlermethod(SomeEvent)
         def field_incrementer(self, event):
             self.field += 1
 
-        @handler(SomeEvent)
+        @handlermethod(SomeEvent)
         def some_dummy_method(self, event):
             pass
 
-        @handler(SomeOtherEvent)
+        @handlermethod(SomeOtherEvent)
         def another_dummy_method(self, event):
             pass
 
@@ -149,7 +149,7 @@ class TestHandlerDecorator:
     def test_methods_discovered_by_events_module_are_bound_to_the_given_instance(self):
         inst = self.ExampleUsage()
         handlers = find_handlers(inst)
-        for handler_ in handlers[SomeEvent]:
-            handler_(SomeEvent())
+        for handler in handlers[SomeEvent]:
+            handler(SomeEvent())
 
         assert inst.field == 1
