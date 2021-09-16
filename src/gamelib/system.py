@@ -9,7 +9,6 @@ from typing import Type
 from . import events
 
 
-@dataclass
 class StopEvent(events.Event):
     pass
 
@@ -20,8 +19,6 @@ class UpdateComplete(events.Event):
 
 
 class System(mp.Process):
-    _conn: Connection
-
     def __init__(self, conn: Connection):
         self.HANDLERS = events.find_handlers(self)
         self._conn = conn
@@ -37,19 +34,19 @@ class System(mp.Process):
     def update(self):
         """Stub for subclass defined behavior."""
 
+    def post_event(self, event: events.Event):
+        """Send event back to main process."""
+        self._conn.send(event)
+
     def _handle_incoming_event(self, event: events.Event):
         for handler in self.HANDLERS[type(event)]:
             handler(event)
 
-    def _post_event(self, event: events.Event):
-        """Send event back to main process."""
-        self._conn.send(event)
-
     @events.handler(events.Update)
-    def _update(self, event: events.Update):
+    def _update(self, event):
         self.update()
-        self._post_event(UpdateComplete(type(self)))
+        self.post_event(UpdateComplete(type(self)))
 
     @events.handler(StopEvent)
-    def _stop(self, event: StopEvent):
+    def _stop(self, event):
         self._running = False
