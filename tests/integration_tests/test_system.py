@@ -57,7 +57,7 @@ class ExampleEvent(events.Event):
 
 
 class ExampleSystem(System):
-    @events.handlermethod(ExampleEvent)
+    @events.handler(ExampleEvent)
     def _example_handler(self, event: ExampleEvent):
         self._conn.send(event.value)
 

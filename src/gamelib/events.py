@@ -3,17 +3,19 @@ import time
 import warnings
 
 from collections import defaultdict
+from dataclasses import dataclass
 from multiprocessing.connection import Connection
-from types import MethodType
 from typing import Dict, Type, List, Callable
 
-_HANDLER_INJECTION_NAME = "_gamelib_handlers_"
+_HANDLER_INJECTION_NAME = "_gamelib_handler_"
 
 
+@dataclass
 class Event:
     pass
 
 
+@dataclass
 class Update(Event):
     pass
 
@@ -71,8 +73,8 @@ class MessageBus:
         ----------
         event : Event
         """
-        for handler in self.handlers[type(event)]:
-            handler(event)
+        for handler_ in self.handlers[type(event)]:
+            handler_(event)
 
     def service_connection(self, conn, event_types) -> None:
         """
@@ -103,33 +105,27 @@ class MessageBus:
         adapter.is_active = False
 
 
-def handlermethod(event_type: Type[Event]):
+def handler(event_type):
     """
-    FOR USE ON METHODS
+    Marks the decorated function object which can later be retrieved
+    with the find_handlers function in this module.
 
-    Wraps a method declaration until its class object is created.
-    Once created, the marker injects the class object to track handlers in __set_name__.
-
-    https://docs.python.org/3/reference/datamodel.html#creating-the-class-object
+    Parameters
+    ----------
+    event_type : Type[Event]
+        The type of event this callback should get registered to.
     """
-    class Marker:
-        def __init__(self, fn):
-            self.fn = fn
+    def inner(fn):
+        setattr(fn, _HANDLER_INJECTION_NAME, event_type)
+        return fn
 
-        def __set_name__(self, owner, name):
-            fn, self.fn = self.fn, None
-            setattr(owner, name, fn)
-            if not (handlers := getattr(owner, _HANDLER_INJECTION_NAME, None)):
-                handlers = defaultdict(list)
-                setattr(owner, _HANDLER_INJECTION_NAME, handlers)
-            handlers[event_type].append(getattr(owner, name))
-    return Marker
+    return inner
 
 
 def find_handlers(obj):
     """
-    Helper function so other modules don't need to worry about how handler implements method marking.
-    Since handlers are defined at class creation time, the functions need to be bound to the given instance.
+    Helper function that finds all functions in an object's
+    directory that have been marked by the handler decorator.
 
     Parameters
     ----------
@@ -140,15 +136,19 @@ def find_handlers(obj):
     handlers : Dict[Type[Event], List[EventHandler]]
         Returns the injected handler dictionary if it is there, otherwise an empty version.
     """
-    handlers = getattr(obj, _HANDLER_INJECTION_NAME, None)
-    bound_handlers = defaultdict(list)
-    if handlers is None:
-        return bound_handlers
-
-    for k, list_ in handlers.items():
-        for handler in list_:
-            bound_handlers[k].append(MethodType(handler, obj))
-    return bound_handlers
+    handlers = defaultdict(list)
+    for name in dir(obj):
+        attr = getattr(obj, name, None)
+        if (attr is None) or not isinstance(attr, Callable):
+            continue
+        if (event_type := getattr(attr, _HANDLER_INJECTION_NAME, None)) is None:
+            # might be a bound method
+            if (fn := getattr(attr, "__func__", None)) is not None:
+                if recursive_handlers := find_handlers(fn):
+                    handlers = {**handlers, **recursive_handlers}
+            continue
+        handlers[event_type].append(attr)
+    return handlers
 
 
 class _ConnectionAdapter:

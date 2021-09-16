@@ -4,7 +4,7 @@ import time
 from multiprocessing.connection import Pipe
 
 from src.gamelib import events
-from src.gamelib.events import MessageBus, Event, handlermethod, find_handlers
+from src.gamelib.events import MessageBus, Event, handler, find_handlers
 
 
 class SomeEvent(Event):
@@ -83,6 +83,9 @@ class TestMessageBus:
         while True:
             # wait up to 10ms for pipe to clear
             if not a.poll(0):
+                # listener could receive the event and in the middle of processing it
+                # the active thread could switch back to this one. short sleep so that wont happen.
+                time.sleep(0.001)
                 break
             time.sleep(0.001)
             i += 1
@@ -118,27 +121,33 @@ class TestHandlerDecorator:
     class ExampleUsage:
         field: int = 0
 
-        @handlermethod(SomeEvent)
+        @handler(SomeEvent)
         def field_incrementer(self, event):
             self.field += 1
 
-        @handlermethod(SomeEvent)
+        @handler(SomeEvent)
         def some_dummy_method(self, event):
             pass
 
-        @handlermethod(SomeOtherEvent)
+        @handler(SomeOtherEvent)
         def another_dummy_method(self, event):
             pass
 
     def test_handler_marks_methods_on_type_object(self):
+        for fn in [
+            self.ExampleUsage.field_incrementer,
+            self.ExampleUsage.some_dummy_method,
+            self.ExampleUsage.another_dummy_method,
+        ]:
+            assert getattr(fn, events._HANDLER_INJECTION_NAME, None) is not None
+
+    def test_all_marked_handlers_can_be_found_on_an_instance(self):
+        instance = self.ExampleUsage()
         expected = {
-            SomeEvent: [
-                self.ExampleUsage.field_incrementer,
-                self.ExampleUsage.some_dummy_method,
-            ],
-            SomeOtherEvent: [self.ExampleUsage.another_dummy_method],
+            SomeEvent: [instance.field_incrementer, instance.some_dummy_method],
+            SomeOtherEvent: [instance.another_dummy_method],
         }
-        assert expected == getattr(self.ExampleUsage, events._HANDLER_INJECTION_NAME)
+        assert expected == events.find_handlers(instance)
 
     def test_methods_marked_as_handlers_can_be_called_normally(self):
         inst = self.ExampleUsage()

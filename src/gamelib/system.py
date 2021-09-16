@@ -45,11 +45,11 @@ class System(mp.Process):
         """Send event back to main process."""
         self._conn.send(event)
 
-    @events.handlermethod(events.Update)
+    @events.handler(events.Update)
     def _update(self, event: events.Update):
         self.update()
         self._post_event(UpdateComplete(type(self)))
 
-    @events.handlermethod(StopEvent)
+    @events.handler(StopEvent)
     def _stop(self, event: StopEvent):
         self._running = False
