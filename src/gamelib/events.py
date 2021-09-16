@@ -116,6 +116,7 @@ def handler(event_type):
     event_type : Type[Event]
         The type of event this callback should get registered to.
     """
+
     def inner(fn):
         setattr(fn, _HANDLER_INJECTION_NAME, event_type)
         return fn
@@ -135,7 +136,7 @@ def find_handlers(obj):
     Returns
     -------
     handlers : Dict[Type[Event], List[EventHandler]]
-        Returns the injected handler dictionary if it is there, otherwise an empty version.
+        A dictionary mapping event types to a list of event handler functions
     """
     handlers = defaultdict(list)
     for name in dir(obj):
@@ -176,7 +177,7 @@ class _ConnectionAdapter:
         except Exception as e:
             logging.debug(
                 f"Exception occurred in {self.__class__.__name__} pipe listener thread.",
-                exc_info=e
+                exc_info=e,
             )
             self.is_active = False
             self.mb.stop_connection_service(self.conn)
