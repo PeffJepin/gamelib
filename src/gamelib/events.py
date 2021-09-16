@@ -140,12 +140,15 @@ def find_handlers(obj):
     handlers : Dict[Type[Event], List[EventHandler]]
         Returns the injected handler dictionary if it is there, otherwise an empty version.
     """
-    handlers = getattr(obj, _HANDLER_INJECTION_NAME, None) or defaultdict(list)
+    handlers = getattr(obj, _HANDLER_INJECTION_NAME, None)
+    bound_handlers = defaultdict(list)
+    if handlers is None:
+        return bound_handlers
+
     for k, list_ in handlers.items():
-        for i, handler_ in enumerate(list_):
-            bound_method = MethodType(handler_, obj)
-            list_[i] = bound_method
-    return handlers
+        for handler in list_:
+            bound_handlers[k].append(MethodType(handler, obj))
+    return bound_handlers
 
 
 class _ConnectionAdapter:
