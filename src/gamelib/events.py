@@ -146,8 +146,8 @@ def find_handlers(obj):
         if (event_type := getattr(attr, _HANDLER_INJECTION_NAME, None)) is None:
             # might be a bound method
             if (fn := getattr(attr, "__func__", None)) is not None:
-                if recursive_handlers := find_handlers(fn):
-                    handlers = {**handlers, **recursive_handlers}
+                for k, v in find_handlers(fn).items():
+                    handlers[k].extend(v)
             continue
         handlers[event_type].append(attr)
     return handlers
