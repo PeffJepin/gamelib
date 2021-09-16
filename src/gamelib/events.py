@@ -1,3 +1,4 @@
+import logging
 import threading
 import time
 import warnings
@@ -157,27 +158,28 @@ class _ConnectionAdapter:
         mb: MessageBus,
         conn: Connection,
         event_types: List[Type[Event]],
-        recv_freq: int = 1,
+        poll_freq: int = 1,
     ):
         self.mb = mb
-        self.freq = recv_freq
+        self.freq = poll_freq
         self.conn = conn
         self.event_types = event_types
         self.is_active = True
         threading.Thread(target=self._listen, daemon=True).start()
 
     def _listen(self):
-        # TODO:
-        #   This will need some smarter Exception handling at some point. What happens if the connection is lost?
-        #   Should the program just error out? Or is that okay and this thread can just exit peacefully?
-        #   Once logging is set up it should at least be logged.
         try:
             while self.is_active:
                 while self.conn.poll(0):
                     self.mb.publish_event(self.conn.recv())
                 time.sleep(self.freq / 1_000)
-        except (BrokenPipeError, EOFError):
+        except Exception as e:
+            logging.debug(
+                f"Exception occurred in {self.__class__.__name__} pipe listener thread.",
+                exc_info=e
+            )
             self.is_active = False
+            self.mb.stop_connection_service(self.conn)
 
     def __call__(self, event):
         self.conn.send(event)
