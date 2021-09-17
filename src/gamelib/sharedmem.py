@@ -51,49 +51,58 @@ class DoubleBufferedArrays(SharedArrays):
     >>> np.all(shared_arr == 255)
     True
     """
-    def __init__(self, blocks: List[SharedArrays.ArraySpecification], create: bool = False):
+
+    def __init__(
+        self, blocks: List[SharedArrays.ArraySpecification], create: bool = False
+    ):
         all_blocks = []
         for block in blocks:
             id_, shape, dtype = block
-            doubled_blocks = [(id_ + f'_{i}', shape, dtype) for i in range(2)]
+            doubled_blocks = [(id_ + f"_{i}", shape, dtype) for i in range(2)]
             all_blocks.extend(doubled_blocks)
-        indices = [('read', (1,), np.uint), ('write', (1,), np.uint)]
+        indices = [("read", (1,), np.uint), ("write", (1,), np.uint)]
         all_blocks.extend(indices)
         super().__init__(all_blocks, create)
         self.read_index = 0
         self.write_index = 1
 
+    def swap(self):
+        """Swap the sharedmem indices that determine which buffer is for reading/writing."""
+        self.read_index, self.write_index = self.write_index, self.read_index
+
     def get_arr(self, id_):
+        """Get an internal non-buffered view of an array."""
         return self._arr_lookup[id_]
 
     @property
     def read_index(self):
-        return self._arr_lookup['read'][0]
+        """Index to the buffer in use for read ops."""
+        return self._arr_lookup["read"][0]
 
     @read_index.setter
     def read_index(self, value):
-        self._arr_lookup['read'][0] = value
+        self._arr_lookup["read"][0] = value
 
     @property
     def write_index(self):
-        return self._arr_lookup['write'][0]
+        """Index to the buffer in use for write ops."""
+        return self._arr_lookup["write"][0]
 
     @write_index.setter
     def write_index(self, value):
-        self._arr_lookup['write'][0] = value
-
-    def swap(self):
-        self.read_index, self.write_index = self.write_index, self.read_index
+        self._arr_lookup["write"][0] = value
 
     def __getitem__(self, id_):
-        return _DoubleBufferedProxy(id_, self)
+        return _DoubleBufferedNumpyProxy(id_, self)
 
 
-class _DoubleBufferedProxy:
-    """A stand in for a double buffered shared array. """
+class _DoubleBufferedNumpyProxy:
+    """A stand in for a double buffered shared array."""
 
     def __init__(self, arr_name: str, dbl_buffer_obj: DoubleBufferedArrays):
-        self._arrays = tuple(dbl_buffer_obj.get_arr(f'{arr_name}_{i}') for i in range(2))
+        self._arrays = tuple(
+            dbl_buffer_obj.get_arr(f"{arr_name}_{i}") for i in range(2)
+        )
         self._dbl_buffer_obj = dbl_buffer_obj
 
     def __getitem__(self, key):
@@ -125,8 +134,7 @@ class _DoubleBufferedProxy:
         itself in the proposed function arguments and replacing itself with the current read buffer
         """
         corrected_inputs = (
-            input_ if input_ is not self else self._read_array
-            for input_ in inputs
+            input_ if input_ is not self else self._read_array for input_ in inputs
         )
         return getattr(ufunc, method)(*corrected_inputs, **kwargs)
 
