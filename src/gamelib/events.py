@@ -83,7 +83,7 @@ class MessageBus:
 
         Parameters
         ----------
-        conn : PipeConnection
+        conn : Connection
         event_types : List[Type[Event]]
             List of event types that should be piped through.
         """
@@ -98,9 +98,11 @@ class MessageBus:
 
         Parameters
         ----------
-        conn : PipeConnection
+        conn : Connection
         """
-        adapter = self._adapters.pop(conn)
+        adapter = self._adapters.pop(conn, None)
+        if adapter is None:
+            return
         for type_ in adapter.event_types:
             self.unregister(type_, adapter)
         adapter.is_active = False

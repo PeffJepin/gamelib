@@ -44,11 +44,11 @@ class DoubleBufferedArrays(SharedArrays):
     >>> shared_arr = dbl_buffered['my_id']
     >>> shared_arr[:] = 255
 
-    >>> assert np.all(shared_arr == 255)
+    >>> np.all(shared_arr == 255)
     False
 
     >>> dbl_buffered.swap()
-    >>> assert np.all(shared_arr == 255)
+    >>> np.all(shared_arr == 255)
     True
     """
     def __init__(self, blocks: List[SharedArrays.ArraySpecification], create: bool = False):
