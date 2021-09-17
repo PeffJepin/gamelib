@@ -20,6 +20,12 @@ class SharedArrays:
     def __getitem__(self, id_):
         return self._arr_lookup[id_]
 
+    def release(self):
+        for mem in self._mem_lookup.values():
+            mem.unlink()
+        self._arr_lookup = None
+        self._mem_lookup = None
+
 
 class DoubleBufferedArrays(SharedArrays):
     """
