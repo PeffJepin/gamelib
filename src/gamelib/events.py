@@ -65,7 +65,7 @@ class MessageBus:
                 f"Tried to unregister {callback!r} from {self!r} when it was not registered"
             )
 
-    def publish_event(self, event) -> None:
+    def post_event(self, event) -> None:
         """
         Calls all callbacks registered to the type of this event. This includes pushing
         the event out through currently serviced connections.
@@ -91,6 +91,7 @@ class MessageBus:
         for type_ in event_types:
             self.register(type_, adapter)
         self._adapters[conn] = adapter
+        adapter.thread.start()
 
     def stop_connection_service(self, conn) -> None:
         """
@@ -168,13 +169,13 @@ class _ConnectionAdapter:
         self.conn = conn
         self.event_types = event_types
         self.is_active = True
-        threading.Thread(target=self._listen, daemon=True).start()
+        self.thread = threading.Thread(target=self._listen, daemon=True)
 
     def _listen(self):
         try:
             while self.is_active:
                 while self.conn.poll(0):
-                    self.mb.publish_event(self.conn.recv())
+                    self.mb.post_event(self.conn.recv())
                 time.sleep(self.freq / 1_000)
         except Exception as e:
             logging.debug(

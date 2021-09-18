@@ -22,7 +22,7 @@ class TestMessageBus:
         mb = MessageBus()
         mb.register(type(example_event), recorded_callback)
 
-        mb.publish_event(example_event)
+        mb.post_event(example_event)
 
         assert recorded_callback.called
 
@@ -32,7 +32,7 @@ class TestMessageBus:
         mb = MessageBus()
         mb.register(type(example_event), recorded_callback)
 
-        mb.publish_event(example_event)
+        mb.post_event(example_event)
 
         assert recorded_callback.args[0] is example_event
 
@@ -43,7 +43,7 @@ class TestMessageBus:
         mb.register(type(example_event), recorded_callback)
 
         mb.unregister(type(example_event), recorded_callback)
-        mb.publish_event(example_event)
+        mb.post_event(example_event)
 
         assert not recorded_callback.called
 
@@ -57,7 +57,7 @@ class TestMessageBus:
         mb = MessageBus()
         mb.register(type(example_event), recorded_callback)
 
-        mb.publish_event(other_event)
+        mb.post_event(other_event)
 
         assert not recorded_callback.called
 
@@ -66,7 +66,7 @@ class TestMessageBus:
         mb = MessageBus()
         mb.service_connection(a, [type(example_event)])
 
-        mb.publish_event(example_event)
+        mb.post_event(example_event)
 
         assert b.recv() == example_event
 
@@ -102,7 +102,7 @@ class TestMessageBus:
         mb.service_connection(a, [type(example_event)])
 
         mb.stop_connection_service(a)
-        mb.publish_event(example_event)
+        mb.post_event(example_event)
 
         assert not b.poll(0)
 
@@ -112,7 +112,7 @@ class TestMessageBus:
         handlers = {type(example_event): [recorded_callback]}
         mb = MessageBus(handlers)
 
-        mb.publish_event(example_event)
+        mb.post_event(example_event)
 
         assert recorded_callback.called
 
