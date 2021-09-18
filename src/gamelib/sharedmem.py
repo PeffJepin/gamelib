@@ -100,9 +100,7 @@ class _DoubleBufferedNumpyProxy:
     """A stand in for a double buffered shared array."""
 
     def __init__(self, arr_id: str, dbl_buffer_obj: DoubleBufferedArrays):
-        self._arrays = tuple(
-            dbl_buffer_obj.get_arr(f"{arr_id}_{i}") for i in range(2)
-        )
+        self._arrays = tuple(dbl_buffer_obj.get_arr(f"{arr_id}_{i}") for i in range(2))
         self._dbl_buffer_obj = dbl_buffer_obj
 
     def __getitem__(self, key):

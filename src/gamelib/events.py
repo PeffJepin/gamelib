@@ -21,6 +21,11 @@ class Update(Event):
     pass
 
 
+@dataclass
+class StopEvent(Event):
+    pass
+
+
 EventHandler = Callable[[Event], None]
 
 

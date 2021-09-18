@@ -2,11 +2,14 @@ import multiprocessing as mp
 from dataclasses import dataclass
 
 from src.gamelib import events
-from src.gamelib.system import System, StopEvent, UpdateComplete
+from src.gamelib.events import StopEvent
+from src.gamelib.system import System, UpdateComplete
 
 
 class TestSystem:
-    def test_handles_events_with_functions_marked_by_handler_decorator(self, pipe_reader):
+    def test_handles_events_with_functions_marked_by_handler_decorator(
+        self, pipe_reader
+    ):
         a, b = mp.Pipe()
         system = ExampleSystem(b)
         system.start()
@@ -50,7 +53,9 @@ class TestSystem:
 
         assert 123 == res1 and UpdateComplete(ExampleSystem) == res2
 
-    def test_event_derived_from_system_Event_gets_sent_through_pipe_when_published(self, pipe_reader):
+    def test_event_derived_from_system_Event_gets_sent_through_pipe_when_published(
+        self, pipe_reader
+    ):
         a, b = mp.Pipe()
         system = SomeSystem(b)
         system.start()
