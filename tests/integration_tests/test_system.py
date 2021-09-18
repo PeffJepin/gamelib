@@ -6,7 +6,7 @@ from src.gamelib.system import System, StopEvent, UpdateComplete
 
 
 class TestSystem:
-    def test_process_handles_events_sent_through_its_pipe(self, pipe_reader):
+    def test_handles_events_with_functions_marked_by_handler_decorator(self, pipe_reader):
         a, b = mp.Pipe()
         system = ExampleSystem(b)
         system.start()
@@ -50,6 +50,17 @@ class TestSystem:
 
         assert 123 == res1 and UpdateComplete(ExampleSystem) == res2
 
+    def test_event_derived_from_system_Event_gets_sent_through_pipe_when_published(self, pipe_reader):
+        a, b = mp.Pipe()
+        system = SomeSystem(b)
+        system.start()
+
+        a.send(events.Update())
+        res = pipe_reader(a)
+
+        system.kill()
+        assert res == SomeEvent()
+
 
 @dataclass
 class ExampleEvent(events.Event):
@@ -63,3 +74,12 @@ class ExampleSystem(System):
 
     def update(self):
         self._conn.send(123)
+
+
+class SomeSystem(System):
+    def update(self):
+        self._message_bus.post_event(SomeEvent())
+
+
+class SomeEvent(SomeSystem.Event):
+    pass
