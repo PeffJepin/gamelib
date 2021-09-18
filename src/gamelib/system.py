@@ -51,8 +51,8 @@ class System(mp.Process, metaclass=SystemMeta):
 
     def __init__(self, conn):
         """
-        Initialize the system. Note _message_bus is not initialized
-        until later: once the System's Process has been started.
+        Initialize the system. Note _message_bus and _running are not
+        initialized until later - once the System's Process has been started.
 
         Parameters
         ----------
@@ -94,4 +94,4 @@ class System(mp.Process, metaclass=SystemMeta):
 
 @dataclass
 class UpdateComplete(System.Event):
-    system: Type[System]
+    system_type: Type[System]
