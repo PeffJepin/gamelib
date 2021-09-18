@@ -71,7 +71,7 @@ class DoubleBufferedArrays(SharedArrays):
         self.read_index, self.write_index = self.write_index, self.read_index
 
     def get_arr(self, id_):
-        """Get an internal non-buffered view of an array."""
+        """Get an internal non-double-buffered view of an array."""
         return self._arr_lookup[id_]
 
     @property
@@ -99,9 +99,9 @@ class DoubleBufferedArrays(SharedArrays):
 class _DoubleBufferedNumpyProxy:
     """A stand in for a double buffered shared array."""
 
-    def __init__(self, arr_name: str, dbl_buffer_obj: DoubleBufferedArrays):
+    def __init__(self, arr_id: str, dbl_buffer_obj: DoubleBufferedArrays):
         self._arrays = tuple(
-            dbl_buffer_obj.get_arr(f"{arr_name}_{i}") for i in range(2)
+            dbl_buffer_obj.get_arr(f"{arr_id}_{i}") for i in range(2)
         )
         self._dbl_buffer_obj = dbl_buffer_obj
 
@@ -131,7 +131,7 @@ class _DoubleBufferedNumpyProxy:
         https://numpy.org/doc/stable/reference/arrays.classes.html
 
         This allows this class to behave like an np.ndarray for ufuncs by finding
-        itself in the proposed function arguments and replacing itself with the current read buffer
+        itself in the proposed function arguments and replacing itself with the current read array
         """
         corrected_inputs = (
             input_ if input_ is not self else self._read_array for input_ in inputs
