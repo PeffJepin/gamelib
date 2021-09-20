@@ -87,11 +87,11 @@ class System(mp.Process, metaclass=SystemMeta):
         self.update()
         self._message_bus.post_event(UpdateComplete(type(self)))
 
-    @events.handler(events.StopEvent)
+    @events.handler(events.SystemStop)
     def _stop(self, event):
         self._running = False
 
 
-@dataclass
+@dataclass(frozen=True)
 class UpdateComplete(System.Event):
     system_type: Type[System]

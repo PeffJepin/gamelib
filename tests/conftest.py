@@ -22,7 +22,7 @@ class RecordedCallback:
         self.called = True
 
 
-@dataclass
+@dataclass(frozen=True)
 class ExampleEvent(Event):
     string_field: str
     int_field: int

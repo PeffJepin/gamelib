@@ -1,7 +1,6 @@
 from src.gamelib.system import System
 
 
-
 class TestSystem:
     def test_subclasses_each_get_their_own_Event_attribute(self):
         assert System1.Event is not System2.Event

@@ -2,7 +2,7 @@ import multiprocessing as mp
 from dataclasses import dataclass
 
 from src.gamelib import events
-from src.gamelib.events import StopEvent
+from src.gamelib.events import SystemStop
 from src.gamelib.system import System, UpdateComplete
 
 
@@ -36,7 +36,7 @@ class TestSystem:
         system = ExampleSystem(b)
         system.start()
 
-        a.send(StopEvent())
+        a.send(SystemStop())
         system.join(5)
 
         assert system.exitcode == 0
@@ -67,7 +67,7 @@ class TestSystem:
         assert res == SomeEvent()
 
 
-@dataclass
+@dataclass(frozen=True)
 class ExampleEvent(events.Event):
     value: int
 
