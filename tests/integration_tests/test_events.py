@@ -1,11 +1,8 @@
 from collections import defaultdict
 
-import pytest
-
 from src.gamelib.events import (
     handler,
     Event,
-    KeyedEvent,
     MessageBus,
     find_handlers,
     KeyDown,
@@ -23,20 +20,16 @@ class TestInternalIntegration:
 
         assert 1 == container.calls[Event]
 
-    def test_normal_event_should_not_be_called(self, example_event):
+    def test_normal_event_should_not_be_called(self):
+        class OtherEvent(Event):
+            pass
+
         container = HandlerContainer()
         mb = MessageBus(find_handlers(container))
 
-        mb.post_event(example_event)
+        mb.post_event(OtherEvent())
 
         assert 0 == container.calls[Event]
-
-    def test_keyed_event_key_cant_be_none(self):
-        container = HandlerContainer()
-        mb = MessageBus(find_handlers(container))
-
-        with pytest.raises(ValueError):
-            mb.post_event(KeyedEvent())
 
     def test_keyed_event_should_be_called(self):
         container = HandlerContainer()
@@ -63,6 +56,10 @@ class TestInternalIntegration:
         assert 1 == container.calls[KeyDown]
 
 
+class KeyedEvent(Event):
+    pass
+
+
 class HandlerContainer:
     def __init__(self):
         self.calls = defaultdict(int)
@@ -72,7 +69,7 @@ class HandlerContainer:
         self.calls[Event] += 1
 
     @handler(KeyedEvent.ABC)
-    def keyed_event_handler(self, event: KeyedEvent):
+    def keyed_event_handler(self, event: Event):
         self.calls[KeyedEvent] += 1
 
     @handler(KeyDown.J)

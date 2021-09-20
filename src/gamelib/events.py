@@ -3,9 +3,8 @@ import threading
 import time
 import warnings
 from collections import defaultdict, namedtuple
-from dataclasses import dataclass
 from multiprocessing.connection import Connection
-from typing import Type, List, Callable, Union
+from typing import Type, List, Callable, Union, Tuple, Any
 
 from moderngl_window.context.pygame2.keys import Keys
 
@@ -13,61 +12,51 @@ _HANDLER_INJECTION_ATTRIBUTE = "_gamelib_handler_"
 _MOUSE_MAP = {"LEFT": 1, "RIGHT": 2, "MIDDLE": 3}
 
 
-@dataclass(frozen=True)
-class Event:
-    pass
-
-
-EventHandler = Callable[[Event], None]
-EventKey = Union[Type[Event], tuple]
-ModifierKeys = namedtuple("KeyModifiers", "SHIFT, CTRL, ALT")  # True/False values
-MouseButtons = namedtuple("MouseButtons", "LEFT, RIGHT, MIDDLE")  # True/False values
-
-
-class _KeyedEventType(type):
-    choices: Union[set, dict, object, None]
+class _EventType(type):
+    key_options: Union[set, dict, object, None]
 
     def __getattr__(cls, name: str):
         if name.startswith("_"):
             raise AttributeError(
-                f"_KeyedEventType won't create keys starting with '_'."
+                f"_EventType won't create keys leading with an underscore. {name=}"
             )
 
-        if cls.choices is None:
+        if cls.key_options is None:
             key = name
 
-        elif isinstance(cls.choices, set):
-            if name not in cls.choices:
-                raise ValueError(f"Expected {name=} to be in {cls.choices!r}")
+        elif isinstance(cls.key_options, set):
+            if name not in cls.key_options:
+                raise ValueError(f"Expected {name=} to be in {cls.key_options!r}")
             key = name
 
-        elif isinstance(cls.choices, dict):
-            key = cls.choices[name]
+        elif isinstance(cls.key_options, dict):
+            key = cls.key_options[name]
 
         else:
-            key = getattr(cls.choices, name)
+            key = getattr(cls.key_options, name)
 
         return cls, key
 
 
-class KeyedEvent(Event, metaclass=_KeyedEventType):
+class Event(metaclass=_EventType):
     """
     A KeyedEvent can have its type object queried for attributes to make keys.
+    Note: conflicts with dataclass
 
     Examples
     --------
     With choices = None (default)
 
-    >>> KeyedEvent.anything_that_could_be_a_valid_attr_name
+    >>> Event.anything_that_could_be_a_valid_attr_name
     (KeyedEvent, 'anything_that_could_be_a_valid_attr_name')
 
     Keys should not start with a leading underscore.
 
-    >>> KeyedEvent._A  # Raises AttributeError.
+    >>> Event._A  # Raises AttributeError.
 
     Choices for keys can be limited by a set.
 
-    >>> class MyKeyedEvent(KeyedEvent):
+    >>> class MyKeyedEvent(Event):
     ...     choices = {'A', 'B', 'C'}
     ...
     >>> MyKeyedEvent.C
@@ -78,7 +67,7 @@ class KeyedEvent(Event, metaclass=_KeyedEventType):
     Choices can also be limited with a dict or object via key/attribute lookup
     In this case keys are both limited and mapped based on values.
 
-    >>> class MyKeyedEvent(KeyedEvent):
+    >>> class MyKeyedEvent(Event):
     ...     choices = {'A': 2, 'B': 4, 'C': 6}
     ...
     >>> MyKeyedEvent.A
@@ -87,7 +76,39 @@ class KeyedEvent(Event, metaclass=_KeyedEventType):
     >>> MyKeyedEvent.Z  # raises KeyError
     """
 
-    choices: Union[set, dict, object, None] = None
+    __slots__ = []
+    key_options: Union[set, dict, object, None] = None
+
+    def __init__(self, *args, **kwargs):
+        """
+        Default init by filling slots with args/kwargs
+
+        Parameters
+        ----------
+        *args : Any
+            As many args as there are slots. They will be filled in order. Don't mix with **kwargs
+        **kwargs : Any
+            Key value pairs map to slot names and values. Not to be used with *args.
+        """
+
+        if args and kwargs:
+            raise ValueError("Default Event.__init__ shouldn't mix *args and **kwargs.")
+        for slot, arg in zip(self.__slots__, args):
+            setattr(self, slot, arg)
+        for slot, arg in kwargs.items():
+            setattr(self, slot, arg)
+
+    def __eq__(self, other):
+        if type(self) is type(other):
+            self_slots = [getattr(self, slot) for slot in self.__slots__]
+            other_slots = [getattr(other, slot) for slot in other.__slots__]
+            return self_slots == other_slots
+
+
+EventHandler: Callable[[Event], None]
+EventKey: Tuple[Type[Event], Any]
+ModifierKeys = namedtuple("KeyModifiers", "SHIFT, CTRL, ALT")  # True/False values
+MouseButtons = namedtuple("MouseButtons", "LEFT, RIGHT, MIDDLE")  # True/False values
 
 
 class Update(Event):
@@ -102,26 +123,27 @@ class Quit(Event):
     pass
 
 
-@dataclass(frozen=True)
-class KeyDown(KeyedEvent):
-    choices = Keys
+class _BaseKeyEvent(Event):
+    __slots__ = ["modifiers"]
     modifiers: ModifierKeys
+    key_options = Keys
 
 
-@dataclass(frozen=True)
-class KeyUp(KeyedEvent):
-    choices = Keys
-    modifiers: ModifierKeys
+class KeyDown(_BaseKeyEvent):
+    pass
 
 
-@dataclass(frozen=True)
-class KeyIsPressed(KeyedEvent):
-    choices = Keys
-    modifiers: ModifierKeys
+class KeyUp(_BaseKeyEvent):
+    pass
 
 
-@dataclass(frozen=True)
+class KeyIsPressed(_BaseKeyEvent):
+    pass
+
+
 class MouseDrag(Event):
+    __slots__ = ["buttons", "x", "y", "dx", "dy"]
+
     buttons: MouseButtons
     x: int
     y: int
@@ -129,30 +151,40 @@ class MouseDrag(Event):
     dy: int
 
 
-@dataclass(frozen=True)
 class MouseMotion(Event):
+    __slots__ = ["x", "y", "dx", "dy"]
+
     x: int
     y: int
     dx: int
     dy: int
 
 
-@dataclass(frozen=True)
 class MouseScroll(Event):
+    __slots__ = ["dx", "dy"]
+
     dx: int
     dy: int
 
 
-class MouseDown(KeyedEvent):
-    choices = _MOUSE_MAP
+class _BaseMouseEvent(Event):
+    __slots__ = ["x", "y"]
+
+    key_options = _MOUSE_MAP
+    x: int
+    y: int
 
 
-class MouseUp(KeyedEvent):
-    choices = _MOUSE_MAP
+class MouseDown(_BaseMouseEvent):
+    pass
 
 
-class MouseIsPressed(KeyedEvent):
-    choices = _MOUSE_MAP
+class MouseUp(_BaseMouseEvent):
+    pass
+
+
+class MouseIsPressed(_BaseMouseEvent):
+    pass
 
 
 def handler(event_key):
@@ -162,30 +194,33 @@ def handler(event_key):
 
     Parameters
     ----------
-    event_key : type[Event] | tuple[type[Event], Any]
-        An Event is described by it's Type
-        A KeyedEvent is described by a tuple of it's Type and some key value.
+    event_key : tuple[type[Event], Any]
+        The key value for an event is a tuple of the event type and an arbitrary key.
+        Because of this each type of event can be subscribed to with an additional key.
 
     Examples
     --------
-    How handler would be used with a normal event.
+    How handler would be used with a normal event: event_key == (Update, None)
 
     >>> @handler(Update):
     >>> def update_handler_function(self, event: Update) -> None:
     ...     # do update
     ...     ...
 
-    How handler would be used with a keyed event.
+    How handler would be used with a keyed event: event_key == (Event, 'ABC')
 
-    >>> @handler(KeyedEvent.ABC)
-    >>> def some_keyed_event_handler(self, event: KeyedEvent) -> None:
-    ...     # Only called when a KeyedEvent instance is posted with 'ABC' as a key.
-    ...     # See KeyedEvent for more detailed documentation on the key values.
+    >>> @handler(Event.ABC)
+    >>> def some_keyed_event_handler(self, event: Event) -> None:
+    ...     # Only called when a Event instance is posted with 'ABC' as a key.
+    ...     # See Event for more detailed documentation on the key values.
     ...     ...
     """
 
     def inner(fn):
-        setattr(fn, _HANDLER_INJECTION_ATTRIBUTE, event_key)
+        if isinstance(event_key, type):
+            setattr(fn, _HANDLER_INJECTION_ATTRIBUTE, (event_key, None))
+        else:
+            setattr(fn, _HANDLER_INJECTION_ATTRIBUTE, event_key)
         return fn
 
     return inner
@@ -232,6 +267,8 @@ class MessageBus:
         self.handlers = defaultdict(list)
         if initial_handlers:
             for event_type, callbacks in initial_handlers.items():
+                if isinstance(event_type, type(Event)):
+                    event_type = (event_type, None)
                 self.handlers[event_type].extend(callbacks)
         self._adapters = dict()
 
@@ -246,6 +283,8 @@ class MessageBus:
             A KeyedEvent will be described by a tuple of it's Type and some key value.
         callback : EventHandler
         """
+        if isinstance(event_key, type(Event)):
+            event_key = (event_key, None)
         self.handlers[event_key].append(callback)
 
     def unregister(self, event_key, callback) -> None:
@@ -258,6 +297,8 @@ class MessageBus:
         callback : EventHandler
         """
         try:
+            if isinstance(event_key, type(Event)):
+                event_key = (event_key, None)
             self.handlers[event_key].remove(callback)
         except ValueError:
             warnings.warn(
@@ -276,11 +317,7 @@ class MessageBus:
         key : Any
             Key to be used when posting a KeyedEvent
         """
-        if isinstance(event, KeyedEvent) and key is None:
-            raise ValueError(
-                f"{event!r} was expected to be posted with a key, but {key=}"
-            )
-        event_key = type(event) if key is None else (type(event), key)
+        event_key = (type(event), key)
         for handler_ in self.handlers[event_key]:
             handler_(event)
 
@@ -291,12 +328,20 @@ class MessageBus:
         Parameters
         ----------
         conn : Connection
-        event_keys : List[Type[Event]]
-            List of event types that should be piped through.
+        event_keys : List[EventKey]
+            List of EventKeys that should be fed through this pipe.
+
+            If any of the keys are just a Type[Event] then they will be
+            assigned None key by default.
         """
+        for i, key in enumerate(event_keys):
+            if not isinstance(key, tuple):
+                # convert Type[Event] into EventKey
+                event_keys[i] = (key, None)
+
         adapter = _ConnectionAdapter(self, conn, event_keys)
-        for type_ in event_keys:
-            self.register(type_, adapter)
+        for key in event_keys:
+            self.register(key, adapter)
         self._adapters[conn] = adapter
         adapter.thread.start()
 

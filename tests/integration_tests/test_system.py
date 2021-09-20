@@ -1,5 +1,4 @@
 import multiprocessing as mp
-from dataclasses import dataclass
 
 from src.gamelib import events
 from src.gamelib.events import SystemStop
@@ -67,8 +66,9 @@ class TestSystem:
         assert res == SomeEvent()
 
 
-@dataclass(frozen=True)
 class ExampleEvent(events.Event):
+    __slots__ = ["value"]
+
     value: int
 
 

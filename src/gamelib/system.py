@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import time
-from dataclasses import dataclass
 from multiprocessing.connection import Connection
 from typing import Type
 
 from . import events
 
 
-class SystemMeta(type):
+class _SystemMeta(type):
     """
     Used as the metaclass for System.
 
@@ -26,7 +25,7 @@ class SystemMeta(type):
         return namespace
 
 
-class System(mp.Process, metaclass=SystemMeta):
+class System(mp.Process, metaclass=_SystemMeta):
     """
     A System is a process that processes events passed over a Pipe Connection.
 
@@ -92,6 +91,7 @@ class System(mp.Process, metaclass=SystemMeta):
         self._running = False
 
 
-@dataclass(frozen=True)
 class UpdateComplete(System.Event):
+    __slots__ = ["system_type"]
+
     system_type: Type[System]
