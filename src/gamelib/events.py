@@ -45,7 +45,7 @@ class Event(metaclass=_EventType):
 
     Examples
     --------
-    With choices = None (default)
+    With key_options = None (default)
 
     >>> Event.anything_that_could_be_a_valid_attr_name
     (KeyedEvent, 'anything_that_could_be_a_valid_attr_name')
@@ -57,7 +57,7 @@ class Event(metaclass=_EventType):
     Choices for keys can be limited by a set.
 
     >>> class MyKeyedEvent(Event):
-    ...     choices = {'A', 'B', 'C'}
+    ...     key_options = {'A', 'B', 'C'}
     ...
     >>> MyKeyedEvent.C
     (MyKeyedEvent, 'C')
@@ -68,7 +68,7 @@ class Event(metaclass=_EventType):
     In this case keys are both limited and mapped based on values.
 
     >>> class MyKeyedEvent(Event):
-    ...     choices = {'A': 2, 'B': 4, 'C': 6}
+    ...     key_options = {'A': 2, 'B': 4, 'C': 6}
     ...
     >>> MyKeyedEvent.A
     (MyKeyedEvent, 2)
