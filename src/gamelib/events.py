@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import threading
 import time
@@ -7,6 +9,11 @@ from multiprocessing.connection import Connection
 from typing import Type, List, Callable, Union, Tuple, Any
 
 from moderngl_window.context.pygame2.keys import Keys
+
+EventKey: Tuple[Type[Event], Any]
+EventHandler: Callable[[Event], None]
+ModifierKeys = namedtuple("KeyModifiers", "SHIFT, CTRL, ALT")  # True/False values
+MouseButtons = namedtuple("MouseButtons", "LEFT, RIGHT, MIDDLE")  # True/False values
 
 _HANDLER_INJECTION_ATTRIBUTE = "_gamelib_handler_"
 _MOUSE_MAP = {"LEFT": 1, "RIGHT": 2, "MIDDLE": 3}
@@ -40,7 +47,7 @@ class _EventType(type):
 
 class Event(metaclass=_EventType):
     """
-    A KeyedEvent can have its type object queried for attributes to make keys.
+    An Event can have its type object queried for attributes to make keys.
     Note: conflicts with dataclass
 
     Examples
@@ -81,7 +88,7 @@ class Event(metaclass=_EventType):
 
     def __init__(self, *args, **kwargs):
         """
-        Default init by filling slots with args/kwargs
+        Default __init__: fills slots with either args or kwargs.
 
         Parameters
         ----------
@@ -99,92 +106,14 @@ class Event(metaclass=_EventType):
             setattr(self, slot, arg)
 
     def __eq__(self, other):
+        """
+        Compare as equal if other is of the same type as self
+        and all attributes defined by __slots__ are the same.
+        """
         if type(self) is type(other):
-            self_slots = [getattr(self, slot) for slot in self.__slots__]
-            other_slots = [getattr(other, slot) for slot in other.__slots__]
+            self_slots = [(slot, getattr(self, slot)) for slot in self.__slots__]
+            other_slots = [(slot, getattr(other, slot)) for slot in other.__slots__]
             return self_slots == other_slots
-
-
-EventHandler: Callable[[Event], None]
-EventKey: Tuple[Type[Event], Any]
-ModifierKeys = namedtuple("KeyModifiers", "SHIFT, CTRL, ALT")  # True/False values
-MouseButtons = namedtuple("MouseButtons", "LEFT, RIGHT, MIDDLE")  # True/False values
-
-
-class Update(Event):
-    pass
-
-
-class SystemStop(Event):
-    pass
-
-
-class Quit(Event):
-    pass
-
-
-class _BaseKeyEvent(Event):
-    __slots__ = ["modifiers"]
-    modifiers: ModifierKeys
-    key_options = Keys
-
-
-class KeyDown(_BaseKeyEvent):
-    pass
-
-
-class KeyUp(_BaseKeyEvent):
-    pass
-
-
-class KeyIsPressed(_BaseKeyEvent):
-    pass
-
-
-class MouseDrag(Event):
-    __slots__ = ["buttons", "x", "y", "dx", "dy"]
-
-    buttons: MouseButtons
-    x: int
-    y: int
-    dx: int
-    dy: int
-
-
-class MouseMotion(Event):
-    __slots__ = ["x", "y", "dx", "dy"]
-
-    x: int
-    y: int
-    dx: int
-    dy: int
-
-
-class MouseScroll(Event):
-    __slots__ = ["dx", "dy"]
-
-    dx: int
-    dy: int
-
-
-class _BaseMouseEvent(Event):
-    __slots__ = ["x", "y"]
-
-    key_options = _MOUSE_MAP
-    x: int
-    y: int
-
-
-class MouseDown(_BaseMouseEvent):
-    pass
-
-
-class MouseUp(_BaseMouseEvent):
-    pass
-
-
-class MouseIsPressed(_BaseMouseEvent):
-    pass
 
 
 def handler(event_key):
@@ -359,6 +288,82 @@ class MessageBus:
         for type_ in adapter.event_types:
             self.unregister(type_, adapter)
         adapter.is_active = False
+
+
+class Update(Event):
+    pass
+
+
+class SystemStop(Event):
+    pass
+
+
+class Quit(Event):
+    pass
+
+
+class _BaseKeyEvent(Event):
+    __slots__ = ["modifiers"]
+    modifiers: ModifierKeys
+    key_options = Keys
+
+
+class KeyDown(_BaseKeyEvent):
+    pass
+
+
+class KeyUp(_BaseKeyEvent):
+    pass
+
+
+class KeyIsPressed(_BaseKeyEvent):
+    pass
+
+
+class MouseDrag(Event):
+    __slots__ = ["buttons", "x", "y", "dx", "dy"]
+
+    buttons: MouseButtons
+    x: int
+    y: int
+    dx: int
+    dy: int
+
+
+class MouseMotion(Event):
+    __slots__ = ["x", "y", "dx", "dy"]
+
+    x: int
+    y: int
+    dx: int
+    dy: int
+
+
+class MouseScroll(Event):
+    __slots__ = ["dx", "dy"]
+
+    dx: int
+    dy: int
+
+
+class _BaseMouseEvent(Event):
+    __slots__ = ["x", "y"]
+
+    key_options = _MOUSE_MAP
+    x: int
+    y: int
+
+
+class MouseDown(_BaseMouseEvent):
+    pass
+
+
+class MouseUp(_BaseMouseEvent):
+    pass
+
+
+class MouseIsPressed(_BaseMouseEvent):
+    pass
 
 
 class _ConnectionAdapter:
