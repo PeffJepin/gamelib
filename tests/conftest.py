@@ -37,8 +37,8 @@ def image_file_maker(tmpdir) -> Callable[[Tuple[int, int]], pathlib.Path]:
 
 @pytest.fixture
 def pipe_reader():
-    def _reader(conn: Connection, timeout=1_000):
-        if not conn.poll(timeout / 1_000):
+    def _reader(conn: Connection, timeout=5):
+        if not conn.poll(timeout):
             return None
         else:
             return conn.recv()

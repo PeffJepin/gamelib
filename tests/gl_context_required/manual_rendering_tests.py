@@ -4,10 +4,10 @@ import moderngl
 import numpy as np
 from PIL import Image
 
-from src.gamelib.atlas import TextureAtlas, Asset
+from src.gamelib.textures import TextureAtlas, Asset, TextureReference
 
 
-def render_asset_to_PIL_Image(ctx, asset, atlas):
+def render_texture_reference_to_PIL(ctx, texture, size, atlas):
     program = ctx.program(
         vertex_shader="""
             #version 330
@@ -37,21 +37,21 @@ def render_asset_to_PIL_Image(ctx, asset, atlas):
         """,
     )
     program["test_texture"] = 0
-    atlas.texture.use(0)
+    atlas.gl.use(0)
 
     vertices = np.array([-1, -1, -1, 1, 1, 1, 1, -1])
     vbo = ctx.buffer(vertices.astype("f4").tobytes())
 
     tex_coords = np.array(
         [
-            asset.left,
-            asset.bottom,
-            asset.left,
-            asset.top,
-            asset.right,
-            asset.top,
-            asset.right,
-            asset.bottom,
+            texture.left,
+            texture.bottom,
+            texture.left,
+            texture.top,
+            texture.right,
+            texture.top,
+            texture.right,
+            texture.bottom,
         ]
     )
     tex_buf = ctx.buffer(tex_coords.astype("f4").tobytes())
@@ -65,7 +65,7 @@ def render_asset_to_PIL_Image(ctx, asset, atlas):
         index_buffer=ibo,
         index_element_size=1,
     )
-    fbo = ctx.simple_framebuffer(asset.size)
+    fbo = ctx.simple_framebuffer(size)
     fbo.use()
     fbo.clear()
     vao.render()
@@ -81,11 +81,12 @@ def test_texture_atlas():
     """
     ctx = moderngl.create_standalone_context()
     img_dir = Path(__file__).parent / "testing_images"
-    src_dict = {i: img_dir / fn for i, fn in enumerate(img_dir.iterdir())}
-    atlas = TextureAtlas(ctx, src_dict, max_size=(512, 512), allocation_step=32)
+    assets = [Asset(i, img_dir / fn) for i, fn in enumerate(img_dir.iterdir())]
+    atlas = TextureAtlas(assets, max_size=(512, 512), allocation_step=32)
+    atlas.upload_texture(ctx)
 
     for asset in atlas:
-        rendered = render_asset_to_PIL_Image(ctx, asset, atlas)
+        rendered = render_texture_reference_to_PIL(ctx, asset.texture, asset.size, atlas)
         loaded = Image.open(asset.path)
         w, h = loaded.size
         side_by_side = Image.new("RGBA", (w * 2, h))
@@ -93,8 +94,7 @@ def test_texture_atlas():
         side_by_side.paste(rendered, (w, 0))
         side_by_side.show(title="Loaded From File <---> Rendered On GPU")
 
-    mock_atlas_asset = Asset((0, 0, 1, 1), Path("dummy_path"), atlas.size)
-    entire_atlas = render_asset_to_PIL_Image(ctx, mock_atlas_asset, atlas)
+    entire_atlas = render_texture_reference_to_PIL(ctx, TextureReference(atlas.gl), atlas.size, atlas)
     entire_atlas.show()
 
 

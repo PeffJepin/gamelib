@@ -12,8 +12,8 @@ from moderngl_window.context.pygame2.keys import Keys
 
 EventKey: Tuple[Type[Event], Any]
 EventHandler: Callable[[Event], None]
-ModifierKeys = namedtuple("KeyModifiers", "SHIFT, CTRL, ALT")  # True/False values
-MouseButtons = namedtuple("MouseButtons", "LEFT, RIGHT, MIDDLE")  # True/False values
+ModifierKeys = namedtuple("KeyModifiers", "SHIFT, CTRL, ALT")  # Boolean values
+MouseButtons = namedtuple("MouseButtons", "LEFT, RIGHT, MIDDLE")  # Boolean values
 
 _HANDLER_INJECTION_ATTRIBUTE = "_gamelib_handler_"
 _MOUSE_MAP = {"LEFT": 1, "RIGHT": 2, "MIDDLE": 3}
@@ -25,24 +25,24 @@ class _EventType(type):
     def __getattr__(cls, name: str):
         if name.startswith("_"):
             raise AttributeError(
-                f"_EventType won't create keys leading with an underscore. {name=}"
+                f"_EventType won't create keys with leading underscores. {name=}"
             )
 
         if cls.key_options is None:
-            key = name
+            name = name
 
         elif isinstance(cls.key_options, set):
             if name not in cls.key_options:
                 raise ValueError(f"Expected {name=} to be in {cls.key_options!r}")
-            key = name
+            name = name
 
         elif isinstance(cls.key_options, dict):
-            key = cls.key_options[name]
+            name = cls.key_options[name]
 
         else:
-            key = getattr(cls.key_options, name)
+            name = getattr(cls.key_options, name)
 
-        return cls, key
+        return cls, name
 
 
 class Event(metaclass=_EventType):
@@ -303,9 +303,11 @@ class Quit(Event):
 
 
 class _BaseKeyEvent(Event):
-    __slots__ = ["modifiers"]
-    modifiers: ModifierKeys
     key_options = Keys
+
+    __slots__ = ["modifiers"]
+
+    modifiers: ModifierKeys
 
 
 class KeyDown(_BaseKeyEvent):
@@ -347,9 +349,10 @@ class MouseScroll(Event):
 
 
 class _BaseMouseEvent(Event):
+    key_options = _MOUSE_MAP
+
     __slots__ = ["x", "y"]
 
-    key_options = _MOUSE_MAP
     x: int
     y: int
 
