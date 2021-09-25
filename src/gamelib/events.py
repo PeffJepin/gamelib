@@ -201,7 +201,7 @@ class MessageBus:
                 self.handlers[event_type].extend(callbacks)
         self._adapters = dict()
 
-    def register(self, event_key, callback) -> None:
+    def register(self, event_key, *callbacks) -> None:
         """
         Register a function as a callback for given event type.
 
@@ -210,29 +210,56 @@ class MessageBus:
         event_key : type[Event] | tuple[type[Event], Any]
             A regular will be described by it's Type
             A KeyedEvent will be described by a tuple of it's Type and some key value.
-        callback : EventHandler
+        *callbacks : EventHandler
         """
         if isinstance(event_key, type(Event)):
             event_key = (event_key, None)
-        self.handlers[event_key].append(callback)
+        self.handlers[event_key].extend(callbacks)
 
-    def unregister(self, event_key, callback) -> None:
+    def unregister(self, event_key, *callbacks) -> None:
         """
         Stop handling this event type with this callback.
 
         Parameters
         ----------
         event_key : Type[Event]
-        callback : EventHandler
+        *callbacks : EventHandler
         """
-        try:
-            if isinstance(event_key, type(Event)):
-                event_key = (event_key, None)
-            self.handlers[event_key].remove(callback)
-        except ValueError:
-            warnings.warn(
-                f"Tried to unregister {callback!r} from {self!r} when it was not registered"
-            )
+        if isinstance(event_key, type(Event)):
+            event_key = (event_key, None)
+        for callback in callbacks:
+            try:
+                self.handlers[event_key].remove(callback)
+            except ValueError:
+                warnings.warn(
+                    f"Tried to unregister {callback!r} from {self!r} when it was not registered"
+                )
+
+    def register_marked_handlers(self, obj):
+        """
+        Shorthand for finding the @handler docorated functions on an object
+        and registering them as callbacks.
+
+        Parameters
+        ----------
+        obj : object
+            Object containing @handler marked functions.
+        """
+        for event_key, handlers in find_handlers(obj).items():
+            self.register(event_key, *handlers)
+
+    def unregister_marked_handlers(self, obj):
+        """
+        Shorthand for finding @handler decorated functions and
+        unregistering them as callbacks.
+
+        Parameters
+        ----------
+        obj : object
+            Object containing @handler marked functions
+        """
+        for event_key, handlers in find_handlers(obj).items():
+            self.unregister(event_key, *handlers)
 
     def post_event(self, event, key=None) -> None:
         """

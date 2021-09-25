@@ -55,6 +55,29 @@ class TestInternalIntegration:
 
         assert 1 == container.calls[KeyDown]
 
+    def test_register_marked_handlers_shorthand(self):
+        container = HandlerContainer()
+        mb1 = MessageBus(find_handlers(container))
+        mb2 = MessageBus()
+
+        mb2.register_marked_handlers(container)
+
+        assert mb1.handlers == mb2.handlers
+
+    def test_unregister_marked_handlers_shorthand(self):
+        container = HandlerContainer()
+        mb = MessageBus()
+        mb.register_marked_handlers(container)
+
+        mb.unregister_marked_handlers(container)
+        mb.post_event(Event())
+        mb.post_event(KeyedEvent(), key="ABC")
+        mb.post_event(KeyDown(), key=Keys.J)
+
+        assert not container.calls[Event]
+        assert not container.calls[KeyedEvent]
+        assert not container.calls[KeyDown]
+
 
 class KeyedEvent(Event):
     pass

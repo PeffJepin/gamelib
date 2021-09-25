@@ -6,6 +6,8 @@ from typing import Tuple, Callable
 import pytest
 from PIL import Image
 
+from src.gamelib.textures import Asset
+
 
 class RecordedCallback:
     def __init__(self):
@@ -33,6 +35,15 @@ def image_file_maker(tmpdir) -> Callable[[Tuple[int, int]], pathlib.Path]:
         return path
 
     return _maker
+
+
+@pytest.fixture
+def asset_maker(image_file_maker):
+    def inner(w, h):
+        size = (w, h)
+        return Asset(str(time.time()), image_file_maker(size))
+
+    return inner
 
 
 @pytest.fixture

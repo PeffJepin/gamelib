@@ -1,5 +1,3 @@
-import time
-
 import pytest
 
 from src.gamelib.textures import Asset, TextureAtlas, SimpleRowAllocator, PILWriter
@@ -129,12 +127,3 @@ class TestSimpleRowAllocator:
             assets[3]: (8, 8),
         }
         assert expected == allocator.pack_assets(assets)
-
-
-@pytest.fixture
-def asset_maker(image_file_maker):
-    def inner(w, h):
-        size = (w, h)
-        return Asset(str(time.time()), image_file_maker(size))
-
-    return inner

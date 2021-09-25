@@ -5,6 +5,8 @@ import time
 from multiprocessing.connection import Connection
 from typing import Type
 
+import numpy as np
+
 from . import events
 
 
@@ -95,3 +97,56 @@ class UpdateComplete(System.Event):
     __slots__ = ["system_type"]
 
     system_type: Type[System]
+
+
+class ArrayAttribute:
+    def __init__(self, dtype, length=1):
+        """
+        A Descriptor that manages a numpy array which can be indexed on
+        an instance with an 'entity_id' attribute.
+
+        An ArrayAttribute instance can be reallocated with a new size using the
+        reallocate function.
+
+        Parameters
+        ----------
+        dtype : np.dtype
+        length : int
+            The underlying array will be 1 dimensional with this length
+        """
+        self._array = np.zeros((length,), dtype)
+
+    def __get__(self, instance, owner):
+        if instance is None:
+            return self._array
+        index = self._get_entity_id(instance)
+        return self._array[index]
+
+    def __set__(self, obj, value):
+        index = self._get_entity_id(obj)
+        self._array[index] = value
+
+    def reallocate(self, new_length=None):
+        """
+        Reallocates the underlying memory with an optional new length.
+
+        Parameters
+        ----------
+        new_length : int | None
+            Optional new size to make the array.
+        """
+        dtype = self._array.dtype
+        length = new_length or self._array.shape[0]
+        self._array = np.zeros((length,), dtype)
+
+    def _get_entity_id(self, instance):
+        entity_id = getattr(instance, "entity_id", None)
+        if entity_id is None:
+            raise AttributeError(
+                f"{self.__class__.__name__} Should be defined on a class with an 'entity_id' attribute."
+            )
+        if not (0 <= entity_id < self._array.shape[0]):
+            raise IndexError(
+                f"{entity_id=} is out of range for array with length {self._array.shape[0]}"
+            )
+        return entity_id

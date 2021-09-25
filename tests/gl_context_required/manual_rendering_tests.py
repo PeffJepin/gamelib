@@ -86,7 +86,9 @@ def test_texture_atlas():
     atlas.upload_texture(ctx)
 
     for asset in atlas:
-        rendered = render_texture_reference_to_PIL(ctx, asset.texture, asset.size, atlas)
+        rendered = render_texture_reference_to_PIL(
+            ctx, asset.texture, asset.size, atlas
+        )
         loaded = Image.open(asset.path)
         w, h = loaded.size
         side_by_side = Image.new("RGBA", (w * 2, h))
@@ -94,7 +96,9 @@ def test_texture_atlas():
         side_by_side.paste(rendered, (w, 0))
         side_by_side.show(title="Loaded From File <---> Rendered On GPU")
 
-    entire_atlas = render_texture_reference_to_PIL(ctx, TextureReference(atlas.gl), atlas.size, atlas)
+    entire_atlas = render_texture_reference_to_PIL(
+        ctx, TextureReference(atlas.gl), atlas.size, atlas
+    )
     entire_atlas.show()
 
 
