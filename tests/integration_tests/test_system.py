@@ -67,7 +67,7 @@ class TestSystem:
             yield a
         finally:
             a.send(SystemStop())
-            sys.join(5)
+            sys.join(10)
             if sys.exitcode is None:
                 sys.kill()
                 assert False  # system not joining is indicative of an error

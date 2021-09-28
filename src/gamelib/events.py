@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import logging
 import threading
 import time
@@ -171,15 +172,17 @@ def find_handlers(obj):
     """
 
     handlers = defaultdict(list)
-    for name in dir(obj):
-        attr = getattr(obj, name, None)
-        if (attr is None) or not isinstance(attr, Callable):
+    for name, attr in inspect.getmembers(obj):
+        if not isinstance(attr, Callable):
             continue
         if (event_type := getattr(attr, _HANDLER_INJECTION_ATTRIBUTE, None)) is None:
             # might be a bound method
-            if (fn := getattr(attr, "__func__", None)) is not None:
-                for k, v in find_handlers(fn).items():
-                    handlers[k].extend(v)
+            if (__func__ := getattr(attr, "__func__", None)) is None:
+                continue
+            if (
+                injection := getattr(__func__, _HANDLER_INJECTION_ATTRIBUTE, None)
+            ) is not None:
+                handlers[injection].append(attr)
             continue
         handlers[event_type].append(attr)
     return handlers

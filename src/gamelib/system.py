@@ -200,4 +200,4 @@ class PublicAttribute(ArrayAttribute):
 
     @property
     def _shm_id(self):
-        return f"{self._owner.__class__.__name__}__{self._name}"
+        return f"{self._owner.__name__}__{self._name}"
