@@ -7,7 +7,7 @@ from src.gamelib.sharedmem import SharedArray
 
 class TestSharedArrays:
     def test_a_write_in_a_second_process_is_seen_in_the_first_process(self):
-        arr = SharedArray.create('test', (10, 10), np.uint8)
+        arr = SharedArray.create("test", (10, 10), np.uint8)
         arr[:, :] = 0
 
         process = mp.Process(target=self.run_in_process)
@@ -21,5 +21,5 @@ class TestSharedArrays:
 
     @classmethod
     def run_in_process(cls):
-        arr = SharedArray('test', (10, 10), np.uint8)
+        arr = SharedArray("test", (10, 10), np.uint8)
         arr[:, :] = 100

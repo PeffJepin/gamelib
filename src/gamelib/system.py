@@ -8,6 +8,7 @@ from typing import Type
 import numpy as np
 
 from . import events
+from .sharedmem import DoubleBufferedArray
 
 
 class _SystemMeta(type):
@@ -47,10 +48,11 @@ class System(mp.Process, metaclass=_SystemMeta):
     Event: Type
     Component: Type
 
+    MAX_ENTITIES: int = 1028
     _running: bool
     _message_bus: events.MessageBus
 
-    def __init__(self, conn):
+    def __init__(self, conn, max_entities=1024):
         """
         Initialize the system. Note _message_bus and _running are not
         initialized until later - once the System's Process has been started.
@@ -61,8 +63,19 @@ class System(mp.Process, metaclass=_SystemMeta):
             The Connection object from a multiprocessing.Pipe() used for communication.
         """
         self.HANDLERS = events.find_handlers(self)
+        self.COMPONENTS = self.Component.__subclasses__()
+
+        for attr in self._find_public_attributes():
+            attr.allocate_shm()
+
+        self._max_entities = max_entities
         self._conn = conn
         super().__init__()
+
+    def join(self, timeout=0):
+        super().join(timeout)
+        for attr in self._find_public_attributes():
+            attr.close_shm()
 
     def run(self):
         """
@@ -72,13 +85,18 @@ class System(mp.Process, metaclass=_SystemMeta):
         this main thread can just sleep until ready to exit.
         """
         # Might be worth trying an asynchronous event loop in the future.
-        self._running = True
+        System.MAX_ENTITIES = self._max_entities
         self._message_bus = events.MessageBus(self.HANDLERS)
         self._message_bus.service_connection(
             self._conn, self.Event.__subclasses__() + System.Event.__subclasses__()
         )
+
+        self._running = True
         while self._running:
             time.sleep(1 / 1_000)
+
+        for attr in self._find_public_attributes():
+            attr.close_shm()
 
     def update(self):
         """Stub for subclass defined behavior."""
@@ -92,6 +110,15 @@ class System(mp.Process, metaclass=_SystemMeta):
     def _stop(self, event):
         self._running = False
 
+    def _find_public_attributes(self):
+        attrs = []
+        for comp_type in self.COMPONENTS:
+            discovered = [
+                v for k, v in vars(comp_type).items() if isinstance(v, PublicAttribute)
+            ]
+            attrs.extend(discovered)
+        return attrs
+
 
 class UpdateComplete(System.Event):
     __slots__ = ["system_type"]
@@ -100,7 +127,10 @@ class UpdateComplete(System.Event):
 
 
 class ArrayAttribute:
-    def __init__(self, dtype, length=1):
+    _owner: object
+    _name: str
+
+    def __init__(self, dtype, length=System.MAX_ENTITIES):
         """
         A Descriptor that manages a numpy array which can be indexed on
         an instance with an 'entity_id' attribute.
@@ -116,6 +146,10 @@ class ArrayAttribute:
         """
         self._array = np.zeros((length,), dtype)
 
+    def __set_name__(self, owner, name):
+        self._owner = owner
+        self._name = name
+
     def __get__(self, instance, owner):
         if instance is None:
             return self._array
@@ -125,19 +159,6 @@ class ArrayAttribute:
     def __set__(self, obj, value):
         index = self._get_entity_id(obj)
         self._array[index] = value
-
-    def reallocate(self, new_length=None):
-        """
-        Reallocates the underlying memory with an optional new length.
-
-        Parameters
-        ----------
-        new_length : int | None
-            Optional new size to make the array.
-        """
-        dtype = self._array.dtype
-        length = new_length or self._array.shape[0]
-        self._array = np.zeros((length,), dtype)
 
     def _get_entity_id(self, instance):
         entity_id = getattr(instance, "entity_id", None)
@@ -150,3 +171,33 @@ class ArrayAttribute:
                 f"{entity_id=} is out of range for array with length {self._array.shape[0]}"
             )
         return entity_id
+
+
+class PublicAttribute(ArrayAttribute):
+    def __init__(self, dtype):
+        self.dtype = dtype
+        self._array = None
+
+    def __get__(self, instance, owner):
+        if self._array is None:
+            self._array = DoubleBufferedArray(
+                self._shm_id, (System.MAX_ENTITIES,), self.dtype
+            )
+        return super().__get__(instance, owner)
+
+    def allocate_shm(self):
+        self._array = DoubleBufferedArray.create(
+            self._shm_id, (System.MAX_ENTITIES,), self.dtype
+        )
+
+    def close_shm(self):
+        if self._array is not None:
+            self._array.close()
+            self._array = None
+
+    def update(self):
+        self._array.swap()
+
+    @property
+    def _shm_id(self):
+        return f"{self._owner.__class__.__name__}__{self._name}"

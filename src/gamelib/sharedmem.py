@@ -33,11 +33,17 @@ class SharedArray:
         self._sm.close()
         self._sm = None
 
+    def __getattr__(self, item):
+        return getattr(self._arr, item)
+
     def __getitem__(self, key):
         return self._arr.__getitem__(key)
 
     def __setitem__(self, key, value):
         self._arr.__setitem__(key, value)
+
+    def __len__(self):
+        return len(self._arr)
 
     def __eq__(self, other):
         return self._arr == other
@@ -93,15 +99,15 @@ class SharedArray:
 
 class DoubleBufferedArray:
     def __init__(self, id_, shape, dtype):
-        self._read_arr = SharedArray(id_ + '_r', shape, dtype)
-        self._write_arr = SharedArray(id_ + '_w', shape, dtype)
+        self._read_arr = SharedArray(id_ + "_r", shape, dtype)
+        self._write_arr = SharedArray(id_ + "_w", shape, dtype)
 
     @classmethod
-    def create(cls, id_, array=None, shape=None, dtype=None):
+    def create(cls, id_, shape=None, dtype=None, *, array=None):
         if array is None:
-            array = np.empty(shape, dtype)
-        shm_r = shared_memory.SharedMemory(id_ + '_r', create=True, size=array.nbytes)
-        shm_w = shared_memory.SharedMemory(id_ + '_w', create=True, size=array.nbytes)
+            array = np.zeros(shape, dtype)
+        shm_r = shared_memory.SharedMemory(id_ + "_r", create=True, size=array.nbytes)
+        shm_w = shared_memory.SharedMemory(id_ + "_w", create=True, size=array.nbytes)
         inst = cls(id_, array.shape, array.dtype)
         inst[:] = array[:]
         inst.swap()
@@ -116,6 +122,9 @@ class DoubleBufferedArray:
     def swap(self):
         self._read_arr[:] = self._write_arr[:]
 
+    def __len__(self):
+        return len(self._read_arr)
+
     def __eq__(self, other):
         return self._read_arr == other
 
@@ -124,6 +133,9 @@ class DoubleBufferedArray:
 
     def __setitem__(self, idx, value):
         self._write_arr[idx] = value
+
+    def __getattr__(self, item):
+        return getattr(self._read_arr, item)
 
     def __add__(self, other):
         return self._read_arr + other

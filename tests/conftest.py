@@ -1,3 +1,4 @@
+import logging
 import pathlib
 import time
 from multiprocessing.connection import Connection
@@ -55,3 +56,8 @@ def pipe_reader():
             return conn.recv()
 
     return _reader
+
+
+@pytest.fixture(autouse=True, scope="session")
+def setup_logging():
+    logging.basicConfig(level=logging.DEBUG)
