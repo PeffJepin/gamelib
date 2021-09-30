@@ -30,7 +30,7 @@ class SharedArray:
         raises FileNotFoundError.
         """
         self._arr = None
-        self._sm.unlink()
+        self._sm.close()
         self._sm.unlink()
         self._sm = None
 
