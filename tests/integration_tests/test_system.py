@@ -23,30 +23,30 @@ class TestSystem:
             conn.send(Update())
 
             responses = [pipe_reader(conn, 3) for _ in range(4)]
-            assert ['updated', 10, 15, UpdateComplete(ExampleSystem)] == responses
+            assert ["updated", 10, 15, UpdateComplete(ExampleSystem)] == responses
 
     def test_process_automatically_handles_update_event(self, pipe_reader):
         with self.system_tester(ExampleSystem) as conn:
             conn.send(Update())
             value = pipe_reader(conn)
-            assert 'updated' == value
+            assert "updated" == value
 
     def test_process_shuts_down_gracefully_on_stop_event(self):
         a, b = mp.Pipe()
-        system = ExampleSystem(b)
-        system.start()
+        process = mp.Process(target=ExampleSystem, args=(b,))
+        process.start()
 
         a.send(SystemStop())
-        system.join(5)
+        process.join(5)
 
-        assert system.exitcode == 0
+        assert process.exitcode == 0
 
     def test_posts_update_complete_event_after_updating(self, pipe_reader):
         with self.system_tester(ExampleSystem) as conn:
             conn.send(Update())
             res1 = pipe_reader(conn)
             res2 = pipe_reader(conn)
-            assert 'updated' == res1 and UpdateComplete(ExampleSystem) == res2
+            assert "updated" == res1 and UpdateComplete(ExampleSystem) == res2
 
     def test_event_derived_from_system_Event_gets_sent_through_pipe_when_published(
         self, pipe_reader
@@ -66,21 +66,23 @@ class TestSystem:
 
     @contextmanager
     def system_tester(self, sys_type):
+        sys_type.setup()
         System.MAX_ENTITIES = 16
         a, b = mp.Pipe()
-        sys = sys_type(b)
-        sys.start()
+        process = mp.Process(target=sys_type, args=(b, System.MAX_ENTITIES))
+        process.start()
         try:
             yield a
         finally:
             a.send(SystemStop())
-            sys.join(10)
-            if sys.exitcode is None:
-                sys.kill()
+            process.join(10)
+            sys_type.teardown()
+            if process.exitcode is None:
+                process.kill()
                 assert False  # system not joining is indicative of an error
 
 
-class ExampleEvent(events.Event):
+class ExampleEvent(events.BaseEvent):
     __slots__ = ["value"]
 
     value: int
@@ -92,7 +94,7 @@ class ExampleSystem(System):
         self._conn.send(event.value)
 
     def update(self):
-        self._conn.send('updated')
+        self._conn.send("updated")
 
 
 class ExampleComponent(ExampleSystem.Component):

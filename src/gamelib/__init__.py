@@ -2,26 +2,26 @@ from collections import namedtuple
 
 from moderngl_window.context.pygame2.keys import Keys
 
-from .events import Event
+from .events import BaseEvent
 
 ModifierKeys = namedtuple("KeyModifiers", "SHIFT, CTRL, ALT")  # Boolean values
 MouseButtons = namedtuple("MouseButtons", "LEFT, RIGHT, MIDDLE")  # Boolean values
 _MOUSE_MAP = {"LEFT": 1, "RIGHT": 2, "MIDDLE": 3}
 
 
-class Update(Event):
+class Update(BaseEvent):
     pass
 
 
-class SystemStop(Event):
+class SystemStop(BaseEvent):
     pass
 
 
-class Quit(Event):
+class Quit(BaseEvent):
     pass
 
 
-class _BaseKeyEvent(Event):
+class _BaseKeyEvent(BaseEvent):
     key_options = Keys
 
     __slots__ = ["modifiers"]
@@ -41,7 +41,7 @@ class KeyIsPressed(_BaseKeyEvent):
     pass
 
 
-class MouseDrag(Event):
+class MouseDrag(BaseEvent):
     __slots__ = ["buttons", "x", "y", "dx", "dy"]
 
     buttons: MouseButtons
@@ -51,7 +51,7 @@ class MouseDrag(Event):
     dy: int
 
 
-class MouseMotion(Event):
+class MouseMotion(BaseEvent):
     __slots__ = ["x", "y", "dx", "dy"]
 
     x: int
@@ -60,14 +60,14 @@ class MouseMotion(Event):
     dy: int
 
 
-class MouseScroll(Event):
+class MouseScroll(BaseEvent):
     __slots__ = ["dx", "dy"]
 
     dx: int
     dy: int
 
 
-class _BaseMouseEvent(Event):
+class _BaseMouseEvent(BaseEvent):
     key_options = _MOUSE_MAP
 
     __slots__ = ["x", "y"]
@@ -86,4 +86,3 @@ class MouseUp(_BaseMouseEvent):
 
 class MouseIsPressed(_BaseMouseEvent):
     pass
-

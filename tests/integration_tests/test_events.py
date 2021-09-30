@@ -3,7 +3,7 @@ from collections import defaultdict
 from src.gamelib import KeyDown, ModifierKeys, Keys
 from src.gamelib.events import (
     eventhandler,
-    Event,
+    BaseEvent,
     MessageBus,
     find_handlers,
 )
@@ -14,12 +14,12 @@ class TestInternalIntegration:
         container = HandlerContainer()
         mb = MessageBus(find_handlers(container))
 
-        mb.post_event(Event())
+        mb.post_event(BaseEvent())
 
-        assert 1 == container.calls[Event]
+        assert 1 == container.calls[BaseEvent]
 
     def test_normal_event_should_not_be_called(self):
-        class OtherEvent(Event):
+        class OtherEvent(BaseEvent):
             pass
 
         container = HandlerContainer()
@@ -27,7 +27,7 @@ class TestInternalIntegration:
 
         mb.post_event(OtherEvent())
 
-        assert 0 == container.calls[Event]
+        assert 0 == container.calls[BaseEvent]
 
     def test_keyed_event_should_be_called(self):
         container = HandlerContainer()
@@ -68,16 +68,16 @@ class TestInternalIntegration:
         mb.register_marked_handlers(container)
 
         mb.unregister_marked_handlers(container)
-        mb.post_event(Event())
+        mb.post_event(BaseEvent())
         mb.post_event(KeyedEvent(), key="ABC")
         mb.post_event(KeyDown(), key=Keys.J)
 
-        assert not container.calls[Event]
+        assert not container.calls[BaseEvent]
         assert not container.calls[KeyedEvent]
         assert not container.calls[KeyDown]
 
 
-class KeyedEvent(Event):
+class KeyedEvent(BaseEvent):
     pass
 
 
@@ -85,12 +85,12 @@ class HandlerContainer:
     def __init__(self):
         self.calls = defaultdict(int)
 
-    @eventhandler(Event)
-    def some_event_handler(self, event: Event):
-        self.calls[Event] += 1
+    @eventhandler(BaseEvent)
+    def some_event_handler(self, event: BaseEvent):
+        self.calls[BaseEvent] += 1
 
     @eventhandler(KeyedEvent.ABC)
-    def keyed_event_handler(self, event: Event):
+    def keyed_event_handler(self, event: BaseEvent):
         self.calls[KeyedEvent] += 1
 
     @eventhandler(KeyDown.J)

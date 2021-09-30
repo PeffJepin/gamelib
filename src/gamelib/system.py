@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import multiprocessing as mp
 from multiprocessing.connection import Connection
-from typing import Type, List
+from typing import Type
 
 import numpy as np
 
 from . import Update, SystemStop
-from .events import Event, MessageBus, find_handlers, eventhandler
+from .events import MessageBus, eventhandler, BaseEvent
 from .sharedmem import DoubleBufferedArray
 
 
@@ -20,21 +19,37 @@ class _SystemMeta(type):
     for each subclass of System.
     """
 
+    Event: Type[BaseEvent]
+    Component: Type[Component]
+
     @classmethod
     def __prepare__(metacls, name, bases, **kwargs):
         namespace: dict = super().__prepare__(name, bases, **kwargs)
-        namespace["Event"] = type("SystemBaseEvent", (Event,), {})
+        namespace["Event"] = type("SystemBaseEvent", (BaseEvent,), {})
         namespace["Component"] = type("SystemBaseComponent", (), {})
         return namespace
 
+    @property
+    def public_attributes(cls):
+        attrs = []
+        for comp_type in cls.Component.__subclasses__():
+            discovered = [
+                v for k, v in vars(comp_type).items() if isinstance(v, PublicAttribute)
+            ]
+            attrs.extend(discovered)
+        return attrs
 
-class System(mp.Process, metaclass=_SystemMeta):
+
+class System(metaclass=_SystemMeta):
     """
-    A System is a process that processes events passed over a Pipe Connection.
+    A System will be run in a multiprocessing.Process and communicates
+    with the parent process through a multiprocessing.Pipe.
 
     All subclasses of System will have their own unique Event and Component
-    Type attributes. All Components of a System and all Events to be raised
-    by a System should derive from these base types creating an explicit
+    Type attributes.
+
+    All Components of a System and all Events a System might raise
+    should inherit from these base types creating an explicit
     link between a System and its Components/Events.
 
     For example given this system:
@@ -45,78 +60,65 @@ class System(mp.Process, metaclass=_SystemMeta):
 
     """
 
+    MAX_ENTITIES: int = 1024
     Event: Type
     Component: Type
 
-    MAX_ENTITIES: int = 1028
-    _running: bool
-    _message_bus: MessageBus
-    _event_queue: List[Event]
-
     def __init__(self, conn, max_entities=1024):
         """
-        Initialize the system. Note _message_bus and _running are not
-        initialized until later - once the System's Process has been started.
-
         Parameters
         ----------
         conn : Connection
             The Connection object from a multiprocessing.Pipe() used for communication.
+        max_entities : int
+            Passed in so the child Process can set the correct value if changed from default.
         """
-        self.HANDLERS = find_handlers(self)
-        self.COMPONENTS = self.Component.__subclasses__()
+        System.MAX_ENTITIES = max_entities
+        outgoing_handlers = {
+            event_type: [lambda e: conn.send(e)]
+            for event_type in self.Event.__subclasses__()
+            + System.Event.__subclasses__()
+        }
+        self._message_bus = MessageBus(outgoing_handlers)
+        self._message_bus.register_marked_handlers(self)
+        self._conn = conn
+        self._running = True
+        self._event_queue = []
+        self._main()
 
-        for attr in self._find_public_attributes():
+    @classmethod
+    def setup(cls):
+        """Explicit setup must be called before initializing and using a System"""
+        for attr in cls.public_attributes:
             attr.allocate_shm()
 
-        self._max_entities = max_entities
-        self._conn = conn
-        super().__init__()
-
-    def join(self, timeout=0):
-        super().join(timeout)
-        for attr in self._find_public_attributes():
+    @classmethod
+    def teardown(cls):
+        """Explicit teardown must be called after joining a System Process."""
+        for attr in cls.public_attributes:
             attr.close_shm()
-
-    def run(self):
-        """
-        The entry point to the System's Process.
-
-        The message bus thread is currently processing events,
-        this main thread can just sleep until ready to exit.
-        """
-        # Might be worth trying an asynchronous event loop in the future.
-        System.MAX_ENTITIES = self._max_entities
-
-        self._event_queue = []
-        self._message_bus = MessageBus(self.HANDLERS)
-        for event_type in self.Event.__subclasses__() + System.Event.__subclasses__():
-            self._message_bus.register(event_type, lambda e: self._conn.send(e))
-
-        for attr in self._find_public_attributes():
-            attr.close_shm()
-
-        self._running = True
-        self._main()
 
     def update(self):
         """Stub for subclass defined behavior."""
 
     def _main(self):
         while self._running:
-            while self._conn.poll(0):
-                event = self._conn.recv()
-                if isinstance(event, Update):
-                    self._message_bus.post_event(event)
-                    for e in self._event_queue:
-                        self._message_bus.post_event(e)
-                    self._message_bus.post_event(UpdateComplete(type(self)))
-                    self._event_queue = []
-                elif isinstance(event, SystemStop):
-                    self._message_bus.post_event(event)
-                    break
-                else:
-                    self._event_queue.append(event)
+            self._poll()
+
+    def _poll(self):
+        while self._conn.poll(0):
+            event = self._conn.recv()
+            if isinstance(event, Update):
+                self._message_bus.post_event(event)
+                for e in self._event_queue:
+                    self._message_bus.post_event(e)
+                self._message_bus.post_event(UpdateComplete(type(self)))
+                self._event_queue = []
+            elif isinstance(event, SystemStop):
+                self._message_bus.post_event(event)
+                break
+            else:
+                self._event_queue.append(event)
 
     @eventhandler(Update)
     def _update(self, event):
@@ -125,15 +127,6 @@ class System(mp.Process, metaclass=_SystemMeta):
     @eventhandler(SystemStop)
     def _stop(self, event):
         self._running = False
-
-    def _find_public_attributes(self):
-        attrs = []
-        for comp_type in self.COMPONENTS:
-            discovered = [
-                v for k, v in vars(comp_type).items() if isinstance(v, PublicAttribute)
-            ]
-            attrs.extend(discovered)
-        return attrs
 
 
 class UpdateComplete(System.Event):
