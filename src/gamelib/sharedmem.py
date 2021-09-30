@@ -20,7 +20,7 @@ class SharedArray:
         shm.close()
         return inst
 
-    def close(self):
+    def unlink(self):
         """
         Seems SharedMemory.unlink() has a bug in windows and doesn't
         behave as expected.
@@ -30,7 +30,8 @@ class SharedArray:
         raises FileNotFoundError.
         """
         self._arr = None
-        self._sm.close()
+        self._sm.unlink()
+        self._sm.unlink()
         self._sm = None
 
     def __getattr__(self, item):
@@ -115,9 +116,9 @@ class DoubleBufferedArray:
         shm_w.close()
         return inst
 
-    def close(self):
-        self._read_arr.close()
-        self._write_arr.close()
+    def unlink(self):
+        self._read_arr.unlink()
+        self._write_arr.unlink()
 
     def swap(self):
         self._read_arr[:] = self._write_arr[:]

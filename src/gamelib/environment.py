@@ -14,7 +14,7 @@ from .textures import Asset, TextureAtlas
 class Environment(abc.ABC):
     ASSETS: list
 
-    SYSTEMS: list
+    SYSTEMS: List[Type[System]]
     _MAX_ENTITIES: int = 1028
 
     _systems: List[System] = None
@@ -73,13 +73,13 @@ class Environment(abc.ABC):
         for SystemType, (process, conn) in self._running_systems.items():
             self._message_bus.stop_connection_service(conn)
             process.join()
-            SystemType.teardown()
+            SystemType.teardown_shared_state()
         self._running_systems = None
 
     def _start_systems(self):
         self._running_systems = dict()
         for SystemType in self.SYSTEMS:
-            SystemType.setup()
+            SystemType.setup_shared_state()
             local_conn, process_conn = mp.Pipe()
             process = mp.Process(
                 target=SystemType, args=(process_conn, self._MAX_ENTITIES)

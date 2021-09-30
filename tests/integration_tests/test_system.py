@@ -61,14 +61,14 @@ class TestSystem:
             arr = ExampleComponent.nums
 
     def test_public_attribute_access_after_init(self):
-        with self.system_tester(ExampleSystem) as conn:
+        with self.system_tester(ExampleSystem):
             assert all(ExampleComponent.nums[:] == 0)
 
     @contextmanager
     def system_tester(self, sys_type):
-        sys_type.setup()
         System.MAX_ENTITIES = 16
         a, b = mp.Pipe()
+        sys_type.setup_shared_state()
         process = mp.Process(target=sys_type, args=(b, System.MAX_ENTITIES))
         process.start()
         try:
@@ -76,7 +76,7 @@ class TestSystem:
         finally:
             a.send(SystemStop())
             process.join(10)
-            sys_type.teardown()
+            sys_type.teardown_shared_state()
             if process.exitcode is None:
                 process.kill()
                 assert False  # system not joining is indicative of an error

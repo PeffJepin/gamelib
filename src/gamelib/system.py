@@ -87,14 +87,12 @@ class System(metaclass=_SystemMeta):
         self._main()
 
     @classmethod
-    def setup(cls):
-        """Explicit setup must be called before initializing and using a System"""
+    def setup_shared_state(cls):
         for attr in cls.public_attributes:
             attr.allocate_shm()
 
     @classmethod
-    def teardown(cls):
-        """Explicit teardown must be called after joining a System Process."""
+    def teardown_shared_state(cls):
         for attr in cls.public_attributes:
             attr.close_shm()
 
@@ -205,7 +203,7 @@ class PublicAttribute(ArrayAttribute):
 
     def close_shm(self):
         if self._array is not None:
-            self._array.close()
+            self._array.unlink()
             self._array = None
 
     def update(self):
@@ -214,3 +212,6 @@ class PublicAttribute(ArrayAttribute):
     @property
     def _shm_id(self):
         return f"{self._owner.__name__}__{self._name}"
+
+    def __repr__(self):
+        return f"<PublicAttribute({self._shm_id})>"

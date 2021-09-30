@@ -12,22 +12,22 @@ class TestSharedArray:
             arr = SharedArray("id", (10,), np.uint8)
 
         arr = SharedArray.create("id", (10,), np.uint8)
-        arr.close()
+        arr.unlink()
 
     def test_closes_only_a_single_connection(self):
         initial = np.array([1, 2, 3, 4, 5])
         arr1 = SharedArray.create("id", array=initial)
         arr2 = SharedArray("id", initial.shape, initial.dtype)
         try:
-            arr1.close()
+            arr1.unlink()
             assert all(arr2[:] == initial[:])
         finally:
-            arr2.close()
+            arr2.unlink()
 
     def test_denies_connection_after_all_connections_closed(self):
         initial = np.array([1, 2, 3])
         arr1 = SharedArray.create("id", array=initial)
-        arr1.close()
+        arr1.unlink()
 
         with pytest.raises(FileNotFoundError):
             SharedArray("id", initial.shape, initial.dtype)
@@ -107,7 +107,7 @@ class TestSharedArray:
         try:
             yield arr
         finally:
-            arr.close()
+            arr.unlink()
 
 
 class TestDoubleBufferedArray:
@@ -208,8 +208,8 @@ class TestDoubleBufferedArray:
         try:
             assert np.all(dbl2 == 200)
         finally:
-            dbl1.close()
-            dbl2.close()
+            dbl1.unlink()
+            dbl2.unlink()
 
     def test_swap_effects_all_instances(self):
         dbl1 = DoubleBufferedArray.create("id", shape=(10,), dtype=np.uint8)
@@ -225,9 +225,9 @@ class TestDoubleBufferedArray:
             for arr in (dbl1, dbl2, dbl3):
                 assert np.all(arr == 123)
         finally:
-            dbl1.close()
-            dbl2.close()
-            dbl3.close()
+            dbl1.unlink()
+            dbl2.unlink()
+            dbl3.unlink()
 
     @contextmanager
     def dbl_buffered(self, initial_data):
@@ -235,7 +235,7 @@ class TestDoubleBufferedArray:
         try:
             yield dbl
         finally:
-            dbl.close()
+            dbl.unlink()
 
     @contextmanager
     def mutating_operations_tester(self, initial_data, expected_data):
@@ -249,4 +249,4 @@ class TestDoubleBufferedArray:
             assert all(dbl[:] == initial_data[:])
             dbl.swap()
             assert all(dbl[:] == expected_data[:])
-            dbl.close()
+            dbl.unlink()

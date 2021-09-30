@@ -17,7 +17,7 @@ class TestSharedArrays:
         try:
             assert np.all(arr == 100)
         finally:
-            arr.close()
+            arr.unlink()
 
     @classmethod
     def run_in_process(cls):
