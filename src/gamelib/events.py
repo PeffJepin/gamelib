@@ -1,23 +1,15 @@
 from __future__ import annotations
 
 import inspect
-import logging
 import threading
-import time
 import warnings
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 from multiprocessing.connection import Connection
 from typing import Type, List, Callable, Union, Tuple, Any
 
-from moderngl_window.context.pygame2.keys import Keys
-
 EventKey: Tuple[Type[Event], Any]
 EventHandler: Callable[[Event], None]
-ModifierKeys = namedtuple("KeyModifiers", "SHIFT, CTRL, ALT")  # Boolean values
-MouseButtons = namedtuple("MouseButtons", "LEFT, RIGHT, MIDDLE")  # Boolean values
-
 _HANDLER_INJECTION_ATTRIBUTE = "_gamelib_handler_"
-_MOUSE_MAP = {"LEFT": 1, "RIGHT": 2, "MIDDLE": 3}
 
 
 class _EventType(type):
@@ -117,7 +109,7 @@ class Event(metaclass=_EventType):
             return self_slots == other_slots
 
 
-def handler(event_key):
+def eventhandler(event_key):
     """
     Marks the decorated function object which can later be retrieved
     with the find_handlers function in this module.
@@ -130,16 +122,16 @@ def handler(event_key):
 
     Examples
     --------
-    How handler would be used with a normal event: event_key == (Update, None)
+    How handler would be used with a normal event: event_key == (Event, None)
 
-    >>> @handler(Update):
-    >>> def update_handler_function(self, event: Update) -> None:
+    >>> @eventhandler(Event):
+    >>> def update_handler_function(self, event: Event) -> None:
     ...     # do update
     ...     ...
 
     How handler would be used with a keyed event: event_key == (Event, 'ABC')
 
-    >>> @handler(Event.ABC)
+    >>> @eventhandler(Event.ABC)
     >>> def some_keyed_event_handler(self, event: Event) -> None:
     ...     # Only called when a Event instance is posted with 'ABC' as a key.
     ...     # See Event for more detailed documentation on the key values.
@@ -176,13 +168,6 @@ def find_handlers(obj):
         if not isinstance(attr, Callable):
             continue
         if (event_type := getattr(attr, _HANDLER_INJECTION_ATTRIBUTE, None)) is None:
-            # might be a bound method
-            if (__func__ := getattr(attr, "__func__", None)) is None:
-                continue
-            if (
-                injection := getattr(__func__, _HANDLER_INJECTION_ATTRIBUTE, None)
-            ) is not None:
-                handlers[injection].append(attr)
             continue
         handlers[event_type].append(attr)
     return handlers
@@ -320,113 +305,26 @@ class MessageBus:
         adapter.is_active = False
 
 
-class Update(Event):
-    pass
-
-
-class SystemStop(Event):
-    pass
-
-
-class Quit(Event):
-    pass
-
-
-class _BaseKeyEvent(Event):
-    key_options = Keys
-
-    __slots__ = ["modifiers"]
-
-    modifiers: ModifierKeys
-
-
-class KeyDown(_BaseKeyEvent):
-    pass
-
-
-class KeyUp(_BaseKeyEvent):
-    pass
-
-
-class KeyIsPressed(_BaseKeyEvent):
-    pass
-
-
-class MouseDrag(Event):
-    __slots__ = ["buttons", "x", "y", "dx", "dy"]
-
-    buttons: MouseButtons
-    x: int
-    y: int
-    dx: int
-    dy: int
-
-
-class MouseMotion(Event):
-    __slots__ = ["x", "y", "dx", "dy"]
-
-    x: int
-    y: int
-    dx: int
-    dy: int
-
-
-class MouseScroll(Event):
-    __slots__ = ["dx", "dy"]
-
-    dx: int
-    dy: int
-
-
-class _BaseMouseEvent(Event):
-    key_options = _MOUSE_MAP
-
-    __slots__ = ["x", "y"]
-
-    x: int
-    y: int
-
-
-class MouseDown(_BaseMouseEvent):
-    pass
-
-
-class MouseUp(_BaseMouseEvent):
-    pass
-
-
-class MouseIsPressed(_BaseMouseEvent):
-    pass
-
-
 class _ConnectionAdapter:
     def __init__(
         self,
         mb: MessageBus,
         conn: Connection,
-        event_types: List[Type[Event]],
-        poll_freq: int = 1,
+        event_types: List[EventKey],
     ):
         self.mb = mb
-        self.freq = poll_freq
         self.conn = conn
         self.event_types = event_types
-        self.is_active = True
-        self.thread = threading.Thread(target=self._listen, daemon=True)
+        self.should_poll = True
+        self.thread = threading.Thread(target=self._poll, daemon=True)
 
-    def _listen(self):
+    def _poll(self):
         try:
-            while self.is_active:
-                while self.conn.poll(0):
+            while self.should_poll:
+                if self.conn.poll(0.001):
                     self.mb.post_event(self.conn.recv())
-                time.sleep(self.freq / 1_000)
-        except Exception as e:
-            logging.debug(
-                f"Exception occurred in {self.__class__.__name__} pipe listener thread.",
-                exc_info=e,
-            )
-            self.is_active = False
-            self.mb.stop_connection_service(self.conn)
+        except (BrokenPipeError, EOFError):
+            self.should_poll = False
 
     def __call__(self, event):
         self.conn.send(event)

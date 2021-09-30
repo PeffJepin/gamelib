@@ -244,9 +244,9 @@ class TestDoubleBufferedArray:
         try:
             yield dbl
             # some operations done with dbl here
+        finally:
             assert isinstance(dbl, DoubleBufferedArray)
             assert all(dbl[:] == initial_data[:])
             dbl.swap()
             assert all(dbl[:] == expected_data[:])
-        finally:
             dbl.close()

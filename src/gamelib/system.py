@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import multiprocessing as mp
-import time
 from multiprocessing.connection import Connection
-from typing import Type
+from typing import Type, List
 
 import numpy as np
 
-from . import events
+from . import Update, SystemStop
+from .events import Event, MessageBus, find_handlers, eventhandler
 from .sharedmem import DoubleBufferedArray
 
 
@@ -23,7 +23,7 @@ class _SystemMeta(type):
     @classmethod
     def __prepare__(metacls, name, bases, **kwargs):
         namespace: dict = super().__prepare__(name, bases, **kwargs)
-        namespace["Event"] = type("SystemBaseEvent", (events.Event,), {})
+        namespace["Event"] = type("SystemBaseEvent", (Event,), {})
         namespace["Component"] = type("SystemBaseComponent", (), {})
         return namespace
 
@@ -50,7 +50,8 @@ class System(mp.Process, metaclass=_SystemMeta):
 
     MAX_ENTITIES: int = 1028
     _running: bool
-    _message_bus: events.MessageBus
+    _message_bus: MessageBus
+    _event_queue: List[Event]
 
     def __init__(self, conn, max_entities=1024):
         """
@@ -62,7 +63,7 @@ class System(mp.Process, metaclass=_SystemMeta):
         conn : Connection
             The Connection object from a multiprocessing.Pipe() used for communication.
         """
-        self.HANDLERS = events.find_handlers(self)
+        self.HANDLERS = find_handlers(self)
         self.COMPONENTS = self.Component.__subclasses__()
 
         for attr in self._find_public_attributes():
@@ -86,27 +87,42 @@ class System(mp.Process, metaclass=_SystemMeta):
         """
         # Might be worth trying an asynchronous event loop in the future.
         System.MAX_ENTITIES = self._max_entities
-        self._message_bus = events.MessageBus(self.HANDLERS)
-        self._message_bus.service_connection(
-            self._conn, self.Event.__subclasses__() + System.Event.__subclasses__()
-        )
 
-        self._running = True
-        while self._running:
-            time.sleep(1 / 1_000)
+        self._event_queue = []
+        self._message_bus = MessageBus(self.HANDLERS)
+        for event_type in self.Event.__subclasses__() + System.Event.__subclasses__():
+            self._message_bus.register(event_type, lambda e: self._conn.send(e))
 
         for attr in self._find_public_attributes():
             attr.close_shm()
 
+        self._running = True
+        self._main()
+
     def update(self):
         """Stub for subclass defined behavior."""
 
-    @events.handler(events.Update)
+    def _main(self):
+        while self._running:
+            while self._conn.poll(0):
+                event = self._conn.recv()
+                if isinstance(event, Update):
+                    self._message_bus.post_event(event)
+                    for e in self._event_queue:
+                        self._message_bus.post_event(e)
+                    self._message_bus.post_event(UpdateComplete(type(self)))
+                    self._event_queue = []
+                elif isinstance(event, SystemStop):
+                    self._message_bus.post_event(event)
+                    break
+                else:
+                    self._event_queue.append(event)
+
+    @eventhandler(Update)
     def _update(self, event):
         self.update()
-        self._message_bus.post_event(UpdateComplete(type(self)))
 
-    @events.handler(events.SystemStop)
+    @eventhandler(SystemStop)
     def _stop(self, event):
         self._running = False
 
@@ -184,6 +200,10 @@ class PublicAttribute(ArrayAttribute):
                 self._shm_id, (System.MAX_ENTITIES,), self.dtype
             )
         return super().__get__(instance, owner)
+
+    def __set__(self, obj, value):
+        index = self._get_entity_id(obj)
+        self._array[index] = value
 
     def allocate_shm(self):
         self._array = DoubleBufferedArray.create(

@@ -4,25 +4,32 @@ from contextlib import contextmanager
 import numpy as np
 import pytest
 
-from src.gamelib import events
-from src.gamelib.events import SystemStop
+from src.gamelib import events, SystemStop, Update
 from src.gamelib.system import System, UpdateComplete, PublicAttribute
 
 
 class TestSystem:
-    def test_handles_events_with_functions_marked_by_handler_decorator(
-        self, pipe_reader
-    ):
+    def test_events_are_pooled_until_update(self, pipe_reader):
         with self.system_tester(ExampleSystem) as conn:
-            conn.send(ExampleEvent(5))
-            value = pipe_reader(conn)
-            assert 5 == value
+            conn.send(ExampleEvent(10))
+            assert pipe_reader(conn, 0.1) is None
+            conn.send(Update())
+            assert pipe_reader(conn) is not None
+
+    def test_event_resolution_order(self, pipe_reader):
+        with self.system_tester(ExampleSystem) as conn:
+            conn.send(ExampleEvent(10))
+            conn.send(ExampleEvent(15))
+            conn.send(Update())
+
+            responses = [pipe_reader(conn, 3) for _ in range(4)]
+            assert ['updated', 10, 15, UpdateComplete(ExampleSystem)] == responses
 
     def test_process_automatically_handles_update_event(self, pipe_reader):
         with self.system_tester(ExampleSystem) as conn:
-            conn.send(events.Update())
+            conn.send(Update())
             value = pipe_reader(conn)
-            assert 123 == value
+            assert 'updated' == value
 
     def test_process_shuts_down_gracefully_on_stop_event(self):
         a, b = mp.Pipe()
@@ -36,16 +43,16 @@ class TestSystem:
 
     def test_posts_update_complete_event_after_updating(self, pipe_reader):
         with self.system_tester(ExampleSystem) as conn:
-            conn.send(events.Update())
+            conn.send(Update())
             res1 = pipe_reader(conn)
             res2 = pipe_reader(conn)
-            assert 123 == res1 and UpdateComplete(ExampleSystem) == res2
+            assert 'updated' == res1 and UpdateComplete(ExampleSystem) == res2
 
     def test_event_derived_from_system_Event_gets_sent_through_pipe_when_published(
         self, pipe_reader
     ):
         with self.system_tester(SomeSystem) as conn:
-            conn.send(events.Update())
+            conn.send(Update())
             res = pipe_reader(conn)
             assert res == SomeEvent()
 
@@ -80,12 +87,12 @@ class ExampleEvent(events.Event):
 
 
 class ExampleSystem(System):
-    @events.handler(ExampleEvent)
+    @events.eventhandler(ExampleEvent)
     def _example_handler(self, event: ExampleEvent):
         self._conn.send(event.value)
 
     def update(self):
-        self._conn.send(123)
+        self._conn.send('updated')
 
 
 class ExampleComponent(ExampleSystem.Component):

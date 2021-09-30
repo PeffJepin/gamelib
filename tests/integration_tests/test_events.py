@@ -1,13 +1,11 @@
 from collections import defaultdict
 
+from src.gamelib import KeyDown, ModifierKeys, Keys
 from src.gamelib.events import (
-    handler,
+    eventhandler,
     Event,
     MessageBus,
     find_handlers,
-    KeyDown,
-    Keys,
-    ModifierKeys,
 )
 
 
@@ -87,14 +85,14 @@ class HandlerContainer:
     def __init__(self):
         self.calls = defaultdict(int)
 
-    @handler(Event)
+    @eventhandler(Event)
     def some_event_handler(self, event: Event):
         self.calls[Event] += 1
 
-    @handler(KeyedEvent.ABC)
+    @eventhandler(KeyedEvent.ABC)
     def keyed_event_handler(self, event: Event):
         self.calls[KeyedEvent] += 1
 
-    @handler(KeyDown.J)
+    @eventhandler(KeyDown.J)
     def j_down_handler(self, event):
         self.calls[KeyDown] += 1

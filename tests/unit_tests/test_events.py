@@ -8,7 +8,7 @@ import pytest
 from src.gamelib.events import (
     MessageBus,
     Event,
-    handler,
+    eventhandler,
     find_handlers,
     _HANDLER_INJECTION_ATTRIBUTE,
 )
@@ -136,19 +136,19 @@ class TestHandlerDecorator:
     class ExampleUsage:
         field: int = 0
 
-        @handler(SomeEvent)
+        @eventhandler(SomeEvent)
         def field_incrementer(self, event):
             self.field += 1
 
-        @handler(SomeEvent)
+        @eventhandler(SomeEvent)
         def some_dummy_method(self, event):
             pass
 
-        @handler(SomeOtherEvent)
+        @eventhandler(SomeOtherEvent)
         def another_dummy_method(self, event):
             pass
 
-        @handler(SomeOtherEvent.A)
+        @eventhandler(SomeOtherEvent.A)
         def keyed_handler(self, event):
             pass
 
