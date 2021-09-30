@@ -14,16 +14,6 @@ class TestSharedArray:
         arr = SharedArray.create("id", (10,), np.uint8)
         arr.unlink()
 
-    def test_closes_only_a_single_connection(self):
-        initial = np.array([1, 2, 3, 4, 5])
-        arr1 = SharedArray.create("id", array=initial)
-        arr2 = SharedArray("id", initial.shape, initial.dtype)
-        try:
-            arr1.unlink()
-            assert all(arr2[:] == initial[:])
-        finally:
-            arr2.unlink()
-
     def test_denies_connection_after_all_connections_closed(self):
         initial = np.array([1, 2, 3])
         arr1 = SharedArray.create("id", array=initial)
@@ -209,7 +199,6 @@ class TestDoubleBufferedArray:
             assert np.all(dbl2 == 200)
         finally:
             dbl1.unlink()
-            dbl2.unlink()
 
     def test_swap_effects_all_instances(self):
         dbl1 = DoubleBufferedArray.create("id", shape=(10,), dtype=np.uint8)
@@ -226,8 +215,6 @@ class TestDoubleBufferedArray:
                 assert np.all(arr == 123)
         finally:
             dbl1.unlink()
-            dbl2.unlink()
-            dbl3.unlink()
 
     @contextmanager
     def dbl_buffered(self, initial_data):
