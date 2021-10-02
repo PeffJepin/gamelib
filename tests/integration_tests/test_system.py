@@ -84,6 +84,9 @@ class TestSystem:
         finally:
             process.join()
             sys_type.teardown_shared_state()
+            with pytest.raises(FileNotFoundError):
+                for attr in sys_type.public_attributes:
+                    attr._connect_shm()
 
 
 class ExampleEvent(events.Event):

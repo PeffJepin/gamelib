@@ -2,6 +2,7 @@ import logging
 import multiprocessing as mp
 import pathlib
 import time
+import traceback
 from multiprocessing.connection import Connection
 from typing import Tuple, Callable
 
@@ -102,7 +103,8 @@ class SystemRunner(mp.Process):
             try:
                 self._main()
             except Exception as e:
-                self.conn.send(e)
+                msg_with_traceback = f"{e}\n\n{traceback.format_exc()}"
+                self.conn.send(type(e)(msg_with_traceback))
 
     def _main(self):
         if not self.conn.poll(0.05):
@@ -113,7 +115,19 @@ class SystemRunner(mp.Process):
         elif isinstance(message, tuple):
             sys_type, conn, max_entities = message
             self.conn.send("STARTING SYSTEM")
-            sys_type._run(conn, self.conn, max_entities)
+            sys_type._run(conn, max_entities, _runner_conn=self.conn)
+
+    @classmethod
+    def get_connection(cls):
+        if not cls.available_connections:
+            a, b = mp.Pipe()
+            runner = SystemRunner(b)
+            runner.start()
+            cls.all_processes.append(runner)
+            cls.available_connections.append(a)
+        conn = cls.available_connections.pop(0)
+        cls.busy_connections.append(conn)
+        return conn
 
 
 class PatchedSystem(System):
@@ -126,43 +140,26 @@ class PatchedSystem(System):
         self._runner_conn = _runner_conn
 
     def _poll(self):
+        if self._runner_conn.poll(0):
+            message = self._runner_conn.recv()
+            if message == SystemRunner.STOP:
+                self._running = False
+            elif message == SystemRunner.GET_STATUS:
+                self._runner_conn.send(SystemRunner.BUSY)
         super()._poll()
-        if not self._runner_conn.poll(0):
-            return
-        message = self._runner_conn.recv()
-        if message == SystemRunner.STOP:
-            self._running = False
-        elif message == SystemRunner.GET_STATUS:
-            self._runner_conn.send(SystemRunner.BUSY)
-
-    @classmethod
-    def _run(cls, conn, _runner_conn, max_entities=1024):
-        cls.MAX_ENTITIES = max_entities
-        for attr in cls.array_attributes:
-            attr.reallocate()
-        inst = cls(conn, _runner_conn)
-        inst._main()
 
     @classmethod
     def run_in_process(cls, max_entities):
-        runner_connection = cls.__get_connection()
-        a, b = mp.Pipe()
-        runner_connection.send((cls, b, max_entities))
+        runner_connection = SystemRunner.get_connection()
+        local_conn, internal_conn = mp.Pipe()
+        start_system_command = (cls, internal_conn, max_entities)
+        runner_connection.send(start_system_command)
         assert runner_connection.poll(1)
-        assert runner_connection.recv() == "STARTING SYSTEM"
-        return a, (MockProcess(runner_connection))
-
-    @classmethod
-    def __get_connection(cls):
-        if not SystemRunner.available_connections:
-            a, b = mp.Pipe()
-            runner = SystemRunner(b)
-            runner.start()
-            SystemRunner.all_processes.append(runner)
-            SystemRunner.available_connections.append(a)
-        conn = SystemRunner.available_connections.pop(0)
-        SystemRunner.busy_connections.append(conn)
-        return conn
+        message = runner_connection.recv()
+        if isinstance(message, Exception):
+            raise message
+        assert message == "STARTING SYSTEM"
+        return local_conn, (MockProcess(runner_connection))
 
 
 class MockProcess:
@@ -173,22 +170,24 @@ class MockProcess:
 
     def __init__(self, system_runner_connection):
         self.exitcode = None
-        self.conn = system_runner_connection
+        self.runner_conn = system_runner_connection
 
     def join(self, timeout=1):
-        self.conn.send(SystemRunner.STOP)
-        self.conn.send(SystemRunner.GET_STATUS)
+        self.runner_conn.send(SystemRunner.STOP)
+        self.runner_conn.send(SystemRunner.GET_STATUS)
         ts = time.time()
         while time.time() < ts + timeout:
-            if self.conn.poll(0.05):
-                message = self.conn.recv()
+            if self.runner_conn.poll(0.05):
+                message = self.runner_conn.recv()
+                if isinstance(message, Exception):
+                    raise message
                 if message == SystemRunner.READY:
-                    SystemRunner.available_connections.append(self.conn)
-                    SystemRunner.busy_connections.remove(self.conn)
+                    SystemRunner.available_connections.append(self.runner_conn)
+                    SystemRunner.busy_connections.remove(self.runner_conn)
                     self.exitcode = 0
                     return
                 if message == SystemRunner.BUSY:
-                    self.conn.send(SystemRunner.GET_STATUS)
+                    self.runner_conn.send(SystemRunner.GET_STATUS)
         raise TimeoutError("Could not get response from SystemRunner process.")
 
     def kill(self):

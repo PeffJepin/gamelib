@@ -245,4 +245,3 @@ class TestDoubleBufferedArray:
             dbl.flip()
             assert all(dbl[:] == expected_data[:])
             dbl.unlink()
-

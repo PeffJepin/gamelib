@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import multiprocessing as mp
+import traceback
 from multiprocessing.connection import Connection
 from typing import Type
 
@@ -95,7 +96,7 @@ class System(metaclass=_SystemMeta):
     MAX_ENTITIES: int = 1024
     Component: Type[BaseComponent]
 
-    def __init__(self, conn):
+    def __init__(self, conn, **kwargs):
         """
         Parameters
         ----------
@@ -109,12 +110,13 @@ class System(metaclass=_SystemMeta):
         self._event_queue = []
 
     @classmethod
-    def _run(cls, conn, max_entities=1024):
+    def _run(cls, conn, max_entities=None, **kwargs):
         """Internal target to run system."""
-        cls.MAX_ENTITIES = max_entities
+        if max_entities:
+            cls.MAX_ENTITIES = max_entities
         for attr in cls.array_attributes:
             attr.reallocate()
-        inst = cls(conn)
+        inst = cls(conn, **kwargs)
         inst._main()
 
     @classmethod
@@ -130,21 +132,35 @@ class System(metaclass=_SystemMeta):
     def teardown_shared_state(cls):
         """Teardown state setup in System.setup_shared_state."""
         for attr in cls.public_attributes:
+            attr.unlink_shm()
+
+    @classmethod
+    def _teardown_shared_state(cls):
+        """Local only teardown."""
+        for attr in cls.public_attributes:
             attr.close_shm()
 
     @classmethod
-    def run_in_process(cls, max_entities):
+    def run_in_process(cls, max_entities, **kwargs):
         """
-        Method that should be called externally to actually start the system.
+        Method that should be called from the main process to actually start the system.
 
         Parameters
         ----------
         max_entities : int
             Lets the system know how much memory to allocate for numpy arrays.
+
+        Returns
+        -------
+        local : Connection
+            multiprocessing.Pipe
+        process: Process
         """
         cls.setup_shared_state()
         local, foreign = mp.Pipe()
-        process = mp.Process(target=cls._run, args=(foreign, max_entities))
+        process = mp.Process(
+            target=cls._run, args=(foreign, max_entities), kwargs=kwargs
+        )
         process.start()
         return local, process
 
@@ -164,7 +180,7 @@ class System(metaclass=_SystemMeta):
     def _main(self):
         while self._running:
             self._poll()
-        self.teardown_shared_state()
+        self._teardown_shared_state()
 
     def _poll(self):
         if not self._conn.poll(0):
@@ -177,7 +193,8 @@ class System(metaclass=_SystemMeta):
             else:
                 self._event_queue.append((event, key))
         except Exception as e:
-            self._conn.send(e)
+            msg_with_traceback = f"{e}\n\n{traceback.format_exc()}"
+            self._conn.send(type(e)(msg_with_traceback))
 
     @eventhandler(Update)
     def _update(self, event):
@@ -310,15 +327,24 @@ class PublicAttribute:
         )
 
     def close_shm(self):
-        """
-        Totally unlinks the shm file.
-
-        TODO: Current implementation works for both windows and POSIX, but it would
-            probably be better to just handle the cases separately in the future.
-        """
+        """Close this accessor to the shared block."""
         if self._array is not None:
-            self._array.unlink()
+            self._array.close()
             self._array = None
+
+    def unlink_shm(self):
+        """
+        Totally unlinks the shm file for posix.
+        All connections must be closed on windows.
+        """
+        if self._array is None:
+            try:
+                self._connect_shm()
+            except FileNotFoundError:
+                # nothing to unlink
+                return
+        self._array.unlink()
+        self._array = None
 
     def update(self):
         """
