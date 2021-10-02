@@ -1,60 +1,58 @@
-import multiprocessing as mp
 from contextlib import contextmanager
 
 import numpy as np
 import pytest
 
 from src.gamelib import events, SystemStop, Update
-from src.gamelib.system import System, UpdateComplete, PublicAttribute
+from src.gamelib.events import eventhandler, Event
+from src.gamelib.system import SystemUpdateComplete, PublicAttribute
+from ..conftest import PatchedSystem
 
 
 class TestSystem:
     def test_events_are_pooled_until_update(self, pipe_reader):
         with self.system_tester(ExampleSystem) as conn:
-            conn.send(ExampleEvent(10))
-            assert pipe_reader(conn, 0.1) is None
-            conn.send(Update())
+            conn.send((ExampleEvent(10), None))
+            assert pipe_reader(conn, timeout=0.1) is None
+
+            conn.send((Update(), None))
             assert pipe_reader(conn) is not None
 
     def test_event_resolution_order(self, pipe_reader):
         with self.system_tester(ExampleSystem) as conn:
-            conn.send(ExampleEvent(10))
-            conn.send(ExampleEvent(15))
-            conn.send(Update())
+            conn.send((ExampleEvent(10), None))
+            conn.send((ExampleEvent(15), None))
+            conn.send((Update(), None))
 
-            responses = [pipe_reader(conn, 3) for _ in range(4)]
-            assert ["updated", 10, 15, UpdateComplete(ExampleSystem)] == responses
+            responses = pipe_reader(conn, n=4)
+            assert [
+                "updated",
+                10,
+                15,
+                (SystemUpdateComplete(ExampleSystem), None),
+            ] == responses
 
     def test_process_automatically_handles_update_event(self, pipe_reader):
         with self.system_tester(ExampleSystem) as conn:
-            conn.send(Update())
+            conn.send((Update(), None))
             value = pipe_reader(conn)
             assert "updated" == value
 
     def test_process_shuts_down_gracefully_on_stop_event(self):
-        a, b = mp.Pipe()
-        process = mp.Process(target=ExampleSystem, args=(b,))
-        process.start()
-
-        a.send(SystemStop())
+        conn, process = ExampleSystem.run_in_process(max_entities=10)
+        conn.send((SystemStop(), None))
         process.join(5)
+        ExampleSystem.teardown_shared_state()
 
         assert process.exitcode == 0
 
     def test_posts_update_complete_event_after_updating(self, pipe_reader):
         with self.system_tester(ExampleSystem) as conn:
-            conn.send(Update())
-            res1 = pipe_reader(conn)
-            res2 = pipe_reader(conn)
-            assert "updated" == res1 and UpdateComplete(ExampleSystem) == res2
+            conn.send((Update(), None))
 
-    def test_event_derived_from_system_Event_gets_sent_through_pipe_when_published(
-        self, pipe_reader
-    ):
-        with self.system_tester(SomeSystem) as conn:
-            conn.send(Update())
-            res = pipe_reader(conn)
-            assert res == SomeEvent()
+            responses = pipe_reader(conn, n=2)
+            expected = ["updated", (SystemUpdateComplete(ExampleSystem), None)]
+            assert expected == responses
 
     def test_public_attribute_access_before_init(self):
         with pytest.raises(FileNotFoundError):
@@ -64,34 +62,44 @@ class TestSystem:
         with self.system_tester(ExampleSystem):
             assert all(ExampleComponent.nums[:] == 0)
 
+    def test_keyed_event_between_processes(self, pipe_reader):
+        with self.system_tester(ExampleSystem) as conn:
+            conn.send((Event(), "KEYED_TEST"))
+            conn.send((Update(), None))
+
+            expected = [
+                "updated",
+                (Event(), "KEYED_RESPONSE"),
+                (SystemUpdateComplete(ExampleSystem), None),
+            ]
+            responses = pipe_reader(conn, n=3)
+            assert expected == responses
+
     @contextmanager
-    def system_tester(self, sys_type):
-        System.MAX_ENTITIES = 16
-        a, b = mp.Pipe()
+    def system_tester(self, sys_type, max_entities=100):
         sys_type.setup_shared_state()
-        process = mp.Process(target=sys_type, args=(b, System.MAX_ENTITIES))
-        process.start()
+        conn, process = sys_type.run_in_process(max_entities)
         try:
-            yield a
+            yield conn
         finally:
-            a.send(SystemStop())
-            process.join(10)
+            process.join()
             sys_type.teardown_shared_state()
-            if process.exitcode is None:
-                process.kill()
-                assert False  # system not joining is indicative of an error
 
 
-class ExampleEvent(events.BaseEvent):
+class ExampleEvent(events.Event):
     __slots__ = ["value"]
 
     value: int
 
 
-class ExampleSystem(System):
-    @events.eventhandler(ExampleEvent)
+class ExampleSystem(PatchedSystem):
+    @eventhandler(ExampleEvent)
     def _example_handler(self, event: ExampleEvent):
         self._conn.send(event.value)
+
+    @eventhandler(Event.KEYED_TEST)
+    def _test_interprocess_keyed_event(self, event):
+        self.post_event(Event(), key="KEYED_RESPONSE")
 
     def update(self):
         self._conn.send("updated")
@@ -99,12 +107,3 @@ class ExampleSystem(System):
 
 class ExampleComponent(ExampleSystem.Component):
     nums = PublicAttribute(np.uint8)
-
-
-class SomeSystem(System):
-    def update(self):
-        self._message_bus.post_event(SomeEvent())
-
-
-class SomeEvent(SomeSystem.Event):
-    pass

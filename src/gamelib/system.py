@@ -1,40 +1,76 @@
 from __future__ import annotations
 
+import multiprocessing as mp
 from multiprocessing.connection import Connection
 from typing import Type
 
 import numpy as np
 
 from . import Update, SystemStop
-from .events import MessageBus, eventhandler, BaseEvent
+from .events import MessageBus, eventhandler, Event
 from .sharedmem import DoubleBufferedArray
+
+
+class BaseComponent:
+    SYSTEM: Type[System]
+
+    def __init__(self, entity_id):
+        self.entity_id = entity_id
 
 
 class _SystemMeta(type):
     """
     Used as the metaclass for System.
 
-    This creates Types and binds them to name 'Event' and 'Component' in the class
-    namespace. These types are created at class creation time, so are unique
-    for each subclass of System.
+    This creates a BaseComponent 'Component' in the class namespace.
+    cls.Component is unique for each subclass of System.
     """
 
-    Event: Type[BaseEvent]
-    Component: Type[Component]
+    Component: Type[BaseComponent]
+
+    def __new__(mcs, *args, **kwargs):
+        cls: _SystemMeta = super().__new__(mcs, *args, **kwargs)
+        cls.Component.SYSTEM = cls
+        return cls
 
     @classmethod
-    def __prepare__(metacls, name, bases, **kwargs):
+    def __prepare__(mcs, name, bases, **kwargs):
         namespace: dict = super().__prepare__(name, bases, **kwargs)
-        namespace["Event"] = type("SystemBaseEvent", (BaseEvent,), {})
-        namespace["Component"] = type("SystemBaseComponent", (), {})
+        namespace["Component"] = type("SystemBaseComponent", (BaseComponent,), {})
         return namespace
 
     @property
     def public_attributes(cls):
+        """
+        Gets a list of all PublicAttribute instances defined on subclasses of cls.Component
+
+        Returns
+        -------
+        attrs : list[PublicAttribute]
+        """
         attrs = []
         for comp_type in cls.Component.__subclasses__():
             discovered = [
                 v for k, v in vars(comp_type).items() if isinstance(v, PublicAttribute)
+            ]
+            attrs.extend(discovered)
+        return attrs
+
+    @property
+    def array_attributes(cls):
+        """
+        Gets a list of all ArrayAttribute instances defined on subclasses of cls.Component
+
+        Returns
+        -------
+        attrs : list[ArrayAttribute]
+        """
+        attrs = []
+        for comp_type in cls.Component.__subclasses__():
+            discovered = [
+                v
+                for k, v in vars(comp_type).items()
+                if isinstance(v, ArrayAttribute) and not isinstance(v, PublicAttribute)
             ]
             attrs.extend(discovered)
         return attrs
@@ -45,105 +81,134 @@ class System(metaclass=_SystemMeta):
     A System will be run in a multiprocessing.Process and communicates
     with the parent process through a multiprocessing.Pipe.
 
-    All subclasses of System will have their own unique Event and Component
-    Type attributes.
+    All subclasses of System will have their own unique Component Type attributes.
 
-    All Components of a System and all Events a System might raise
-    should inherit from these base types creating an explicit
-    link between a System and its Components/Events.
+    All Components of a System should inherit from these base types creating an explicit
+    link between a System and its Components.
 
     For example given this system:
         class Physics(System):
             ...
         All components used by this system should derive from Physics.Component
-        All events this system might raise should derive from Physics.Event
-
     """
 
     MAX_ENTITIES: int = 1024
-    Event: Type
-    Component: Type
+    Component: Type[BaseComponent]
 
-    def __init__(self, conn, max_entities=1024):
+    def __init__(self, conn):
         """
         Parameters
         ----------
         conn : Connection
             The Connection object from a multiprocessing.Pipe() used for communication.
-        max_entities : int
-            Passed in so the child Process can set the correct value if changed from default.
         """
-        System.MAX_ENTITIES = max_entities
-        outgoing_handlers = {
-            event_type: [lambda e: conn.send(e)]
-            for event_type in self.Event.__subclasses__()
-            + System.Event.__subclasses__()
-        }
-        self._message_bus = MessageBus(outgoing_handlers)
-        self._message_bus.register_marked_handlers(self)
+        self._message_bus = MessageBus()
+        self._message_bus.register_marked(self)
         self._conn = conn
         self._running = True
         self._event_queue = []
-        self._main()
+
+    @classmethod
+    def _run(cls, conn, max_entities=1024):
+        """Internal target to run system."""
+        cls.MAX_ENTITIES = max_entities
+        for attr in cls.array_attributes:
+            attr.reallocate()
+        inst = cls(conn)
+        inst._main()
 
     @classmethod
     def setup_shared_state(cls):
+        """
+        Setup that should happen before System.__init__.
+        Should only be called once, so the main process should call this.
+        """
         for attr in cls.public_attributes:
             attr.allocate_shm()
 
     @classmethod
     def teardown_shared_state(cls):
+        """Teardown state setup in System.setup_shared_state."""
         for attr in cls.public_attributes:
             attr.close_shm()
 
+    @classmethod
+    def run_in_process(cls, max_entities):
+        """
+        Method that should be called externally to actually start the system.
+
+        Parameters
+        ----------
+        max_entities : int
+            Lets the system know how much memory to allocate for numpy arrays.
+        """
+        cls.setup_shared_state()
+        local, foreign = mp.Pipe()
+        process = mp.Process(target=cls._run, args=(foreign, max_entities))
+        process.start()
+        return local, process
+
     def update(self):
-        """Stub for subclass defined behavior."""
+        """
+        Stub for subclass defined behavior.
+
+        The Update event will first invoke this method, then post all events
+        pooled in the event queue, and finally send a SystemUpdateComplete back
+        to the main process.
+        """
+
+    def post_event(self, event, key=None):
+        """Sends an event back to the main process."""
+        self._conn.send((event, key))
 
     def _main(self):
         while self._running:
             self._poll()
+        self.teardown_shared_state()
 
     def _poll(self):
-        while self._conn.poll(0):
-            event = self._conn.recv()
-            if isinstance(event, Update):
-                self._message_bus.post_event(event)
-                for e in self._event_queue:
-                    self._message_bus.post_event(e)
-                self._message_bus.post_event(UpdateComplete(type(self)))
-                self._event_queue = []
-            elif isinstance(event, SystemStop):
-                self._message_bus.post_event(event)
-                break
+        if not self._conn.poll(0):
+            return
+        message = self._conn.recv()
+        try:
+            (event, key) = message
+            if isinstance(event, Update) or isinstance(event, SystemStop):
+                self._message_bus.post_event(event, key=key)
             else:
-                self._event_queue.append(event)
+                self._event_queue.append((event, key))
+        except Exception as e:
+            self._conn.send(e)
 
     @eventhandler(Update)
     def _update(self, event):
         self.update()
+        for (event, key) in self._event_queue:
+            self._message_bus.post_event(event, key=key)
+        self._event_queue = []
+        self.post_event(SystemUpdateComplete(type(self)))
 
     @eventhandler(SystemStop)
     def _stop(self, event):
         self._running = False
 
 
-class UpdateComplete(System.Event):
+class SystemUpdateComplete(Event):
+    """
+    Posted to the main process after a system finishes handling an Update event.
+    """
+
     __slots__ = ["system_type"]
 
     system_type: Type[System]
 
 
 class ArrayAttribute:
-    _owner: object
+    _owner: BaseComponent
     _name: str
 
-    def __init__(self, dtype, length=System.MAX_ENTITIES):
+    def __init__(self, dtype, length=1):
         """
-        A Descriptor that manages a numpy array which can be indexed on
-        an instance with an 'entity_id' attribute.
-
-        An ArrayAttribute instance can be reallocated with a new size using the
-        reallocate function.
+        A Descriptor that manages a numpy array. This should be used on a System.Component.
 
         Parameters
         ----------
@@ -152,62 +217,122 @@ class ArrayAttribute:
             The underlying array will be 1 dimensional with this length
         """
         self._array = np.zeros((length,), dtype)
+        self.dtype = dtype
+
+    def reallocate(self):
+        """Reallocates the underlying array. Does not preserve data."""
+        self._array = np.zeros((self.length,), self.dtype)
 
     def __set_name__(self, owner, name):
+        if not issubclass(owner, BaseComponent):
+            raise TypeError(
+                f"{self.__class__.__name__} is meant to be used on BaseComponent subclasses."
+            )
+        self._owner = owner
+        self._name = name
+        self.reallocate()
+
+    def __get__(self, instance, owner):
+        """
+        Returns
+        -------
+        value : numpy.ndarray | int | float | str
+            If invoked on an instance returns an entry from the array using entity_id as index.
+            Otherwise if invoked from the Type object it returns the entire array.
+        """
+        if instance is None:
+            return self._array
+        index = instance.entity_id
+        return self._array[index]
+
+    def __set__(self, obj, value):
+        index = obj.entity_id
+        self._array[index] = value
+
+    @property
+    def length(self):
+        return self._owner.SYSTEM.MAX_ENTITIES
+
+
+class PublicAttribute:
+    def __init__(self, dtype):
+        """
+        A Descriptor for a shared public attribute.
+
+        Normally an array attribute is localized to its own process,
+        data stored in one of these attributes can be accessed from any
+        process.
+
+        THERE ARE NO LOCKING MECHANISMS IN PLACE
+
+        The array will be double buffered, with writes going to
+        one array and reads to the other. Once all systems have
+        signaled that they are done Updating the main process
+        will copy the write buffer into the read buffer.
+
+        Parameters
+        ----------
+        dtype : np.dtype
+        """
+        self.dtype = dtype
+        self._array: DoubleBufferedArray = None
+
+    def __set_name__(self, owner, name):
+        if not issubclass(owner, BaseComponent):
+            raise TypeError(
+                f"{self.__class__.__name__} is meant to be used on BaseComponent subclasses."
+            )
         self._owner = owner
         self._name = name
 
     def __get__(self, instance, owner):
+        if self._array is None:
+            self._connect_shm()
         if instance is None:
             return self._array
-        index = self._get_entity_id(instance)
+        index = instance.entity_id
         return self._array[index]
 
     def __set__(self, obj, value):
-        index = self._get_entity_id(obj)
-        self._array[index] = value
-
-    def _get_entity_id(self, instance):
-        entity_id = getattr(instance, "entity_id", None)
-        if entity_id is None:
-            raise AttributeError(
-                f"{self.__class__.__name__} Should be defined on a class with an 'entity_id' attribute."
-            )
-        if not (0 <= entity_id < self._array.shape[0]):
-            raise IndexError(
-                f"{entity_id=} is out of range for array with length {self._array.shape[0]}"
-            )
-        return entity_id
-
-
-class PublicAttribute(ArrayAttribute):
-    def __init__(self, dtype):
-        self.dtype = dtype
-        self._array = None
-
-    def __get__(self, instance, owner):
-        if self._array is None:
-            self._array = DoubleBufferedArray(
-                self._shm_id, (System.MAX_ENTITIES,), self.dtype
-            )
-        return super().__get__(instance, owner)
-
-    def __set__(self, obj, value):
-        index = self._get_entity_id(obj)
+        index = obj.entity_id
         self._array[index] = value
 
     def allocate_shm(self):
+        """
+        Allocates the shm file. Attempted access before allocation will
+        raise FileNotFoundError.
+
+        This only needs to be called once across all processes. As such, the
+        main process should probably be responsible for calling this.
+        """
         self._array = DoubleBufferedArray.create(
-            self._shm_id, (System.MAX_ENTITIES,), self.dtype
+            self._shm_id, (self.length,), self.dtype
         )
 
     def close_shm(self):
+        """
+        Totally unlinks the shm file.
+
+        TODO: Current implementation works for both windows and POSIX, but it would
+            probably be better to just handle the cases separately in the future.
+        """
         if self._array is not None:
             self._array.unlink()
             self._array = None
 
     def update(self):
-        self._array.swap()
+        """
+        Copies the write buffer into the read buffer.
+
+        Note that there are no synchronization primitives guarding this process.
+        """
+        if self._array is None:
+            self._connect_shm()
+        self._array.flip()
+
+    @property
+    def length(self):
+        return self._owner.SYSTEM.MAX_ENTITIES
 
     @property
     def _shm_id(self):
@@ -215,3 +340,6 @@ class PublicAttribute(ArrayAttribute):
 
     def __repr__(self):
         return f"<PublicAttribute({self._shm_id})>"
+
+    def _connect_shm(self):
+        self._array = DoubleBufferedArray(self._shm_id, (self.length,), self.dtype)

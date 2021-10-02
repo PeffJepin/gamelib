@@ -7,33 +7,33 @@ import pytest
 
 from src.gamelib.events import (
     MessageBus,
-    BaseEvent,
+    Event,
     eventhandler,
-    find_handlers,
+    find_eventhandlers,
     _HANDLER_INJECTION_ATTRIBUTE,
 )
 
 
-class SomeEvent(BaseEvent):
+class SomeEvent(Event):
     pass
 
 
-class SomeOtherEvent(BaseEvent):
+class SomeOtherEvent(Event):
     pass
 
 
 class TestMessageBus:
     def test_does_call_registered_callback(self, recorded_callback):
         mb = MessageBus()
-        mb.register(BaseEvent, recorded_callback)
+        mb.register(Event, recorded_callback)
 
-        mb.post_event(BaseEvent())
+        mb.post_event(Event())
 
         assert recorded_callback.called
 
     def test_does_not_call_registered_callback(self, recorded_callback):
         mb = MessageBus()
-        mb.register(BaseEvent, recorded_callback)
+        mb.register(Event, recorded_callback)
 
         mb.post_event(SomeEvent())
 
@@ -41,25 +41,25 @@ class TestMessageBus:
 
     def test_does_call_registered_with_key(self, recorded_callback):
         mb = MessageBus()
-        mb.register(BaseEvent.B, recorded_callback)
+        mb.register(Event.B, recorded_callback)
 
-        mb.post_event(BaseEvent(), key="B")
+        mb.post_event(Event(), key="B")
 
         assert recorded_callback.called
 
     def test_does_not_call_registered_with_key(self, recorded_callback):
         mb = MessageBus()
-        mb.register(BaseEvent.B, recorded_callback)
+        mb.register(Event.B, recorded_callback)
 
-        mb.post_event(BaseEvent(), key=1)
+        mb.post_event(Event(), key=1)
 
         assert not recorded_callback.called
 
     def test_callback_receives_event_as_arg(self, recorded_callback):
         mb = MessageBus()
-        mb.register(BaseEvent, recorded_callback)
+        mb.register(Event, recorded_callback)
 
-        event = BaseEvent()
+        event = Event()
         mb.post_event(event)
 
         assert recorded_callback.called
@@ -67,29 +67,29 @@ class TestMessageBus:
 
     def test_not_called_after_being_unregistered(self, recorded_callback):
         mb = MessageBus()
-        mb.register(BaseEvent, recorded_callback)
+        mb.register(Event, recorded_callback)
 
-        mb.unregister(BaseEvent, recorded_callback)
-        mb.post_event(BaseEvent())
+        mb.unregister(Event, recorded_callback)
+        mb.post_event(Event())
 
         assert not recorded_callback.called
 
-    def test_feeds_event_into_serviced_pipe(self):
+    def test_feeds_event_and_key_into_serviced_pipe(self):
         a, b = Pipe()
         mb = MessageBus()
-        mb.service_connection(a, [BaseEvent])
+        mb.service_connection(a, Event)
 
-        event = BaseEvent()
+        event = Event()
         mb.post_event(event)
 
         if not b.poll(10 / 1_000):
             raise AssertionError("Nothing in pipe.")
-        assert event == b.recv()
+        assert (event, None) == b.recv()
 
     def test_does_not_feed_event_into_serviced_pipe(self):
         a, b = Pipe()
         mb = MessageBus()
-        mb.service_connection(a, [BaseEvent])
+        mb.service_connection(a, Event)
 
         event = SomeEvent()
         mb.post_event(event)
@@ -99,36 +99,47 @@ class TestMessageBus:
     def test_reads_event_sent_through_pipe_and_posts_them(self, recorded_callback):
         a, b = Pipe()
         mb = MessageBus()
-        mb.service_connection(a, [])  # event keys in this list are only for sending
-        mb.register(BaseEvent, recorded_callback)
+        mb.service_connection(a)
+        mb.register(Event, recorded_callback)
 
-        b.send(BaseEvent())
+        b.send((Event(), None))
         for _ in range(100):
+            if recorded_callback.called:
+                return  # success
             time.sleep(1 / 100)
-            if not a.poll(0):
-                time.sleep(1 / 100)
-                assert recorded_callback.called
-                return
-        raise AssertionError("Connection was not emptied.")
+        assert False  # no callback
+
+    def test_posts_events_sent_through_pipe_with_key(self, recorded_callback):
+        a, b = Pipe()
+        mb = MessageBus()
+        mb.service_connection(a)
+        mb.register(Event.ABC, recorded_callback)
+
+        b.send((Event(), "ABC"))
+        for _ in range(100):
+            if recorded_callback.called:
+                return  # success
+            time.sleep(1 / 100)
+        assert False  # no callback
 
     def test_pipe_does_not_get_event_after_service_stops(self):
         a, b = Pipe()
         mb = MessageBus()
-        mb.service_connection(a, [BaseEvent])
+        mb.service_connection(a, Event)
 
         mb.stop_connection_service(a)
-        mb.post_event(BaseEvent())
+        mb.post_event(Event())
 
         assert not b.poll(0)
 
     def test_initial_handlers_can_be_passed_to_init_method(self, recorded_callback):
-        handlers = {BaseEvent: [recorded_callback], BaseEvent.ABC: [recorded_callback]}
+        handlers = {Event: [recorded_callback], Event.ABC: [recorded_callback]}
         mb = MessageBus(handlers)
 
-        mb.post_event(BaseEvent())
+        mb.post_event(Event())
         assert 1 == recorded_callback.called
 
-        mb.post_event(BaseEvent(), key="ABC")
+        mb.post_event(Event(), key="ABC")
         assert 2 == recorded_callback.called
 
 
@@ -173,7 +184,7 @@ class TestHandlerDecorator:
             instance.keyed_handler,
         ]
         discovered = []
-        for handlers in find_handlers(instance).values():
+        for handlers in find_eventhandlers(instance).values():
             discovered.extend(handlers)
         for fn in fns:
             assert fn in discovered
@@ -186,7 +197,7 @@ class TestHandlerDecorator:
 
     def test_methods_discovered_by_events_module_are_bound_to_the_given_instance(self):
         inst = self.ExampleUsage()
-        handlers = find_handlers(inst)
+        handlers = find_eventhandlers(inst)
         for handler_ in handlers[(SomeEvent, None)]:
             handler_(SomeEvent())
 
@@ -195,10 +206,10 @@ class TestHandlerDecorator:
 
 class TestEvent:
     def test_attr_lookup_on_type_returns_a_key_value(self):
-        assert BaseEvent.A == (BaseEvent, "A")
+        assert Event.A == (Event, "A")
 
     def test_keys_can_be_limited_by_a_set_of_strings(self):
-        class LimitedEvent(BaseEvent):
+        class LimitedEvent(Event):
             key_options = {"A", "B", "C"}
 
         assert LimitedEvent.A == (LimitedEvent, "A")
@@ -211,7 +222,7 @@ class TestEvent:
             B = 2
             C = 3
 
-        class MappedEvent(BaseEvent):
+        class MappedEvent(Event):
             key_options = KeyMap
 
         assert MappedEvent.A == (MappedEvent, 1)
@@ -225,7 +236,7 @@ class TestEvent:
             "C": 3,
         }
 
-        class MappedEvent(BaseEvent):
+        class MappedEvent(Event):
             key_options = map_
 
         assert MappedEvent.B == (MappedEvent, 2)
@@ -233,7 +244,7 @@ class TestEvent:
             key = MappedEvent.D
 
     def test_default_init_with_args(self):
-        class MyEvent(BaseEvent):
+        class MyEvent(Event):
             __slots__ = ["field1", "field2"]
 
         event = MyEvent(1, 2)
@@ -241,7 +252,7 @@ class TestEvent:
         assert 1 == event.field1 and 2 == event.field2
 
     def test_default_init_with_kwargs(self):
-        class MyEvent(BaseEvent):
+        class MyEvent(Event):
             __slots__ = ["field1", "field2"]
 
         event = MyEvent(field2=1, field1=2)
@@ -249,7 +260,7 @@ class TestEvent:
         assert 2 == event.field1 and 1 == event.field2
 
     def test_default_init_with_both_args_and_kwargs_raises_value_error(self):
-        class MyEvent(BaseEvent):
+        class MyEvent(Event):
             __slots__ = ["field1", "field2"]
 
         with pytest.raises(ValueError):

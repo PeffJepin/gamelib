@@ -6,12 +6,33 @@ import numpy as np
 class SharedArray:
     def __init__(self, id_, shape, dtype):
         """Load into an already existing shared block of memory."""
-        self._sm = shared_memory.SharedMemory(id_, create=False)
+        self._sm = shared_memory.SharedMemory(id_)
         self._arr = np.ndarray(shape, dtype, self._sm.buf)
 
     @classmethod
-    def create(cls, id_, shape=None, dtype=None, array=None):
-        """Copy an array into shared memory and return an array view into it."""
+    def create(cls, id_, shape=None, dtype=None, *, array=None):
+        """
+        Allocates the underlying shared memory and returns a view into it.
+
+        Allocation can be specified by shape and dtype or just an existing numpy.ndarray
+        If an array is used for specification shape and dtype params are ignored.
+
+        Parameters
+        ----------
+        id_ : str
+            Identifier for this shared block to be discovered from elsewhere.
+        shape : tuple[int, ...]
+            A valid shape for a numpy.ndarray
+        dtype : numpy.dtype
+        array : numpy.ndarray
+            Optional initial data to initialize the memory block.
+
+        Returns
+        -------
+        inst : SharedArray
+            Creates and instance of the class.
+            Note: SharedMemory could potentially be reclaimed if this were gc'd.
+        """
         if array is None:
             array = np.empty(shape, dtype)
         shm = shared_memory.SharedMemory(id_, create=True, size=array.nbytes)
@@ -22,12 +43,11 @@ class SharedArray:
 
     def unlink(self):
         """
-        Seems SharedMemory.unlink() has a bug in windows and doesn't
-        behave as expected.
+        SharedMemory.unlink() does nothing on windows
+        but required on POSIX
 
-        My testing shows closing all open shm objects individually yields
-        the desired result, where an new attempt to connect to the shm file
-        raises FileNotFoundError.
+        TODO:
+            Implement some os specific behavior to clean this up
         """
         self._arr = None
         self._sm.close()
@@ -99,28 +119,62 @@ class SharedArray:
 
 
 class DoubleBufferedArray:
+    """
+    Maintains two SharedArray instances and delegates reads/writes to separate arrays.
+    The flip method can be called to copy the write array into the read array.
+    """
+
     def __init__(self, id_, shape, dtype):
+        """Load into an already allocated block of shared memory."""
         self._read_arr = SharedArray(id_ + "_r", shape, dtype)
         self._write_arr = SharedArray(id_ + "_w", shape, dtype)
 
     @classmethod
     def create(cls, id_, shape=None, dtype=None, *, array=None):
+        """
+        Allocates the underlying shared memory and returns a view into it.
+
+        Allocation can be specified by shape and dtype or just an existing numpy.ndarray
+        If an array is used for specification shape and dtype params are ignored.
+
+        Parameters
+        ----------
+        id_ : str
+            Identifier for this shared block to be discovered from elsewhere.
+        shape : tuple[int, ...]
+            A valid shape for a numpy.ndarray
+        dtype : numpy.dtype
+        array : numpy.ndarray
+            Optional initial data to initialize the memory block.
+
+        Returns
+        -------
+        inst : DoubleBufferedArray
+            Creates and instance of the class.
+            Note: SharedMemory could potentially be reclaimed if this were gc'd.
+        """
         if array is None:
             array = np.zeros(shape, dtype)
         shm_r = shared_memory.SharedMemory(id_ + "_r", create=True, size=array.nbytes)
         shm_w = shared_memory.SharedMemory(id_ + "_w", create=True, size=array.nbytes)
         inst = cls(id_, array.shape, array.dtype)
         inst[:] = array[:]
-        inst.swap()
+        inst.flip()
         shm_r.close()
         shm_w.close()
         return inst
 
     def unlink(self):
+        """
+        Unlink the underlying shared memory.
+
+        On windows all references must be closed.
+        """
         self._read_arr.unlink()
         self._write_arr.unlink()
 
-    def swap(self):
+    def flip(self):
+        """Copy the write array into the read array."""
         self._read_arr[:] = self._write_arr[:]
 
     def __len__(self):

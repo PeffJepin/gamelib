@@ -5,59 +5,90 @@ from src.gamelib.system import System, ArrayAttribute, PublicAttribute
 
 
 class TestSystem:
-    def test_subclasses_each_get_their_own_Event_attribute(self):
-        assert System1.Event is not System2.Event
-
     def test_subclasses_each_get_their_own_Component_attribute(self):
-        assert System1.Component is not System2.Component
+        assert self.System1.Component is not self.System2.Component
 
     def test_subclass_attributes_are_unique_from_base_system_attributes(self):
-        system_event_subclasses = System.Event.__subclasses__()
         system_component_subclasses = System.Component.__subclasses__()
-        assert System1.Component not in system_component_subclasses
-        assert System2.Component not in system_component_subclasses
-        assert System1.Event not in system_event_subclasses
-        assert System2.Event not in system_event_subclasses
+        assert self.System1.Component not in system_component_subclasses
+        assert self.System2.Component not in system_component_subclasses
+
+    def test_can_find_related_public_attributes(self):
+        all_public_attrs = [
+            self.Comp1.__dict__["attr1"],
+            self.Comp1.__dict__["attr2"],
+            self.Comp2.__dict__["attr1"],
+        ]
+        for attr in self.System1.public_attributes:
+            assert attr in all_public_attrs
+
+    def test_can_find_related_array_attributes(self):
+        all_array_attrs = [
+            self.Comp1.__dict__["attr3"],
+            self.Comp2.__dict__["attr2"],
+            self.Comp2.__dict__["attr3"],
+        ]
+        for attr in self.System1.array_attributes:
+            assert attr in all_array_attrs
+
+    class System1(System):
+        pass
+
+    class System2(System):
+        pass
+
+    class Comp1(System1.Component):
+        attr1 = PublicAttribute(int)
+        attr2 = PublicAttribute(float)
+        attr3 = ArrayAttribute(int)
+
+    class Comp2(System1.Component):
+        attr1 = PublicAttribute(int)
+        attr2 = ArrayAttribute(str)
+        attr3 = ArrayAttribute(float)
 
 
 class TestArrayAttribute:
-    class Example:
-        entity_id: int
-        attr = ArrayAttribute(np.uint8, length=100)
-
-        def __init__(self, id_):
-            self.entity_id = id_
-
     def test_types_receive_instance_of_the_array(self):
-        assert self.Example.attr.dtype == np.uint8
-        assert (100,) == self.Example.attr.shape
+        assert self.ExampleComponent.attr.dtype == np.uint8
+        assert (100,) == self.ExampleComponent.attr.shape
 
-    def test_get_instances_index_into_array(self):
-        self.Example.attr[10] = 150
-        obj = self.Example(10)
+    def test_get_on_instance_indexes_by_entity_id(self):
+        self.ExampleComponent.attr[10] = 150
+        obj = self.ExampleComponent(10)
 
         assert 150 == obj.attr
 
-    def test_set_instance_index_into_array(self):
-        obj = self.Example(14)
+    def test_set_on_instance_indexes_by_entity_id(self):
+        obj = self.ExampleComponent(14)
         obj.attr = 14
 
-        assert 14 == self.Example.attr[14]
+        assert 14 == self.ExampleComponent.attr[14]
 
-    def test_incompatible_if_object_has_no_entity_id(self):
-        class BadExample:
-            attr = ArrayAttribute(np.uint8, 10)
+    def test_must_be_used_on_a_component(self):
+        with pytest.raises(RuntimeError):
 
-        obj = BadExample()
-
-        with pytest.raises(AttributeError):
-            obj.attr = 100
+            class NotAComponent:
+                attr = ArrayAttribute(int, 10)
 
     def test_index_error_on_out_of_bounds_entity_id(self):
-        obj = self.Example(1999)
+        obj = self.ExampleComponent(1999)
 
         with pytest.raises(IndexError):
             obj.attr = 100
+
+    def test_reallocation_to_a_new_size(self):
+        assert 25 != len(self.ExampleComponent.attr)
+        self.ExampleSystem.MAX_ENTITIES = 25
+        self.ExampleComponent.__dict__["attr"].reallocate()
+
+        assert 25 == len(self.ExampleComponent.attr)
+
+    class ExampleSystem(System):
+        MAX_ENTITIES = 100
+
+    class ExampleComponent(ExampleSystem.Component):
+        attr = ArrayAttribute(np.uint8)
 
 
 class TestPublicAttribute:
@@ -123,18 +154,10 @@ class TestPublicAttribute:
 
     @pytest.fixture
     def class_with_public_attr(self):
-        class MyObject:
+        class ExampleSystem(System):
+            pass
+
+        class MyObject(ExampleSystem.Component):
             attr = PublicAttribute(np.uint8)
 
-            def __init__(self, entity_id):
-                self.entity_id = entity_id
-
         return MyObject
-
-
-class System1(System):
-    pass
-
-
-class System2(System):
-    pass

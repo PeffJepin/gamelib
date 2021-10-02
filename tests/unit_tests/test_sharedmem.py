@@ -192,7 +192,7 @@ class TestDoubleBufferedArray:
         dbl1 = DoubleBufferedArray.create("1", shape=(10,), dtype=np.uint8)
 
         dbl1[:] = 200
-        dbl1.swap()
+        dbl1.flip()
 
         dbl2 = DoubleBufferedArray("1", (10,), np.uint8)
         try:
@@ -210,7 +210,7 @@ class TestDoubleBufferedArray:
         try:
             for arr in (dbl1, dbl2, dbl3):
                 assert not np.all(arr == 123)
-            DoubleBufferedArray("id", (10,), np.uint8).swap()
+            DoubleBufferedArray("id", (10,), np.uint8).flip()
             for arr in (dbl1, dbl2, dbl3):
                 assert np.all(arr == 123)
         finally:
@@ -234,6 +234,6 @@ class TestDoubleBufferedArray:
         finally:
             assert isinstance(dbl, DoubleBufferedArray)
             assert all(dbl[:] == initial_data[:])
-            dbl.swap()
+            dbl.flip()
             assert all(dbl[:] == expected_data[:])
             dbl.unlink()

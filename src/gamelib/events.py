@@ -5,10 +5,8 @@ import threading
 import warnings
 from collections import defaultdict
 from multiprocessing.connection import Connection
-from typing import Type, List, Callable, Union, Tuple, Any
+from typing import Type, Callable, Union, Tuple, Any, Sequence
 
-EventKey: Tuple[Type[BaseEvent], Any]
-EventHandler: Callable[[BaseEvent], None]
 _HANDLER_INJECTION_ATTRIBUTE = "_gamelib_handler_"
 
 
@@ -38,7 +36,7 @@ class _EventType(type):
         return cls, name
 
 
-class BaseEvent(metaclass=_EventType):
+class Event(metaclass=_EventType):
     """
     An Event can have its type object queried for attributes to make keys.
     Note: conflicts with dataclass
@@ -47,16 +45,16 @@ class BaseEvent(metaclass=_EventType):
     --------
     With key_options = None (default)
 
-    >>> BaseEvent.anything_that_could_be_a_valid_attr_name
+    >>> Event.anything_that_could_be_a_valid_attr_name
     (KeyedEvent, 'anything_that_could_be_a_valid_attr_name')
 
     Keys should not start with a leading underscore.
 
-    >>> BaseEvent._A  # Raises AttributeError.
+    >>> Event._A  # Raises AttributeError.
 
     Choices for keys can be limited by a set.
 
-    >>> class MyKeyedEvent(BaseEvent):
+    >>> class MyKeyedEvent(Event):
     ...     key_options = {'A', 'B', 'C'}
     ...
     >>> MyKeyedEvent.C
@@ -67,7 +65,7 @@ class BaseEvent(metaclass=_EventType):
     Choices can also be limited with a dict or object via key/attribute lookup
     In this case keys are both limited and mapped based on values.
 
-    >>> class MyKeyedEvent(BaseEvent):
+    >>> class MyKeyedEvent(Event):
     ...     key_options = {'A': 2, 'B': 4, 'C': 6}
     ...
     >>> MyKeyedEvent.A
@@ -112,11 +110,11 @@ class BaseEvent(metaclass=_EventType):
 def eventhandler(event_key):
     """
     Marks the decorated function object which can later be retrieved
-    with the find_handlers function in this module.
+    with the find_eventhandlers function in this module.
 
     Parameters
     ----------
-    event_key : tuple[type[BaseEvent], Any]
+    event_key : tuple[type[Event], Any]
         The key value for an event is a tuple of the event type and an arbitrary key.
         Because of this each type of event can be subscribed to with an additional key.
 
@@ -124,15 +122,15 @@ def eventhandler(event_key):
     --------
     How eventhandler would be used with a normal event: event_key == (Event, None)
 
-    >>> @eventhandler(BaseEvent):
-    >>> def update_handler_function(self, event: BaseEvent) -> None:
+    >>> @eventhandler(Event):
+    >>> def update_handler_function(self, event: Event) -> None:
     ...     # do update
     ...     ...
 
     How eventhandler would be used with a keyed event: event_key == (Event, 'ABC')
 
-    >>> @eventhandler(BaseEvent.ABC)
-    >>> def some_keyed_event_handler(self, event: BaseEvent) -> None:
+    >>> @eventhandler(Event.ABC)
+    >>> def some_keyed_event_handler(self, event: Event) -> None:
     ...     # Only called when a Event instance is posted with 'ABC' as a key.
     ...     # See Event for more detailed documentation on the key values.
     ...     ...
@@ -148,7 +146,7 @@ def eventhandler(event_key):
     return inner
 
 
-def find_handlers(obj):
+def find_eventhandlers(obj):
     """
     Helper function that finds all functions in an object's
     directory that have been marked by the eventhandler decorator.
@@ -178,16 +176,17 @@ class MessageBus:
         """
         Parameters
         ----------
-        initial_handlers : dict[EventKey, List[EventHandler]] | None
+        initial_handlers : dict[EventKey, list[EventHandler]] | None
             Handlers can be registered after MessageBus construction or passed in this initial dict.
         """
         self.handlers = defaultdict(list)
         if initial_handlers:
             for event_type, callbacks in initial_handlers.items():
-                if isinstance(event_type, type(BaseEvent)):
+                if isinstance(event_type, type(Event)):
                     event_type = (event_type, None)
                 self.handlers[event_type].extend(callbacks)
         self._adapters = dict()
+        self._adapters_by_event_key = defaultdict(list)
 
     def register(self, event_key, *callbacks) -> None:
         """
@@ -195,12 +194,12 @@ class MessageBus:
 
         Parameters
         ----------
-        event_key : type[BaseEvent] | tuple[type[BaseEvent], Any]
+        event_key : type[Event] | tuple[type[Event], Any]
             A regular will be described by it's Type
             A KeyedEvent will be described by a tuple of it's Type and some key value.
-        *callbacks : EventHandler
+        *callbacks : callable[type[Event], None]
         """
-        if isinstance(event_key, type(BaseEvent)):
+        if isinstance(event_key, type(Event)):
             event_key = (event_key, None)
         self.handlers[event_key].extend(callbacks)
 
@@ -210,10 +209,10 @@ class MessageBus:
 
         Parameters
         ----------
-        event_key : Type[BaseEvent]
-        *callbacks : EventHandler
+        event_key : type[Event] | tuple[type[Event], Any]
+        *callbacks : callable[type[Event], None]
         """
-        if isinstance(event_key, type(BaseEvent)):
+        if isinstance(event_key, type(Event)):
             event_key = (event_key, None)
         for callback in callbacks:
             try:
@@ -223,30 +222,30 @@ class MessageBus:
                     f"Tried to unregister {callback!r} from {self!r} when it was not registered"
                 )
 
-    def register_marked_handlers(self, obj):
+    def register_marked(self, obj):
         """
-        Shorthand for finding the @handler docorated functions on an object
+        Shorthand for finding the @eventhandler decorated functions on an object
         and registering them as callbacks.
 
         Parameters
         ----------
         obj : object
-            Object containing @handler marked functions.
+            Object containing @eventhandler marked functions.
         """
-        for event_key, handlers in find_handlers(obj).items():
+        for event_key, handlers in find_eventhandlers(obj).items():
             self.register(event_key, *handlers)
 
-    def unregister_marked_handlers(self, obj):
+    def unregister_marked(self, obj):
         """
-        Shorthand for finding @handler decorated functions and
+        Shorthand for finding @eventhandler decorated functions and
         unregistering them as callbacks.
 
         Parameters
         ----------
         obj : object
-            Object containing @handler marked functions
+            Object containing @eventhandler marked functions
         """
-        for event_key, handlers in find_handlers(obj).items():
+        for event_key, handlers in find_eventhandlers(obj).items():
             self.unregister(event_key, *handlers)
 
     def post_event(self, event, key=None) -> None:
@@ -256,7 +255,7 @@ class MessageBus:
 
         Parameters
         ----------
-        event : BaseEvent
+        event : Event
             The event instance to be posted.
         key : Any
             Key to be used when posting a KeyedEvent
@@ -264,28 +263,29 @@ class MessageBus:
         event_key = (type(event), key)
         for handler in self.handlers[event_key]:
             handler(event)
+        for adapter in self._adapters_by_event_key[event_key]:
+            adapter.post_event(event, key)
 
-    def service_connection(self, conn, event_keys) -> None:
+    def service_connection(self, conn, *event_keys) -> None:
         """
         MessageBus will send all events it publishes through a serviced connection.
 
         Parameters
         ----------
         conn : Connection
-        event_keys : List[EventKey]
-            List of EventKeys that should be fed through this pipe.
+            multiprocessing.Pipe connection
+        *event_keys : type[Event] | tuple[type[Event], Any]
+            Variable number of EventKeys that should be fed through this pipe.
 
             If any of the keys are just a Type[Event] then they will be
             assigned None key by default.
         """
-        for i, key in enumerate(event_keys):
-            if not isinstance(key, tuple):
-                # convert Type[Event] into EventKey
-                event_keys[i] = (key, None)
-
-        adapter = _ConnectionAdapter(self, conn, event_keys)
-        for key in event_keys:
-            self.register(key, adapter)
+        processed_keys = tuple(
+            key if isinstance(key, tuple) else (key, None) for key in event_keys
+        )
+        adapter = _ConnectionAdapter(self, conn, processed_keys)
+        for key in processed_keys:
+            self._adapters_by_event_key[key].append(adapter)
         self._adapters[conn] = adapter
         adapter.thread.start()
 
@@ -296,12 +296,13 @@ class MessageBus:
         Parameters
         ----------
         conn : Connection
+            multiprocessing.Pipe connection
         """
         adapter = self._adapters.pop(conn, None)
         if adapter is None:
             return
-        for type_ in adapter.event_types:
-            self.unregister(type_, adapter)
+        for key in adapter.event_keys:
+            self._adapters_by_event_key[key].remove(adapter)
         adapter.stop()
 
 
@@ -310,24 +311,37 @@ class _ConnectionAdapter:
         self,
         mb: MessageBus,
         conn: Connection,
-        event_keys: List[EventKey],
+        event_keys: Sequence[EventKey],
     ):
         self.mb = mb
         self.conn = conn
-        self.event_types = event_keys
+        self.event_keys = event_keys
         self._running = True
         self.thread = threading.Thread(target=self._poll, daemon=True)
 
     def _poll(self):
-        try:
-            while self._running:
-                if self.conn.poll(0.001):
-                    self.mb.post_event(self.conn.recv())
-        except (BrokenPipeError, EOFError):
-            self._running = False
+        while self._running:
+            try:
+                if not self.conn.poll(0.01):
+                    continue
+                message = self.conn.recv()
+                event, key = message
+                self.mb.post_event(event, key)
+            except (BrokenPipeError, EOFError):
+                self._running = False
+                break
+            except TypeError as e:
+                if isinstance(message, Exception):
+                    raise message
+                else:
+                    raise e
 
     def stop(self):
         self._running = False
 
-    def __call__(self, event):
-        self.conn.send(event)
+    def post_event(self, event, key):
+        self.conn.send((event, key))
+
+
+EventKey = Tuple[Type[Event], Any]
+EventHandler = Callable[[Event], None]
