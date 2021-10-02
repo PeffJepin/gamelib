@@ -1,14 +1,14 @@
-import time
 from contextlib import contextmanager
 
 import pytest
 
 from src.gamelib import Update
 from src.gamelib import environment
+from src.gamelib.environment import UpdateComplete
 from src.gamelib.events import MessageBus, eventhandler, Event
 from src.gamelib.system import PublicAttribute, SystemUpdateComplete, ArrayAttribute
 from src.gamelib.textures import Asset, TextureAtlas
-from ..conftest import PatchedSystem
+from ..conftest import PatchedSystem, RecordedCallback
 
 
 class TestEnvironment:
@@ -114,22 +114,32 @@ class TestEnvironment:
 
             assert 12 == recorded_callback.args[0].value
 
+    def test_posts_event_complete_after_update_completes(self, create_test_env, recorded_callback):
+        mb = MessageBus()
+        mb.register(UpdateComplete, recorded_callback)
+        with create_test_env(mb, loaded=True) as env:
+            mb.post_event(Update())
+            # this will raise timeout error on test fail
+            recorded_callback.wait_for_response()
+
     def test_public_attr_access_from_multiple_processes(
-        self, create_test_env, recorded_callback
+        self, create_test_env
     ):
         mb = MessageBus()
-        mb.register(Response.PUBLIC_ATTR_MULTIPLE_ACCESS, recorded_callback)
+        response_watcher = RecordedCallback()
+        update_watcher = RecordedCallback()
+        mb.register(Response.PUBLIC_ATTR_MULTIPLE_ACCESS, response_watcher)
+        mb.register(UpdateComplete, update_watcher)
         with create_test_env(mb, loaded=True) as env:
             for i in range(10):
-                while env._system_update_complete_counter > 0:
-                    # recorded callback coming back does not mean systems finished updating
-                    time.sleep(0.001)
-                env.update_public_attributes()
                 mb.post_event(Event(), key="PUBLIC_ATTR_MULTIPLE_ACCESS")
                 mb.post_event(Update())
-                recorded_callback.wait_for_response()
+                response_watcher.wait_for_response()
 
-                assert i == recorded_callback.args[0].value
+                assert i == response_watcher.args[0].value
+                if update_watcher.called <= i:
+                    update_watcher.wait_for_response()
+                env.update_public_attributes()
 
 
 class System1(PatchedSystem):

@@ -105,12 +105,12 @@ class TestPublicAttribute:
         try:
             assert all(class_with_public_attr.attr[:] == 0)
         finally:
-            actual_public_attr.close_shm()
+            actual_public_attr.unlink_shm()
 
     def test_cannot_be_accessed_after_closed(self, class_with_public_attr):
         actual_public_attr = class_with_public_attr.__dict__["attr"]
         actual_public_attr.allocate_shm()
-        actual_public_attr.close_shm()
+        actual_public_attr.unlink_shm()
 
         with pytest.raises(FileNotFoundError):
             attr = class_with_public_attr.attr
@@ -126,7 +126,7 @@ class TestPublicAttribute:
             actual_public_attr.update()
             assert all(class_with_public_attr.attr[:] == 10)
         finally:
-            actual_public_attr.close_shm()
+            actual_public_attr.unlink_shm()
 
     def test_array_size_dictated_by_System_MAX_ENTITIES(self, class_with_public_attr):
         System.MAX_ENTITIES = 16
@@ -136,7 +136,7 @@ class TestPublicAttribute:
         try:
             assert len(class_with_public_attr.attr) == 16
         finally:
-            actual_public_attr.close_shm()
+            actual_public_attr.unlink_shm()
 
     def test_indexed_by_object_entity_id(self, class_with_public_attr):
         actual_public_attr = class_with_public_attr.__dict__["attr"]
@@ -150,7 +150,7 @@ class TestPublicAttribute:
             actual_public_attr.update()
             assert class_with_public_attr.attr[5] == 10
         finally:
-            actual_public_attr.close_shm()
+            actual_public_attr.unlink_shm()
 
     @pytest.fixture
     def class_with_public_attr(self):

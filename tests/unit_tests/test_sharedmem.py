@@ -28,7 +28,10 @@ class TestSharedArray:
         arr2 = SharedArray("id", arr1.shape, arr1.dtype)
         arr1.close()
 
-        assert all(initial == arr2)
+        try:
+            assert all(initial == arr2)
+        finally:
+            arr2.unlink()
 
     def test_eq(self):
         with self.shared_numpy([1, 2, 3]) as arr:
@@ -206,6 +209,7 @@ class TestDoubleBufferedArray:
         try:
             assert np.all(dbl2 == 200)
         finally:
+            dbl2.close()
             dbl1.unlink()
 
     def test_swap_effects_all_instances(self):
@@ -222,6 +226,8 @@ class TestDoubleBufferedArray:
             for arr in (dbl1, dbl2, dbl3):
                 assert np.all(arr == 123)
         finally:
+            dbl3.close()
+            dbl2.close()
             dbl1.unlink()
 
     @contextmanager

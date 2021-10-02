@@ -49,7 +49,10 @@ class SharedArray:
         if not _POSIX:
             # SharedMemory.unlink() does nothing on windows but required on posix.
             # Close should still be called on this shm if `unlink` is the request.
-            return self.close()
+            self.close()
+            self._arr = None
+            self._shm = None
+            return
 
         self._shm.unlink()
         self._arr = None
