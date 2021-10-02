@@ -22,6 +22,14 @@ class TestSharedArray:
         with pytest.raises(FileNotFoundError):
             SharedArray("id", initial.shape, initial.dtype)
 
+    def test_close_only_effects_one_instance(self):
+        initial = np.array([1, 2, 3])
+        arr1 = SharedArray.create("id", array=initial)
+        arr2 = SharedArray("id", arr1.shape, arr1.dtype)
+        arr1.close()
+
+        assert all(initial == arr2)
+
     def test_eq(self):
         with self.shared_numpy([1, 2, 3]) as arr:
             assert np.all(np.array([1, 2, 3]) == arr)
@@ -237,3 +245,4 @@ class TestDoubleBufferedArray:
             dbl.flip()
             assert all(dbl[:] == expected_data[:])
             dbl.unlink()
+

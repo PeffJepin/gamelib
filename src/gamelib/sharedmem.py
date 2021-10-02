@@ -1,13 +1,16 @@
+import os
 from multiprocessing import shared_memory
 
 import numpy as np
+
+_POSIX = os.name == "posix"
 
 
 class SharedArray:
     def __init__(self, id_, shape, dtype):
         """Load into an already existing shared block of memory."""
-        self._sm = shared_memory.SharedMemory(id_)
-        self._arr = np.ndarray(shape, dtype, self._sm.buf)
+        self._shm = shared_memory.SharedMemory(id_)
+        self._arr = np.ndarray(shape, dtype, self._shm.buf)
 
     @classmethod
     def create(cls, id_, shape=None, dtype=None, *, array=None):
@@ -42,17 +45,21 @@ class SharedArray:
         return inst
 
     def unlink(self):
-        """
-        SharedMemory.unlink() does nothing on windows
-        but required on POSIX
+        """Should be called only once after the memory is no longer in use."""
+        if not _POSIX:
+            # SharedMemory.unlink() does nothing on windows but required on posix.
+            # Close should still be called on this shm if `unlink` is the request.
+            return self.close()
 
-        TODO:
-            Implement some os specific behavior to clean this up
-        """
+        self._shm.unlink()
         self._arr = None
-        self._sm.close()
-        self._sm.unlink()
-        self._sm = None
+        self._shm = None
+
+    def close(self):
+        """Should be called from every instance when that particular instance is no longer used."""
+        self._shm.close()
+        self._arr = None
+        self._shm = None
 
     def __getattr__(self, item):
         return getattr(self._arr, item)
@@ -165,13 +172,14 @@ class DoubleBufferedArray:
         return inst
 
     def unlink(self):
-        """
-        Unlink the underlying shared memory.
-
-        On windows all references must be closed.
-        """
+        """Should be called once when the shared memory can be reclaimed."""
         self._read_arr.unlink()
         self._write_arr.unlink()
+
+    def close(self):
+        """Should be called on every instance when no longer in use."""
+        self._read_arr.close()
+        self._write_arr.close()
 
     def flip(self):
         """Copy the write array into the read array."""
