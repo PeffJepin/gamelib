@@ -13,6 +13,12 @@ from src.gamelib.system import System
 from src.gamelib.textures import Asset
 
 
+def patch_shm_names(system_type, extra):
+    for attr in system_type.public_attributes:
+        patched_value = attr._shm_id + str(extra)
+        attr.__dict__['_shm_id'] = patched_value
+
+
 class RecordedCallback:
     def __init__(self):
         self.called = 0
@@ -113,7 +119,8 @@ class SystemRunner(mp.Process):
         if message == self.GET_STATUS:
             return self.conn.send(self.READY)
         elif isinstance(message, tuple):
-            sys_type, conn, max_entities = message
+            sys_type, conn, max_entities, shm_extra = message
+            patch_shm_names(sys_type, shm_extra)
             self.conn.send("STARTING SYSTEM")
             sys_type._run(conn, max_entities, _runner_conn=self.conn)
 
@@ -150,10 +157,14 @@ class PatchedSystem(System):
 
     @classmethod
     def run_in_process(cls, max_entities):
+        shm_extra = time.time()
+        patch_shm_names(cls, shm_extra)
+
         runner_connection = SystemRunner.get_connection()
         local_conn, internal_conn = mp.Pipe()
-        start_system_command = (cls, internal_conn, max_entities)
+        start_system_command = (cls, internal_conn, max_entities, shm_extra)
         runner_connection.send(start_system_command)
+
         assert runner_connection.poll(1)
         message = runner_connection.recv()
         if isinstance(message, Exception):
