@@ -1,22 +1,16 @@
+import itertools
 from contextlib import contextmanager
 
 import pytest
-import itertools
 
 from src.gamelib import Update
 from src.gamelib import environment
 from src.gamelib.environment import UpdateComplete
 from src.gamelib.events import MessageBus, eventhandler, Event
 from src.gamelib.sharedmem import SharedBlock
-from src.gamelib.system import (
-    PublicAttribute,
-    SystemUpdateComplete,
-    ArrayAttribute,
-    System,
-)
+from src.gamelib.system import PublicAttribute, SystemUpdateComplete, ArrayAttribute, System
 from src.gamelib.textures import Asset, TextureAtlas
 from ..conftest import PatchedSystem, RecordedCallback
-
 
 counter = itertools.count(0)
 
@@ -211,12 +205,10 @@ def create_test_env(image_file_maker, fake_ctx):
         SYSTEMS = [System1, System2]
 
         def _init_shm(self):
-            all_public_attributes = sum(
-                (system.public_attributes for system in self.SYSTEMS), []
-            )
+            all_public_attributes = sum((system.public_attributes for system in self.SYSTEMS), [])
             System.SHARED_BLOCK = SharedBlock(
                 [arr for attr in all_public_attributes for arr in attr.arrays],
-                name_extra=next(counter),
+                name_extra=next(counter)
             )
 
         @eventhandler(Event.ABC)
