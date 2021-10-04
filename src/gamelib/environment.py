@@ -6,6 +6,7 @@ from typing import List, Type, Hashable, Dict
 
 from . import SystemStop
 from .events import MessageBus, find_eventhandlers, eventhandler, Event
+from .sharedmem import SharedBlock
 from .system import System, BaseComponent, SystemUpdateComplete
 from .textures import Asset, TextureAtlas
 
@@ -14,11 +15,11 @@ class Environment(abc.ABC):
     ASSETS: list
 
     SYSTEMS: List[Type[System]]
-    _MAX_ENTITIES: int = 1028
+    _MAX_ENTITIES: int = 1024
 
-    _systems: List[System] = None
     _system_connections: Dict[Type[System], Connection]
     _message_bus: MessageBus
+    _shm_block: SharedBlock = None
 
     def __init__(self, message_bus):
         """
@@ -51,6 +52,7 @@ class Environment(abc.ABC):
         System.MAX_ENTITIES = self._MAX_ENTITIES
         self._message_bus.register_marked(self)
         self._load_assets(ctx)
+        self._init_shm()
         self._start_systems()
         self._loaded = True
 
@@ -58,8 +60,9 @@ class Environment(abc.ABC):
         """
         Cleans up resources this Environment is using and exits the MessageBus.
         """
-        for system_type in self.SYSTEMS:
-            system_type.teardown_shared_state()
+        if System.SHARED_BLOCK is not None:
+            System.SHARED_BLOCK.unlink()
+            System.SHARED_BLOCK = None
         if not self._loaded:
             return
         self._release_assets()
@@ -111,19 +114,26 @@ class Environment(abc.ABC):
 
     def _shutdown_systems(self):
         self._message_bus.post_event(SystemStop())
-        for SystemType, (process, conn) in self._running_systems.items():
+        for _, (process, conn) in self._running_systems.items():
             self._message_bus.stop_connection_service(conn)
             process.join()
         self._running_systems = None
 
     def _start_systems(self):
         self._running_systems = dict()
-        for SystemType in self.SYSTEMS:
-            SystemType.setup_shared_state()
-            conn, process = SystemType.run_in_process(self._MAX_ENTITIES)
-            system_handler_types = find_eventhandlers(SystemType).keys()
+        for system in self.SYSTEMS:
+            conn, process = system.run_in_process(self._MAX_ENTITIES)
+            system_handler_types = find_eventhandlers(system).keys()
             self._message_bus.service_connection(conn, *system_handler_types)
-            self._running_systems[SystemType] = (process, conn)
+            self._running_systems[system] = (process, conn)
+
+    def _init_shm(self):
+        all_public_attributes = sum(
+            (system.public_attributes for system in self.SYSTEMS), []
+        )
+        System.SHARED_BLOCK = SharedBlock(
+            [arr for attr in all_public_attributes for arr in attr.arrays]
+        )
 
     @eventhandler(SystemUpdateComplete)
     def _track_system_updates(self, event):

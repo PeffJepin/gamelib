@@ -92,72 +92,57 @@ class TestArrayAttribute:
 
 
 class TestPublicAttribute:
-    def test_public_attribute_does_not_work_before_allocation(
-        self, class_with_public_attr
-    ):
+    def test_public_attribute_does_not_work_before_allocation(self, attr):
         with pytest.raises(FileNotFoundError):
-            attr = class_with_public_attr.attr
+            attr = ExampleComponent.attr
 
-    def test_access_can_be_made_after_allocation(self, class_with_public_attr):
-        actual_public_attr = class_with_public_attr.__dict__["attr"]
-        actual_public_attr.allocate_shm()
+    def test_access_can_be_made_after_allocation(self, allocated_attr):
+        assert all(ExampleComponent.attr[:] == 0)
 
-        try:
-            assert all(class_with_public_attr.attr[:] == 0)
-        finally:
-            actual_public_attr.unlink_shm()
-
-    def test_cannot_be_accessed_after_closed(self, class_with_public_attr):
-        actual_public_attr = class_with_public_attr.__dict__["attr"]
-        actual_public_attr.allocate_shm()
-        actual_public_attr.unlink_shm()
+    def test_cannot_be_accessed_after_closed(self, allocated_attr):
+        allocated_attr.close_shm()
 
         with pytest.raises(FileNotFoundError):
-            attr = class_with_public_attr.attr
+            attr = ExampleComponent.attr
 
-    def test_changes_not_reflected_until_update(self, class_with_public_attr):
-        actual_public_attr = class_with_public_attr.__dict__["attr"]
-        actual_public_attr.allocate_shm()
+    def test_changes_not_reflected_until_update(self, allocated_attr):
+        ExampleComponent.attr[:] = 10
 
-        class_with_public_attr.attr[:] = 10
+        assert all(ExampleComponent.attr[:] == 0)
+        allocated_attr.update()
+        assert all(ExampleComponent.attr[:] == 10)
 
-        try:
-            assert all(class_with_public_attr.attr[:] == 0)
-            actual_public_attr.update()
-            assert all(class_with_public_attr.attr[:] == 10)
-        finally:
-            actual_public_attr.unlink_shm()
+    def test_array_size_dictated_by_System_MAX_ENTITIES(self, attr):
+        ExampleSystem.MAX_ENTITIES = 16
+        attr.allocate_shm()
 
-    def test_array_size_dictated_by_System_MAX_ENTITIES(self, class_with_public_attr):
-        System.MAX_ENTITIES = 16
-        actual_public_attr = class_with_public_attr.__dict__["attr"]
-        actual_public_attr.allocate_shm()
+        assert len(ExampleComponent.attr) == 16
 
-        try:
-            assert len(class_with_public_attr.attr) == 16
-        finally:
-            actual_public_attr.unlink_shm()
-
-    def test_indexed_by_object_entity_id(self, class_with_public_attr):
-        actual_public_attr = class_with_public_attr.__dict__["attr"]
-        actual_public_attr.allocate_shm()
-        inst = class_with_public_attr(5)
-
+    def test_indexed_by_object_entity_id(self, allocated_attr):
+        inst = ExampleComponent(5)
         inst.attr = 10
 
-        try:
-            assert class_with_public_attr.attr[5] == 0
-            actual_public_attr.update()
-            assert class_with_public_attr.attr[5] == 10
-        finally:
-            actual_public_attr.unlink_shm()
+        assert ExampleComponent.attr[5] == 0
+        allocated_attr.update()
+        assert ExampleComponent.attr[5] == 10
 
     @pytest.fixture
-    def class_with_public_attr(self):
-        class ExampleSystem(System):
-            pass
+    def attr(self):
+        attr = vars(ExampleComponent)["attr"]
+        yield attr
+        attr.unlink_shm()
 
-        class MyObject(ExampleSystem.Component):
-            attr = PublicAttribute(np.uint8)
+    @pytest.fixture
+    def allocated_attr(self):
+        attr = vars(ExampleComponent)["attr"]
+        attr.allocate_shm()
+        yield attr
+        attr.unlink_shm()
 
-        return MyObject
+
+class ExampleSystem(System):
+    MAX_ENTITIES = 100
+
+
+class ExampleComponent(ExampleSystem.Component):
+    attr = PublicAttribute(int)

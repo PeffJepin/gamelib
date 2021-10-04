@@ -3,13 +3,13 @@ from __future__ import annotations
 import multiprocessing as mp
 import traceback
 from multiprocessing.connection import Connection
-from typing import Type
+from typing import Type, Optional, List
 
 import numpy as np
 
 from . import Update, SystemStop
 from .events import MessageBus, eventhandler, Event
-from .sharedmem import DoubleBufferedArray
+from .sharedmem import DoubleBufferedArray, SharedBlock
 
 
 class BaseComponent:
@@ -47,7 +47,7 @@ class _SystemMeta(type):
 
         Returns
         -------
-        attrs : list[PublicAttribute]
+        attrs : List[PublicAttribute]
         """
         attrs = []
         for comp_type in cls.Component.__subclasses__():
@@ -64,14 +64,12 @@ class _SystemMeta(type):
 
         Returns
         -------
-        attrs : list[ArrayAttribute]
+        attrs : List[ArrayAttribute]
         """
         attrs = []
         for comp_type in cls.Component.__subclasses__():
             discovered = [
-                v
-                for k, v in vars(comp_type).items()
-                if isinstance(v, ArrayAttribute) and not isinstance(v, PublicAttribute)
+                v for k, v in vars(comp_type).items() if isinstance(v, ArrayAttribute)
             ]
             attrs.extend(discovered)
         return attrs
@@ -94,6 +92,7 @@ class System(metaclass=_SystemMeta):
     """
 
     MAX_ENTITIES: int = 1024
+    SHARED_BLOCK: Optional[SharedBlock] = None
     Component: Type[BaseComponent]
 
     def __init__(self, conn, **kwargs):
@@ -110,35 +109,14 @@ class System(metaclass=_SystemMeta):
         self._event_queue = []
 
     @classmethod
-    def _run(cls, conn, max_entities=None, **kwargs):
+    def _run(cls, conn, max_entities, shared_block, **kwargs):
         """Internal target to run system."""
-        if max_entities:
-            cls.MAX_ENTITIES = max_entities
+        cls.MAX_ENTITIES = max_entities
+        System.SHARED_BLOCK = shared_block
         for attr in cls.array_attributes:
             attr.reallocate()
         inst = cls(conn, **kwargs)
         inst._main()
-
-    @classmethod
-    def setup_shared_state(cls):
-        """
-        Setup that should happen before System.__init__.
-        Should only be called once, so the main process should call this.
-        """
-        for attr in cls.public_attributes:
-            attr.allocate_shm()
-
-    @classmethod
-    def teardown_shared_state(cls):
-        """Teardown state setup in System.setup_shared_state."""
-        for attr in cls.public_attributes:
-            attr.unlink_shm()
-
-    @classmethod
-    def _teardown_shared_state(cls):
-        """Local only teardown."""
-        for attr in cls.public_attributes:
-            attr.close_shm()
 
     @classmethod
     def run_in_process(cls, max_entities, **kwargs):
@@ -149,6 +127,8 @@ class System(metaclass=_SystemMeta):
         ----------
         max_entities : int
             Lets the system know how much memory to allocate for numpy arrays.
+        shared_block : Optional[SharedBlock]
+            The system can defer all shm management to the shared block.
 
         Returns
         -------
@@ -156,13 +136,18 @@ class System(metaclass=_SystemMeta):
             multiprocessing.Pipe
         process: Process
         """
-        cls.setup_shared_state()
         local, foreign = mp.Pipe()
         process = mp.Process(
-            target=cls._run, args=(foreign, max_entities), kwargs=kwargs
+            target=cls._run,
+            args=(foreign, max_entities, System.SHARED_BLOCK),
+            kwargs=kwargs,
         )
         process.start()
         return local, process
+
+    @classmethod
+    def set_shared_block(cls, shared_block):
+        System.SHARED_BLOCK = shared_block
 
     def update(self):
         """
@@ -181,6 +166,10 @@ class System(metaclass=_SystemMeta):
         while self._running:
             self._poll()
         self._teardown_shared_state()
+
+    def _teardown_shared_state(self):
+        """Local only teardown."""
+        System.SHARED_BLOCK.close()
 
     def _poll(self):
         if not self._conn.poll(0):
@@ -291,8 +280,8 @@ class PublicAttribute:
         ----------
         dtype : np.dtype
         """
-        self.dtype = dtype
-        self._array: DoubleBufferedArray = None
+        self._dtype = dtype
+        self._dbl_buffer = None
 
     def __set_name__(self, owner, name):
         if not issubclass(owner, BaseComponent):
@@ -301,18 +290,46 @@ class PublicAttribute:
             )
         self._owner = owner
         self._name = name
+        self._dbl_buffer = DoubleBufferedArray(
+            name=self._shm_id, shape=(self.length,), dtype=self._dtype, try_open=False
+        )
 
     def __get__(self, instance, owner):
-        if self._array is None:
+        """
+        Get reference to the DoubleBufferedArray. Will attempt to connect the array to shm
+        if it is not already connected.
+
+        Returns
+        -------
+        value : Numeric | DoubleBufferedArray
+            A value from the array at index = entity_id if accessed on an instance.
+            The whole array if accessed on the owner.
+
+        Raises
+        ------
+        FileNotFoundError:
+            If memory has not been allocated by time of access.
+        """
+        if self._dbl_buffer is None or not self._dbl_buffer.is_open:
             self._connect_shm()
         if instance is None:
-            return self._array
+            return self._dbl_buffer
         index = instance.entity_id
-        return self._array[index]
+        return self._dbl_buffer[index]
 
     def __set__(self, obj, value):
+        """
+        Set an entry in this array to value indexed on obj.entity_id
+
+        Raises
+        ------
+        FileNotFoundError:
+            If shm has not been allocated by time of use.
+        """
+        if self._dbl_buffer is None or not self._dbl_buffer.is_open:
+            self._connect_shm()
         index = obj.entity_id
-        self._array[index] = value
+        self._dbl_buffer[index] = value
 
     def allocate_shm(self):
         """
@@ -322,29 +339,30 @@ class PublicAttribute:
         This only needs to be called once across all processes. As such, the
         main process should probably be responsible for calling this.
         """
-        self._array = DoubleBufferedArray.create(
-            self._shm_id, (self.length,), self.dtype
+        self._dbl_buffer = DoubleBufferedArray.create(
+            self._shm_id, (self.length,), self._dtype
         )
 
     def close_shm(self):
         """Close this accessor to the shared block."""
-        if self._array is not None:
-            self._array.close()
-            self._array = None
+        if self._dbl_buffer is None or not self._dbl_buffer.is_open:
+            return
+        self._dbl_buffer.close()
+        self._dbl_buffer = None
 
     def unlink_shm(self):
         """
         Totally unlinks the shm file for posix.
         All connections must be closed on windows.
         """
-        if self._array is None:
+        if self._dbl_buffer is None or not self._dbl_buffer.is_open:
             try:
                 self._connect_shm()
-            except FileNotFoundError:
-                # nothing to unlink
+            except (FileNotFoundError):
+                self._dbl_buffer = None
                 return
-        self._array.unlink()
-        self._array = None
+        self._dbl_buffer.unlink()
+        self._dbl_buffer = None
 
     def update(self):
         """
@@ -352,13 +370,26 @@ class PublicAttribute:
 
         Note that there are no synchronization primitives guarding this process.
         """
-        if self._array is None:
-            self._connect_shm()
-        self._array.flip()
+        self._dbl_buffer.flip()
 
     @property
     def length(self):
-        return self._owner.SYSTEM.MAX_ENTITIES
+        return self.system.MAX_ENTITIES
+
+    @property
+    def system(self):
+        return self._owner.SYSTEM
+
+    @property
+    def arrays(self):
+        if self._dbl_buffer is None:
+            self._dbl_buffer = DoubleBufferedArray(
+                name=self._shm_id,
+                shape=(self.length,),
+                dtype=self._dtype,
+                try_open=False,
+            )
+        return self._dbl_buffer.arrays
 
     @property
     def _shm_id(self):
@@ -368,4 +399,9 @@ class PublicAttribute:
         return f"<PublicAttribute({self._shm_id})>"
 
     def _connect_shm(self):
-        self._array = DoubleBufferedArray(self._shm_id, (self.length,), self.dtype)
+        self._dbl_buffer = DoubleBufferedArray(
+            name=self._shm_id, shape=(self.length,), dtype=self._dtype, try_open=False
+        )
+        if System.SHARED_BLOCK is None:
+            raise FileNotFoundError("System.SHARED_BLOCK has not been assigned yet.")
+        System.SHARED_BLOCK.connect_arrays(*self._dbl_buffer.arrays)

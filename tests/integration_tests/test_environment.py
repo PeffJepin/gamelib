@@ -1,14 +1,24 @@
 from contextlib import contextmanager
 
 import pytest
+import itertools
 
 from src.gamelib import Update
 from src.gamelib import environment
 from src.gamelib.environment import UpdateComplete
 from src.gamelib.events import MessageBus, eventhandler, Event
-from src.gamelib.system import PublicAttribute, SystemUpdateComplete, ArrayAttribute
+from src.gamelib.sharedmem import SharedBlock
+from src.gamelib.system import (
+    PublicAttribute,
+    SystemUpdateComplete,
+    ArrayAttribute,
+    System,
+)
 from src.gamelib.textures import Asset, TextureAtlas
 from ..conftest import PatchedSystem, RecordedCallback
+
+
+counter = itertools.count(0)
 
 
 class TestEnvironment:
@@ -114,7 +124,9 @@ class TestEnvironment:
 
             assert 12 == recorded_callback.args[0].value
 
-    def test_posts_event_complete_after_update_completes(self, create_test_env, recorded_callback):
+    def test_posts_event_complete_after_update_completes(
+        self, create_test_env, recorded_callback
+    ):
         mb = MessageBus()
         mb.register(UpdateComplete, recorded_callback)
         with create_test_env(mb, loaded=True) as env:
@@ -122,9 +134,7 @@ class TestEnvironment:
             # this will raise timeout error on test fail
             recorded_callback.wait_for_response()
 
-    def test_public_attr_access_from_multiple_processes(
-        self, create_test_env
-    ):
+    def test_public_attr_access_from_multiple_processes(self, create_test_env):
         mb = MessageBus()
         response_watcher = RecordedCallback()
         update_watcher = RecordedCallback()
@@ -136,7 +146,7 @@ class TestEnvironment:
                 mb.post_event(Update())
                 response_watcher.wait_for_response()
 
-                assert i == response_watcher.args[0].value
+                assert i == response_watcher.args[0].value == Component1.public_attr[0]
                 if update_watcher.called <= i:
                     update_watcher.wait_for_response()
                 env.update_public_attributes()
@@ -199,6 +209,15 @@ def create_test_env(image_file_maker, fake_ctx):
         ]
 
         SYSTEMS = [System1, System2]
+
+        def _init_shm(self):
+            all_public_attributes = sum(
+                (system.public_attributes for system in self.SYSTEMS), []
+            )
+            System.SHARED_BLOCK = SharedBlock(
+                [arr for attr in all_public_attributes for arr in attr.arrays],
+                name_extra=next(counter),
+            )
 
         @eventhandler(Event.ABC)
         def abc_handler(self, event):

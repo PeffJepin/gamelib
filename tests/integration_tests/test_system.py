@@ -5,7 +5,7 @@ import pytest
 
 from src.gamelib import events, SystemStop, Update
 from src.gamelib.events import eventhandler, Event
-from src.gamelib.system import SystemUpdateComplete, PublicAttribute
+from src.gamelib.system import SystemUpdateComplete, PublicAttribute, System
 from ..conftest import PatchedSystem
 
 
@@ -39,11 +39,10 @@ class TestSystem:
             assert "updated" == value
 
     def test_process_shuts_down_gracefully_on_stop_event(self):
+        System.SHARED_BLOCK = ExampleSystem.make_test_shm_block()
         conn, process = ExampleSystem.run_in_process(max_entities=10)
         conn.send((SystemStop(), None))
         process.join(5)
-        ExampleSystem.teardown_shared_state()
-
         assert process.exitcode == 0
 
     def test_posts_update_complete_event_after_updating(self, pipe_reader):
@@ -57,6 +56,7 @@ class TestSystem:
     def test_public_attribute_access_before_init(self):
         with pytest.raises(FileNotFoundError):
             arr = ExampleComponent.nums
+            print(arr.is_open)
 
     def test_public_attribute_access_after_init(self):
         with self.system_tester(ExampleSystem):
@@ -77,16 +77,12 @@ class TestSystem:
 
     @contextmanager
     def system_tester(self, sys_type, max_entities=100):
-        sys_type.setup_shared_state()
+        System.SHARED_BLOCK = sys_type.make_test_shm_block()
         conn, process = sys_type.run_in_process(max_entities)
         try:
             yield conn
         finally:
             process.join()
-            sys_type.teardown_shared_state()
-            with pytest.raises(FileNotFoundError):
-                for attr in sys_type.public_attributes:
-                    attr._connect_shm()
 
 
 class ExampleEvent(events.Event):
@@ -110,3 +106,10 @@ class ExampleSystem(PatchedSystem):
 
 class ExampleComponent(ExampleSystem.Component):
     nums = PublicAttribute(np.uint8)
+
+
+@pytest.fixture(autouse=True, scope="function")
+def auto_teardown():
+    if System.SHARED_BLOCK is not None:
+        System.SHARED_BLOCK.unlink()
+        System.SHARED_BLOCK = None

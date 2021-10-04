@@ -1,3 +1,4 @@
+import itertools
 import logging
 import multiprocessing as mp
 import pathlib
@@ -9,14 +10,11 @@ from typing import Tuple, Callable
 import pytest
 from PIL import Image
 
+from src.gamelib.sharedmem import SharedBlock
 from src.gamelib.system import System
 from src.gamelib.textures import Asset
 
-
-def patch_shm_names(system_type, extra):
-    for attr in system_type.public_attributes:
-        patched_value = attr._shm_id + str(extra)
-        attr.__dict__['_shm_id'] = patched_value
+counter = itertools.count(10_000)
 
 
 class RecordedCallback:
@@ -119,10 +117,9 @@ class SystemRunner(mp.Process):
         if message == self.GET_STATUS:
             return self.conn.send(self.READY)
         elif isinstance(message, tuple):
-            sys_type, conn, max_entities, shm_extra = message
-            patch_shm_names(sys_type, shm_extra)
+            sys_type, conn, max_entities, shm_block = message
             self.conn.send("STARTING SYSTEM")
-            sys_type._run(conn, max_entities, _runner_conn=self.conn)
+            sys_type._run(conn, max_entities, shm_block, _runner_conn=self.conn)
 
     @classmethod
     def get_connection(cls):
@@ -157,20 +154,22 @@ class PatchedSystem(System):
 
     @classmethod
     def run_in_process(cls, max_entities):
-        shm_extra = time.time()
-        patch_shm_names(cls, shm_extra)
-
         runner_connection = SystemRunner.get_connection()
         local_conn, internal_conn = mp.Pipe()
-        start_system_command = (cls, internal_conn, max_entities, shm_extra)
+        start_system_command = (cls, internal_conn, max_entities, System.SHARED_BLOCK)
         runner_connection.send(start_system_command)
 
-        assert runner_connection.poll(1)
+        assert runner_connection.poll(3)
         message = runner_connection.recv()
         if isinstance(message, Exception):
             raise message
         assert message == "STARTING SYSTEM"
         return local_conn, (MockProcess(runner_connection))
+
+    @classmethod
+    def make_test_shm_block(cls):
+        arrays = [arr for attr in cls.public_attributes for arr in attr.arrays]
+        return SharedBlock(arrays, name_extra=next(counter))
 
 
 class MockProcess:
@@ -213,3 +212,10 @@ def pytest_sessionfinish(session, exitstatus):
 @pytest.fixture(autouse=True, scope="session")
 def setup_logging():
     logging.basicConfig(level=logging.DEBUG)
+
+
+@pytest.fixture(autouse=True, scope="function")
+def cleanup_sharedblock():
+    if System.SHARED_BLOCK is not None:
+        System.SHARED_BLOCK.unlink()
+        System.SHARED_BLOCK = None

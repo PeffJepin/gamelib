@@ -1,37 +1,72 @@
+import multiprocessing
 from contextlib import contextmanager
+from multiprocessing import shared_memory
 
 import numpy as np
-import pytest
 
-from src.gamelib.sharedmem import SharedArray, DoubleBufferedArray
+from src.gamelib.sharedmem import SharedArray, DoubleBufferedArray, SharedBlock
 
 
 class TestSharedArray:
-    def test_must_be_created_before_use(self):
-        with pytest.raises(FileNotFoundError):
-            arr = SharedArray("id", (10,), np.uint8)
+    def test_not_allocated_on_init(self):
+        arr = SharedArray("id", (10,), int)
+        assert arr._arr is None
 
-        arr = SharedArray.create("id", (10,), np.uint8)
-        arr.unlink()
+    def test_create_returns_an_allocated_instance(self):
+        arr = SharedArray.create("id", (10,), int)
+        try:
+            assert all(arr == 0)
+        finally:
+            arr.unlink()
 
-    def test_denies_connection_after_all_connections_closed(self):
-        initial = np.array([1, 2, 3])
-        arr1 = SharedArray.create("id", array=initial)
-        arr1.unlink()
+    def test_automatically_tries_to_load_into_an_existing_allocation(self):
+        arr = SharedArray.create("id", (10,), int)
+        arr1 = SharedArray("id", (10,), int)
+        try:
+            arr[0] = 33
+            assert arr1[0] == 33
+        finally:
+            arr1.close()
+            arr.unlink()
 
-        with pytest.raises(FileNotFoundError):
-            SharedArray("id", initial.shape, initial.dtype)
+    def test_can_open_a_view_into_given_shm(self):
+        arr = SharedArray("id", (10,), int)
+        try:
+            blank = np.zeros((10,), int)
+            shm = shared_memory.SharedMemory(
+                "some name", create=True, size=blank.nbytes
+            )
+            arr.open_view(shm)
+            shm = None
+
+            assert all(arr[:] == 0)
+        finally:
+            arr.unlink()
 
     def test_close_only_effects_one_instance(self):
         initial = np.array([1, 2, 3])
         arr1 = SharedArray.create("id", array=initial)
-        arr2 = SharedArray("id", arr1.shape, arr1.dtype)
+        arr2 = SharedArray("id", arr1._shape, arr1._dtype)
         arr1.close()
 
         try:
             assert all(initial == arr2)
         finally:
             arr2.unlink()
+
+    def test_is_open(self):
+        arrays = [SharedArray(i, (1,), int) for i in range(2)]
+        try:
+            assert not any([arr.is_open for arr in arrays])
+
+            for arr in arrays:
+                arr.allocate()
+                assert arr.is_open
+                arr.close()
+                assert not arr.is_open
+        finally:
+            for arr in arrays:
+                arr.unlink()
 
     def test_eq(self):
         with self.shared_numpy([1, 2, 3]) as arr:
@@ -199,32 +234,21 @@ class TestDoubleBufferedArray:
             dbl *= 10
             dbl -= 5
 
-    def test_access_from_multiple_objects(self):
-        dbl1 = DoubleBufferedArray.create("1", shape=(10,), dtype=np.uint8)
-
-        dbl1[:] = 200
-        dbl1.flip()
-
-        dbl2 = DoubleBufferedArray("1", (10,), np.uint8)
-        try:
-            assert np.all(dbl2 == 200)
-        finally:
-            dbl2.close()
-            dbl1.unlink()
-
-    def test_swap_effects_all_instances(self):
+    def test_flip_effects_all_instances(self):
         dbl1 = DoubleBufferedArray.create("id", shape=(10,), dtype=np.uint8)
         dbl2 = DoubleBufferedArray("id", (10,), np.uint8)
         dbl3 = DoubleBufferedArray("id", (10,), np.uint8)
-
+        for arr in (arrs := (dbl1, dbl2, dbl3)):
+            print(arr[:])
         dbl1[:] = 123
-
+        for arr in arrs:
+            print(arr[:])
         try:
             for arr in (dbl1, dbl2, dbl3):
-                assert not np.all(arr == 123)
-            DoubleBufferedArray("id", (10,), np.uint8).flip()
+                assert all(arr == 0)
+            dbl1.flip()
             for arr in (dbl1, dbl2, dbl3):
-                assert np.all(arr == 123)
+                assert all(arr == 123)
         finally:
             dbl3.close()
             dbl2.close()
@@ -244,10 +268,73 @@ class TestDoubleBufferedArray:
         dbl = DoubleBufferedArray.create("id", array=arr)
         try:
             yield dbl
-            # some operations done with dbl here
-        finally:
             assert isinstance(dbl, DoubleBufferedArray)
             assert all(dbl[:] == initial_data[:])
             dbl.flip()
             assert all(dbl[:] == expected_data[:])
+        finally:
             dbl.unlink()
+
+
+class TestSharedBlock:
+    def test_shared_arrays_are_automatically_allocated(self):
+        arrays = [SharedArray(i, (20,), int) for i in range(4)]
+        blk = SharedBlock(arrays)
+
+        try:
+            assert all(arr.is_open for arr in arrays)
+        finally:
+            blk.unlink()
+
+    def test_keys_can_be_mutated(self):
+        arrays = [SharedArray(i, (20,), int) for i in range(4)]
+        blk = SharedBlock(arrays, name_extra="_mutated")
+
+        view0 = SharedArray("0_mutated", (20,), int)
+        try:
+            print(arrays[0]._shm.name)
+            arrays[0][:] = 100
+            assert all(view0[:] == 100)
+        finally:
+            view0.unlink()
+            blk.unlink()
+
+    def test_allocated_arrays_can_connect_new_views(self):
+        arrays = [SharedArray(i, (20,), int) for i in range(4)]
+        blk = SharedBlock(arrays, name_extra="_mutated")
+
+        view0 = SharedArray(0, (20,), int)
+        view1 = SharedArray(1, (20,), int)
+        try:
+            assert not view0.is_open and not view1.is_open
+            blk.connect_arrays(view0, view1)
+            assert view0.is_open and view1.is_open
+            arrays[0][:] = 100
+            arrays[1][:] = 200
+            assert all(view0[:] == arrays[0][:])
+            assert all(view1[:] == arrays[1][:])
+        finally:
+            view0.unlink()
+            view1.unlink()
+            blk.unlink()
+
+    def test_can_serve_shm_to_arrays_across_a_pipe(self):
+        a, b = multiprocessing.Pipe()
+        arrays = [SharedArray(i, (20,), int) for i in range(4)]
+        blk1 = SharedBlock(arrays, name_extra="_mutated")
+
+        a.send(blk1)
+        assert b.poll(1)
+        blk2 = b.recv()
+
+        view = SharedArray(0, (20,), int)
+        try:
+            assert not view.is_open
+            blk2.connect_arrays(view)
+            assert view.is_open
+            arrays[0][:] = 100
+            assert all(view[:] == arrays[0][:])
+        finally:
+            view.unlink()
+            blk2.close()
+            blk1.unlink()
