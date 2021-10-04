@@ -59,7 +59,10 @@ class SharedBlock:
         for array in self._array_lookup.values():
             array.unlink()
         for shm in self._shm_lookup.values():
-            shm.unlink()
+            try:
+                shm.unlink()
+            except FileNotFoundError:
+                pass
         self._array_lookup = None
         self._shm_lookup = None
 
