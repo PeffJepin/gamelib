@@ -56,7 +56,6 @@ class TestSystem:
     def test_public_attribute_access_before_init(self):
         with pytest.raises(FileNotFoundError):
             arr = ExampleComponent.nums
-            print(arr.is_open)
 
     def test_public_attribute_access_after_init(self):
         with self.system_tester(ExampleSystem):
@@ -77,7 +76,7 @@ class TestSystem:
 
     @contextmanager
     def system_tester(self, sys_type, max_entities=100):
-        System.SHARED_BLOCK = sys_type.make_test_shm_block()
+        System.set_shared_block(sys_type.make_test_shm_block())
         conn, process = sys_type.run_in_process(max_entities)
         try:
             yield conn
@@ -106,10 +105,3 @@ class ExampleSystem(PatchedSystem):
 
 class ExampleComponent(ExampleSystem.Component):
     nums = PublicAttribute(np.uint8)
-
-
-@pytest.fixture(autouse=True, scope="function")
-def auto_teardown():
-    if System.SHARED_BLOCK is not None:
-        System.SHARED_BLOCK.unlink()
-        System.SHARED_BLOCK = None

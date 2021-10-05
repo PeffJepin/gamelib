@@ -22,6 +22,9 @@ class SomeOtherEvent(Event):
     pass
 
 
+12
+
+
 class TestMessageBus:
     def test_does_call_registered_callback(self, recorded_callback):
         mb = MessageBus()

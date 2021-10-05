@@ -8,7 +8,12 @@ from src.gamelib import environment
 from src.gamelib.environment import UpdateComplete
 from src.gamelib.events import MessageBus, eventhandler, Event
 from src.gamelib.sharedmem import SharedBlock
-from src.gamelib.system import PublicAttribute, SystemUpdateComplete, ArrayAttribute, System
+from src.gamelib.system import (
+    PublicAttribute,
+    SystemUpdateComplete,
+    ArrayAttribute,
+    System,
+)
 from src.gamelib.textures import Asset, TextureAtlas
 from ..conftest import PatchedSystem, RecordedCallback
 
@@ -103,7 +108,6 @@ class TestEnvironment:
             mb.post_event(Event(), key="QUERY_PUBLIC_ATTR_LENGTH")
             mb.post_event(Update())
             recorded_callback.wait_for_response()
-
             assert 111 == recorded_callback.args[0].value
 
     def test_array_attr_correct_length_in_process(
@@ -134,13 +138,16 @@ class TestEnvironment:
         update_watcher = RecordedCallback()
         mb.register(Response.PUBLIC_ATTR_MULTIPLE_ACCESS, response_watcher)
         mb.register(UpdateComplete, update_watcher)
+
         with create_test_env(mb, loaded=True) as env:
             for i in range(10):
                 mb.post_event(Event(), key="PUBLIC_ATTR_MULTIPLE_ACCESS")
                 mb.post_event(Update())
                 response_watcher.wait_for_response()
 
-                assert i == response_watcher.args[0].value == Component1.public_attr[0]
+                assert i == Component1.public_attr[0]
+                assert i == response_watcher.args[0].value
+
                 if update_watcher.called <= i:
                     update_watcher.wait_for_response()
                 env.update_public_attributes()
@@ -205,11 +212,9 @@ def create_test_env(image_file_maker, fake_ctx):
         SYSTEMS = [System1, System2]
 
         def _init_shm(self):
-            all_public_attributes = sum((system.public_attributes for system in self.SYSTEMS), [])
-            System.SHARED_BLOCK = SharedBlock(
-                [arr for attr in all_public_attributes for arr in attr.arrays],
-                name_extra=next(counter)
-            )
+            shared_arrays = sum((system.shared_arrays for system in self.SYSTEMS), [])
+            shared_block = SharedBlock(shared_arrays, name_extra=next(counter))
+            System.set_shared_block(shared_block)
 
         @eventhandler(Event.ABC)
         def abc_handler(self, event):
@@ -221,8 +226,8 @@ def create_test_env(image_file_maker, fake_ctx):
 
     @contextmanager
     def env_manager(mb=None, *, max_entities=100, loaded=False):
-        ExampleEnvironment._MAX_ENTITIES = max_entities
         env = ExampleEnvironment(mb or MessageBus())
+        env._MAX_ENTITIES = max_entities
         try:
             if loaded:
                 env.load(fake_ctx)
@@ -231,3 +236,11 @@ def create_test_env(image_file_maker, fake_ctx):
             env.exit()
 
     return env_manager
+
+
+@pytest.fixture(autouse=True)
+def auto_cleanup():
+    for attr in System1.public_attributes:
+        attr.open = False
+    for attr in System2.public_attributes:
+        attr.open = False

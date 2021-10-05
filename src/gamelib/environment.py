@@ -60,9 +60,7 @@ class Environment(abc.ABC):
         """
         Cleans up resources this Environment is using and exits the MessageBus.
         """
-        if System.SHARED_BLOCK is not None:
-            System.SHARED_BLOCK.unlink()
-            System.SHARED_BLOCK = None
+        System.teardown_shared_state()
         if not self._loaded:
             return
         self._release_assets()
@@ -128,12 +126,9 @@ class Environment(abc.ABC):
             self._running_systems[system] = (process, conn)
 
     def _init_shm(self):
-        all_public_attributes = sum(
-            (system.public_attributes for system in self.SYSTEMS), []
-        )
-        System.SHARED_BLOCK = SharedBlock(
-            [arr for attr in all_public_attributes for arr in attr.arrays]
-        )
+        System.MAX_ENTITIES = self._MAX_ENTITIES
+        arrays = sum((system.shared_arrays for system in self.SYSTEMS), [])
+        System.set_shared_block(SharedBlock(arrays))
 
     @eventhandler(SystemUpdateComplete)
     def _track_system_updates(self, event):

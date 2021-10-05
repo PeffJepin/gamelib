@@ -238,11 +238,7 @@ class TestDoubleBufferedArray:
         dbl1 = DoubleBufferedArray.create("id", shape=(10,), dtype=np.uint8)
         dbl2 = DoubleBufferedArray("id", (10,), np.uint8)
         dbl3 = DoubleBufferedArray("id", (10,), np.uint8)
-        for arr in (arrs := (dbl1, dbl2, dbl3)):
-            print(arr[:])
         dbl1[:] = 123
-        for arr in arrs:
-            print(arr[:])
         try:
             for arr in (dbl1, dbl2, dbl3):
                 assert all(arr == 0)
@@ -292,7 +288,6 @@ class TestSharedBlock:
 
         view0 = SharedArray("0_mutated", (20,), int)
         try:
-            print(arrays[0]._shm.name)
             arrays[0][:] = 100
             assert all(view0[:] == 100)
         finally:

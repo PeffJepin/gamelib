@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from src.gamelib.sharedmem import SharedBlock
 from src.gamelib.system import System, ArrayAttribute, PublicAttribute
 
 
@@ -13,14 +14,24 @@ class TestSystem:
         assert self.System1.Component not in system_component_subclasses
         assert self.System2.Component not in system_component_subclasses
 
-    def test_can_find_related_public_attributes(self):
-        all_public_attrs = [
-            self.Comp1.__dict__["attr1"],
-            self.Comp1.__dict__["attr2"],
-            self.Comp2.__dict__["attr1"],
+    def test_finds_public_attributes(self):
+        attrs = [
+            vars(self.Comp1)["attr1"],
+            vars(self.Comp1)["attr2"],
+            vars(self.Comp2)["attr1"],
         ]
-        for attr in self.System1.public_attributes:
-            assert attr in all_public_attrs
+        discovered = self.System1.public_attributes
+        assert all([attr in discovered for attr in attrs])
+
+    def test_finds_shared_arrays(self):
+        attrs = [
+            vars(self.Comp1)["attr1"],
+            vars(self.Comp1)["attr2"],
+            vars(self.Comp2)["attr1"],
+        ]
+        arrays = [array for attr in attrs for array in attr.arrays]
+        for array in self.System1.shared_arrays:
+            assert array in arrays
 
     def test_can_find_related_array_attributes(self):
         all_array_attrs = [
@@ -51,7 +62,7 @@ class TestSystem:
 class TestArrayAttribute:
     def test_types_receive_instance_of_the_array(self):
         assert self.ExampleComponent.attr.dtype == np.uint8
-        assert (100,) == self.ExampleComponent.attr.shape
+        assert isinstance(self.ExampleComponent.attr[:], np.ndarray)
 
     def test_get_on_instance_indexes_by_entity_id(self):
         self.ExampleComponent.attr[10] = 150
@@ -72,20 +83,20 @@ class TestArrayAttribute:
                 attr = ArrayAttribute(int, 10)
 
     def test_index_error_on_out_of_bounds_entity_id(self):
-        obj = self.ExampleComponent(1999)
+        obj = self.ExampleComponent(1_000_000)
 
         with pytest.raises(IndexError):
             obj.attr = 100
 
     def test_reallocation_to_a_new_size(self):
         assert 25 != len(self.ExampleComponent.attr)
-        self.ExampleSystem.MAX_ENTITIES = 25
-        self.ExampleComponent.__dict__["attr"].reallocate()
+        System.MAX_ENTITIES = 25
+        vars(self.ExampleComponent)["attr"].reallocate()
 
         assert 25 == len(self.ExampleComponent.attr)
 
     class ExampleSystem(System):
-        MAX_ENTITIES = 100
+        pass
 
     class ExampleComponent(ExampleSystem.Component):
         attr = ArrayAttribute(np.uint8)
@@ -99,11 +110,19 @@ class TestPublicAttribute:
     def test_access_can_be_made_after_allocation(self, allocated_attr):
         assert all(ExampleComponent.attr[:] == 0)
 
-    def test_cannot_be_accessed_after_closed(self, allocated_attr):
-        allocated_attr.close_shm()
+    def test_cannot_be_accessed_after_closed(self):
+        attr = vars(ExampleComponent)["attr"]
+        blk = SharedBlock(attr.arrays)
+        System.set_shared_block(blk)
 
-        with pytest.raises(FileNotFoundError):
-            attr = ExampleComponent.attr
+        try:
+            ExampleComponent.attr[:] = 1
+            blk.unlink()
+            attr.open = False
+            with pytest.raises(FileNotFoundError):
+                ExampleComponent.attr
+        finally:
+            blk.unlink()
 
     def test_changes_not_reflected_until_update(self, allocated_attr):
         ExampleComponent.attr[:] = 10
@@ -113,10 +132,15 @@ class TestPublicAttribute:
         assert all(ExampleComponent.attr[:] == 10)
 
     def test_array_size_dictated_by_System_MAX_ENTITIES(self, attr):
-        ExampleSystem.MAX_ENTITIES = 16
-        attr.allocate_shm()
+        System.MAX_ENTITIES = 16
+        attr = vars(ExampleComponent)["attr"]
+        blk = SharedBlock(attr.arrays)
+        System.set_shared_block(blk)
 
-        assert len(ExampleComponent.attr) == 16
+        try:
+            assert len(ExampleComponent.attr) == 16
+        finally:
+            blk.unlink()
 
     def test_indexed_by_object_entity_id(self, allocated_attr):
         inst = ExampleComponent(5)
@@ -129,15 +153,24 @@ class TestPublicAttribute:
     @pytest.fixture
     def attr(self):
         attr = vars(ExampleComponent)["attr"]
-        yield attr
-        attr.unlink_shm()
+        try:
+            yield attr
+        finally:
+            if PublicAttribute.SHARED_BLOCK is not None:
+                PublicAttribute.SHARED_BLOCK.unlink()
+                PublicAttribute.SHARED_BLOCK = None
+            attr.open = False
 
     @pytest.fixture
     def allocated_attr(self):
         attr = vars(ExampleComponent)["attr"]
-        attr.allocate_shm()
-        yield attr
-        attr.unlink_shm()
+        blk = SharedBlock(attr.arrays)
+        System.set_shared_block(blk)
+        try:
+            yield attr
+        finally:
+            attr.open = False
+            blk.unlink()
 
 
 class ExampleSystem(System):

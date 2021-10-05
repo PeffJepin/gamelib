@@ -11,7 +11,7 @@ import pytest
 from PIL import Image
 
 from src.gamelib.sharedmem import SharedBlock
-from src.gamelib.system import System
+from src.gamelib.system import System, PublicAttribute
 from src.gamelib.textures import Asset
 
 counter = itertools.count(10_000)
@@ -117,9 +117,11 @@ class SystemRunner(mp.Process):
         if message == self.GET_STATUS:
             return self.conn.send(self.READY)
         elif isinstance(message, tuple):
-            sys_type, conn, max_entities, shm_block = message
+            system, conn, max_entities, shm_block = message
+
             self.conn.send("STARTING SYSTEM")
-            sys_type._run(conn, max_entities, shm_block, _runner_conn=self.conn)
+
+            system._run(conn, max_entities, shm_block, _runner_conn=self.conn)
 
     @classmethod
     def get_connection(cls):
@@ -153,10 +155,15 @@ class PatchedSystem(System):
         super()._poll()
 
     @classmethod
-    def run_in_process(cls, max_entities):
+    def run_in_process(cls, max_entities, **kwargs):
         runner_connection = SystemRunner.get_connection()
         local_conn, internal_conn = mp.Pipe()
-        start_system_command = (cls, internal_conn, max_entities, System.SHARED_BLOCK)
+        start_system_command = (
+            cls,
+            internal_conn,
+            max_entities,
+            PublicAttribute.SHARED_BLOCK,
+        )
         runner_connection.send(start_system_command)
 
         assert runner_connection.poll(3)
@@ -168,8 +175,7 @@ class PatchedSystem(System):
 
     @classmethod
     def make_test_shm_block(cls):
-        arrays = [arr for attr in cls.public_attributes for arr in attr.arrays]
-        return SharedBlock(arrays, name_extra=next(counter))
+        return SharedBlock(cls.shared_arrays, name_extra=next(counter))
 
 
 class MockProcess:
@@ -215,7 +221,7 @@ def setup_logging():
 
 
 @pytest.fixture(autouse=True, scope="function")
-def cleanup_sharedblock():
-    if System.SHARED_BLOCK is not None:
-        System.SHARED_BLOCK.unlink()
-        System.SHARED_BLOCK = None
+def cleanup_local_shm():
+    if PublicAttribute.SHARED_BLOCK is not None:
+        PublicAttribute.SHARED_BLOCK.unlink()
+        PublicAttribute.SHARED_BLOCK = None

@@ -114,7 +114,7 @@ def eventhandler(event_key):
 
     Parameters
     ----------
-    event_key : tuple[type[Event], Any]
+    event_key : tuple[type[Event], Any] | type[Event]
         The key value for an event is a tuple of the event type and an arbitrary key.
         Because of this each type of event can be subscribed to with an additional key.
 

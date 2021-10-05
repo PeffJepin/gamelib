@@ -36,9 +36,11 @@ class SharedBlock:
 
         Raises
         ------
-        KeyError:
+        FileNotFoundError:
             If this block hasn't been used to allocate the array.
         """
+        if self._shm_lookup is None:
+            raise FileNotFoundError
         for array in arrays:
             shm_name = array.name + self._extra
             shm = self._shm_lookup[shm_name]
@@ -47,22 +49,26 @@ class SharedBlock:
 
     def close(self):
         """Closes this view into the block. Called on every instance for cleanup."""
-        for array in self._array_lookup.values():
-            array.close()
-        for shm in self._shm_lookup.values():
-            shm.close()
+        if self._array_lookup is not None:
+            for array in self._array_lookup.values():
+                array.close()
+        if self._shm_lookup is not None:
+            for shm in self._shm_lookup.values():
+                shm.close()
         self._array_lookup = None
         self._shm_lookup = None
 
     def unlink(self):
         """Un-links the shm. Called once by the main process for the lifetime of the shm."""
-        for array in self._array_lookup.values():
-            array.unlink()
-        for shm in self._shm_lookup.values():
-            try:
-                shm.unlink()
-            except FileNotFoundError:
-                pass
+        if self._array_lookup is not None:
+            for array in self._array_lookup.values():
+                array.unlink()
+        if self._shm_lookup is not None:
+            for shm in self._shm_lookup.values():
+                try:
+                    shm.unlink()
+                except FileNotFoundError:
+                    pass
         self._array_lookup = None
         self._shm_lookup = None
 
@@ -93,11 +99,11 @@ class SharedArray:
 
         Parameters
         ----------
-        name : str
-            Identifier to potentially find an existing shm.
+        name : Any
+            Identifier to potentially find an existing shm. Must cast nicely to str for filename.
         shape : tuple
             numpy.ndarray compatible shape
-        dtype : numpy.dtype
+        dtype : type[int] | type[float] | numpy.dtype
         try_open : bool
             Should this array be opened on __init__ or not
         """
@@ -208,16 +214,15 @@ class SharedArray:
             # Close should still be called on this shm if `unlink` is the request.
             return self.close()
 
-        if self._shm is None:
-            try:
+        try:
+            if self._shm is None:
                 self.open_view()
-            except FileNotFoundError:
-                self._arr = None
-                return
-
-        self._shm.unlink()
-        self._arr = None
-        self._shm = None
+            self._shm.unlink()
+        except FileNotFoundError:
+            pass
+        finally:
+            self._arr = None
+            self._shm = None
 
     def close(self):
         """Should be called from every instance when that particular instance is no longer in use."""
