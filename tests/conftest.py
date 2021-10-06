@@ -175,7 +175,7 @@ class PatchedSystem(System):
 
     @classmethod
     def make_test_shm_block(cls):
-        return SharedBlock(cls.shared_arrays, name_extra=next(counter))
+        return SharedBlock(cls.shared_specs, System.MAX_ENTITIES, name_extra=next(counter))
 
 
 class MockProcess:
@@ -223,5 +223,5 @@ def setup_logging():
 @pytest.fixture(autouse=True, scope="function")
 def cleanup_local_shm():
     if PublicAttribute.SHARED_BLOCK is not None:
-        PublicAttribute.SHARED_BLOCK.unlink()
+        PublicAttribute.SHARED_BLOCK.unlink_shm()
         PublicAttribute.SHARED_BLOCK = None

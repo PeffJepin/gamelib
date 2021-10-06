@@ -60,7 +60,8 @@ class Environment(abc.ABC):
         """
         Cleans up resources this Environment is using and exits the MessageBus.
         """
-        System.teardown_shared_state()
+        for system in self.SYSTEMS:
+            system.teardown_shared_state()
         if not self._loaded:
             return
         self._release_assets()
@@ -127,8 +128,10 @@ class Environment(abc.ABC):
 
     def _init_shm(self):
         System.MAX_ENTITIES = self._MAX_ENTITIES
-        arrays = sum((system.shared_arrays for system in self.SYSTEMS), [])
-        System.set_shared_block(SharedBlock(arrays))
+        specs = sum(
+            (system.shared_specs for system in self.SYSTEMS), []
+        )
+        System.set_shared_block(SharedBlock(specs, self._MAX_ENTITIES))
 
     @eventhandler(SystemUpdateComplete)
     def _track_system_updates(self, event):

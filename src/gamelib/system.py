@@ -3,13 +3,13 @@ from __future__ import annotations
 import multiprocessing as mp
 import traceback
 from multiprocessing.connection import Connection
-from typing import Type, Optional, List
+from typing import Type, List
 
 import numpy as np
 
 from . import Update, SystemStop
 from .events import MessageBus, eventhandler, Event
-from .sharedmem import DoubleBufferedArray, SharedBlock, SharedArray
+from .sharedmem import DoubleBufferedArray, SharedBlock, ArraySpec
 
 
 class BaseComponent:
@@ -57,18 +57,18 @@ class _SystemMeta(type):
         ]
 
     @property
-    def shared_arrays(cls):
+    def shared_specs(cls):
         """
-        Gets a list of all SharedArray instances owned by subclasses of cls.Component
+        Get a list of all the shm ArraySpecs this system implements.
 
         Returns
         -------
-        arrays : List[SharedArray]
+        specs : Iterable[ArraySpec]
         """
-        arrays = []
+        specs = []
         for attr in cls.public_attributes:
-            arrays.extend(attr.arrays)
-        return arrays
+            specs.extend(attr.shared_specs)
+        return specs
 
     @property
     def array_attributes(cls):
@@ -165,7 +165,7 @@ class System(metaclass=_SystemMeta):
     @classmethod
     def teardown_shared_state(cls):
         if PublicAttribute.SHARED_BLOCK is not None:
-            PublicAttribute.SHARED_BLOCK.unlink()
+            PublicAttribute.SHARED_BLOCK.unlink_shm()
             PublicAttribute.SHARED_BLOCK = None
         for attr in cls.public_attributes:
             attr.open = False
@@ -174,7 +174,7 @@ class System(metaclass=_SystemMeta):
         """Local only teardown."""
         if PublicAttribute.SHARED_BLOCK is None:
             return
-        PublicAttribute.SHARED_BLOCK.close()
+        PublicAttribute.SHARED_BLOCK.close_shm()
         PublicAttribute.SHARED_BLOCK = None
         for attr in type(self).public_attributes:
             attr.open = False
@@ -251,10 +251,6 @@ class ArrayAttribute:
         self._array = np.zeros((length,), dtype)
         self.dtype = dtype
 
-    def reallocate(self):
-        """Reallocates the underlying array. Does not preserve data."""
-        self._array = np.zeros((self.length,), self.dtype)
-
     def __set_name__(self, owner, name):
         if not issubclass(owner, BaseComponent):
             raise TypeError(
@@ -281,6 +277,10 @@ class ArrayAttribute:
         index = obj.entity_id
         self._array[index] = value
 
+    def reallocate(self):
+        """Reallocates the underlying array. Does not preserve data."""
+        self._array = np.zeros((self.length,), self.dtype)
+
     @property
     def length(self):
         return System.MAX_ENTITIES
@@ -289,6 +289,7 @@ class ArrayAttribute:
 class PublicAttribute:
 
     SHARED_BLOCK: SharedBlock = None
+    _dbl_buffer: DoubleBufferedArray = None
 
     def __init__(self, dtype):
         """
@@ -311,7 +312,6 @@ class PublicAttribute:
         """
         self.open = False
         self._dtype = dtype
-        self._dbl_buffer = None
 
     def __set_name__(self, owner, name):
         if not issubclass(owner, BaseComponent):
@@ -320,9 +320,8 @@ class PublicAttribute:
             )
         self._owner = owner
         self._name = name
-        self._dbl_buffer = DoubleBufferedArray(
-            name=self._shm_id, shape=(self.length,), dtype=self._dtype, try_open=False
-        )
+        shm_name = f"{owner.__class__.__name__}__{name}"
+        self._dbl_buffer = DoubleBufferedArray(shm_name, self._dtype)
 
     def __get__(self, instance, owner):
         """
@@ -341,7 +340,7 @@ class PublicAttribute:
             If memory has not been allocated by time of access.
         """
         if not self.open:
-            self._connect_shm()
+            self._open()
         if instance is None:
             return self._dbl_buffer
         index = instance.entity_id
@@ -357,9 +356,12 @@ class PublicAttribute:
             If shm has not been allocated by time of use.
         """
         if not self.open:
-            self._connect_shm()
+            self._open()
         index = obj.entity_id
         self._dbl_buffer[index] = value
+
+    def __repr__(self):
+        return f"<PublicAttribute({self._owner.__name__}.{self._name}, open={self._dbl_buffer.is_open})>"
 
     def update(self):
         """
@@ -370,36 +372,16 @@ class PublicAttribute:
         self._dbl_buffer.flip()
 
     @property
-    def length(self):
-        return System.MAX_ENTITIES
+    def shared_specs(self):
+        """
+        Get the underlying shared memory specification.
 
-    @property
-    def system(self):
-        return self._owner.SYSTEM
+        Returns
+        -------
+        specs : tuple[ArraySpec]
+        """
+        return self._dbl_buffer.specs
 
-    @property
-    def arrays(self):
-        if not self.open:
-            self._dbl_buffer = DoubleBufferedArray(
-                name=self._shm_id,
-                shape=(self.length,),
-                dtype=self._dtype,
-                try_open=False,
-            )
-        return self._dbl_buffer.arrays
-
-    @property
-    def _shm_id(self):
-        return f"{self._owner.__name__}__{self._name}"
-
-    def __repr__(self):
-        return f"<PublicAttribute({self._owner.__name__}.{self._name}, open={self._dbl_buffer.is_open})>"
-
-    def _connect_shm(self):
-        self._dbl_buffer = DoubleBufferedArray(
-            name=self._shm_id, shape=(self.length,), dtype=self._dtype, try_open=False
-        )
-        if PublicAttribute.SHARED_BLOCK is None:
-            raise FileNotFoundError("System.SHARED_BLOCK has not been assigned yet.")
-        PublicAttribute.SHARED_BLOCK.connect_arrays(*self._dbl_buffer.arrays)
+    def _open(self):
+        self._dbl_buffer.connect(PublicAttribute.SHARED_BLOCK)
         self.open = True

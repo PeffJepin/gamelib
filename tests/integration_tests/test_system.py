@@ -54,7 +54,7 @@ class TestSystem:
             assert expected == responses
 
     def test_public_attribute_access_before_init(self):
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(Exception):
             arr = ExampleComponent.nums
 
     def test_public_attribute_access_after_init(self):

@@ -66,7 +66,7 @@ class TestEnvironment:
     def test_shared_memory_is_released_after_exit(self, create_test_env):
         with create_test_env(loaded=True) as env:
             env.exit()
-            with pytest.raises(FileNotFoundError):
+            with pytest.raises(Exception):
                 should_raise_error = Component1.public_attr
 
     def test_systems_begin_handling_events_after_load(
@@ -212,8 +212,8 @@ def create_test_env(image_file_maker, fake_ctx):
         SYSTEMS = [System1, System2]
 
         def _init_shm(self):
-            shared_arrays = sum((system.shared_arrays for system in self.SYSTEMS), [])
-            shared_block = SharedBlock(shared_arrays, name_extra=next(counter))
+            shared_specs = sum((system.shared_specs for system in self.SYSTEMS), [])
+            shared_block = SharedBlock(shared_specs, System.MAX_ENTITIES, name_extra="")
             System.set_shared_block(shared_block)
 
         @eventhandler(Event.ABC)
@@ -241,6 +241,6 @@ def create_test_env(image_file_maker, fake_ctx):
 @pytest.fixture(autouse=True)
 def auto_cleanup():
     for attr in System1.public_attributes:
-        attr.open = False
+        attr.is_open = False
     for attr in System2.public_attributes:
-        attr.open = False
+        attr.is_open = False
