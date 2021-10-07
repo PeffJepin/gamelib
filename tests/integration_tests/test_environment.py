@@ -5,14 +5,12 @@ import pytest
 
 from src.gamelib import Update
 from src.gamelib import environment
-from src.gamelib.environment import UpdateComplete
+from src.gamelib.environment import UpdateComplete, EntityCreated, EntityFactory, EntityDestroyed
 from src.gamelib.events import MessageBus, eventhandler, Event
-from src.gamelib.sharedmem import SharedBlock
 from src.gamelib.system import (
     PublicAttribute,
     SystemUpdateComplete,
     ArrayAttribute,
-    System,
 )
 from src.gamelib.textures import Asset, TextureAtlas
 from ..conftest import PatchedSystem, RecordedCallback
@@ -28,7 +26,7 @@ class TestEnvironment:
 
                 assert asset.texture is not None
 
-    def test_assets_dont_have_textures_after_exit(self, create_test_env):
+    def test_assets_do_not_have_textures_after_exit(self, create_test_env):
         with create_test_env(loaded=True) as env:
             env.exit()
 
@@ -153,6 +151,40 @@ class TestEnvironment:
                 env.update_public_attributes()
 
 
+class TestEntityFactory:
+    def test_entity_ids_are_recycled_when_an_entity_is_destroyed(self, recorded_callback):
+        mb = MessageBus()
+        mb.register(EntityCreated, recorded_callback)
+        factory = EntityFactory(mb)
+
+        factory.create()
+        assert EntityCreated(id=0) == recorded_callback.event
+
+        mb.post_event(EntityDestroyed(id=0))
+        factory.create()
+        assert EntityCreated(id=0) == recorded_callback.event
+
+    def test_recycling_avoids_overflowing_max_entities(self):
+        mb = MessageBus()
+        factory = EntityFactory(mb, max_entities=20)
+
+        for _ in range(2):
+            # create to capacity and destroy all a few times
+            for _ in range(20):
+                factory.create()
+
+            for i in range(20):
+                mb.post_event(EntityDestroyed(id=i))
+
+        for _ in range(20):
+            # create exactly to capacity
+            factory.create()
+
+        with pytest.raises(IndexError):
+            # overflow
+            factory.create()
+
+
 class System1(PatchedSystem):
     @eventhandler(Event.QUERY_PUBLIC_ATTR_LENGTH)
     def public_attr_length_response(self, event):
@@ -211,11 +243,6 @@ def create_test_env(image_file_maker, fake_ctx):
 
         SYSTEMS = [System1, System2]
 
-        def _init_shm(self):
-            shared_specs = sum((system.shared_specs for system in self.SYSTEMS), [])
-            shared_block = SharedBlock(shared_specs, System.MAX_ENTITIES, name_extra="")
-            System.set_shared_block(shared_block)
-
         @eventhandler(Event.ABC)
         def abc_handler(self, event):
             self.abc_event_handled += 1
@@ -226,8 +253,8 @@ def create_test_env(image_file_maker, fake_ctx):
 
     @contextmanager
     def env_manager(mb=None, *, max_entities=100, loaded=False):
+        ExampleEnvironment._MAX_ENTITIES = max_entities
         env = ExampleEnvironment(mb or MessageBus())
-        env._MAX_ENTITIES = max_entities
         try:
             if loaded:
                 env.load(fake_ctx)
@@ -240,7 +267,6 @@ def create_test_env(image_file_maker, fake_ctx):
 
 @pytest.fixture(autouse=True)
 def auto_cleanup():
-    for attr in System1.public_attributes:
-        attr.is_open = False
-    for attr in System2.public_attributes:
-        attr.is_open = False
+    for system in PatchedSystem.__subclasses__():
+        for attr in system.public_attributes:
+            attr.open = False

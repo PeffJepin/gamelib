@@ -106,6 +106,10 @@ class Event(metaclass=_EventType):
             other_slots = [(slot, getattr(other, slot)) for slot in other.__slots__]
             return self_slots == other_slots
 
+    def __repr__(self):
+        body = ", ".join(f"{slot}={getattr(self, slot)}" for slot in self.__slots__)
+        return f"<{self.__class__.__name__}({body})>"
+
 
 def eventhandler(event_key):
     """

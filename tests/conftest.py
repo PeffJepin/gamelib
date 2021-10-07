@@ -28,6 +28,10 @@ class RecordedCallback:
         self.kwargs = kwargs
         self.called += 1
 
+    @property
+    def event(self):
+        return self.args[0]
+
     def wait_for_response(self, timeout=1, n=1):
         start = self.called
         ts = time.time()
@@ -35,6 +39,22 @@ class RecordedCallback:
             if self.called >= start + n:
                 return
         raise TimeoutError("No Response")
+
+
+@pytest.fixture
+def fake_message_bus(mocker):
+    class FakeMessageBus(mocker.Mock):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.posted = []
+
+        def post_event(self, event, key=None):
+            self.posted.append(event)
+
+        def pop_event(self, idx=-1):
+            return self.posted.pop(idx)
+
+    return FakeMessageBus()
 
 
 @pytest.fixture
@@ -146,6 +166,7 @@ class PatchedSystem(System):
         self._runner_conn = _runner_conn
 
     def _poll(self):
+        """Service pipe runner connection first."""
         if self._runner_conn.poll(0):
             message = self._runner_conn.recv()
             if message == SystemRunner.STOP:
@@ -156,6 +177,7 @@ class PatchedSystem(System):
 
     @classmethod
     def run_in_process(cls, max_entities, **kwargs):
+        """Dispatch to an already running process."""
         runner_connection = SystemRunner.get_connection()
         local_conn, internal_conn = mp.Pipe()
         start_system_command = (
@@ -221,7 +243,7 @@ def setup_logging():
 
 
 @pytest.fixture(autouse=True, scope="function")
-def cleanup_local_shm():
+def cleanup_global_shm():
     if PublicAttribute.SHARED_BLOCK is not None:
         PublicAttribute.SHARED_BLOCK.unlink_shm()
         PublicAttribute.SHARED_BLOCK = None

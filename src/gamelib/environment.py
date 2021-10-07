@@ -11,6 +11,30 @@ from .system import System, BaseComponent, SystemUpdateComplete
 from .textures import Asset, TextureAtlas
 
 
+class UpdateComplete(Event):
+    pass
+
+
+class EntityCreated(Event):
+    __slots__ = ["id"]
+
+    id: int
+
+
+class EntityDestroyed(Event):
+    __slots__ = ["id"]
+
+    id: int
+
+
+class ComponentCreated(Event):
+    __slots__ = ["entity_id", "type", "args"]
+
+    entity_id: int
+    type: Type[BaseComponent]
+    args: tuple
+
+
 class Environment(abc.ABC):
     ASSETS: list
 
@@ -23,7 +47,7 @@ class Environment(abc.ABC):
 
     def __init__(self, message_bus):
         """
-        Environment handles the lifecycle of System, Entities and Components.
+        Environment handles the lifecycle of Systems, Entities and Components.
         This includes maintaining required assets.
 
         An Environment is not 'loaded' on __init__ and must call load() before
@@ -142,11 +166,29 @@ class Environment(abc.ABC):
         self._message_bus.post_event(UpdateComplete())
 
 
-class UpdateComplete(Event):
-    pass
+class EntityFactory:
+    def __init__(self, message_bus: MessageBus, max_entities=1024):
+        self._mb = message_bus
+        self._mb.register_marked(self)
+        self._id_handout = list(range(max_entities))
+        self._max_entities = max_entities
 
+    def create(self, *components):
+        entity_id = self._id_handout.pop(0)
 
-class Entity:
-    id: int
-    component_types: List[Type[BaseComponent]]
-    tags: List[Hashable]
+        for comp_spec in components:
+            type_, *args = comp_spec
+            event = ComponentCreated(entity_id=entity_id, type=type_, args=tuple(args))
+            self._mb.post_event(event)
+
+        event = EntityCreated(entity_id)
+        self._mb.post_event(event)
+
+    @eventhandler(EntityDestroyed)
+    def _recycle_entity_id(self, event: EntityDestroyed):
+        idx = 0
+        for i, id_ in enumerate(self._id_handout):
+            if id_ > event.id:
+                idx = i
+                break
+        self._id_handout.insert(idx, event.id)

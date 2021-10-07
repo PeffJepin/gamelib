@@ -26,10 +26,10 @@ class TestSystem:
 
             responses = pipe_reader(conn, n=4)
             assert [
-                "updated",
-                10,
-                15,
-                (SystemUpdateComplete(ExampleSystem), None),
+                "updated",  # update() function runs once Update event comes
+                10,  # first sent event is handled
+                15,  # second sent event is handled
+                (SystemUpdateComplete(ExampleSystem), None),  # update complete response after all else
             ] == responses
 
     def test_process_automatically_handles_update_event(self, pipe_reader):
