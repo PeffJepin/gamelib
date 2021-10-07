@@ -152,9 +152,7 @@ class Environment(abc.ABC):
 
     def _init_shm(self):
         System.MAX_ENTITIES = self._MAX_ENTITIES
-        specs = sum(
-            (system.shared_specs for system in self.SYSTEMS), []
-        )
+        specs = sum((system.shared_specs for system in self.SYSTEMS), [])
         System.set_shared_block(SharedBlock(specs, self._MAX_ENTITIES))
 
     @eventhandler(SystemUpdateComplete)

@@ -5,7 +5,12 @@ import pytest
 
 from src.gamelib import Update
 from src.gamelib import environment
-from src.gamelib.environment import UpdateComplete, EntityCreated, EntityFactory, EntityDestroyed
+from src.gamelib.environment import (
+    UpdateComplete,
+    EntityCreated,
+    EntityFactory,
+    EntityDestroyed,
+)
 from src.gamelib.events import MessageBus, eventhandler, Event
 from src.gamelib.system import (
     PublicAttribute,
@@ -152,7 +157,9 @@ class TestEnvironment:
 
 
 class TestEntityFactory:
-    def test_entity_ids_are_recycled_when_an_entity_is_destroyed(self, recorded_callback):
+    def test_entity_ids_are_recycled_when_an_entity_is_destroyed(
+        self, recorded_callback
+    ):
         mb = MessageBus()
         mb.register(EntityCreated, recorded_callback)
         factory = EntityFactory(mb)

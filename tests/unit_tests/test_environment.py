@@ -33,13 +33,16 @@ class TestEntityFactory:
     def test_posts_component_created_events(self, fake_message_bus):
         factory = EntityFactory(fake_message_bus)
 
-        factory.create(
-            (SomeComponent, "9"),
-            (SomeComponent, "1")
-        )
+        factory.create((SomeComponent, "9"), (SomeComponent, "1"))
 
-        assert ComponentCreated(entity_id=0, type=SomeComponent, args=("9",)) in fake_message_bus.posted
-        assert ComponentCreated(entity_id=0, type=SomeComponent, args=("1",)) in fake_message_bus.posted
+        assert (
+            ComponentCreated(entity_id=0, type=SomeComponent, args=("9",))
+            in fake_message_bus.posted
+        )
+        assert (
+            ComponentCreated(entity_id=0, type=SomeComponent, args=("1",))
+            in fake_message_bus.posted
+        )
 
 
 class SomeComponent(BaseComponent):

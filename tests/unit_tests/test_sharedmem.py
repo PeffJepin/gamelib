@@ -8,11 +8,11 @@ from src.gamelib.sharedmem import DoubleBufferedArray, SharedBlock, ArraySpec
 
 class TestDoubleBufferedArray:
     def test_not_open_upon_init(self):
-        dbl = DoubleBufferedArray('my name', float)
+        dbl = DoubleBufferedArray("my name", float)
         assert not dbl.is_open
 
     def test_is_open_after_connecting_to_shared_block(self):
-        dbl = DoubleBufferedArray('my name', int)
+        dbl = DoubleBufferedArray("my name", int)
         blk = SharedBlock(dbl.specs, 8)
         dbl.connect(blk)
 
@@ -188,7 +188,7 @@ class TestSharedBlock:
 
     def test_arrays_share_the_same_memory_when_created_across_a_pipe_connection(self):
         a, b = multiprocessing.Pipe()
-        spec = ArraySpec('some id', int)
+        spec = ArraySpec("some id", int)
         blk1 = SharedBlock([spec], 8)
         arr1 = blk1[spec]
 

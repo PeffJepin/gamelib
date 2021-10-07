@@ -197,7 +197,9 @@ class PatchedSystem(System):
 
     @classmethod
     def make_test_shm_block(cls):
-        return SharedBlock(cls.shared_specs, System.MAX_ENTITIES, name_extra=next(counter))
+        return SharedBlock(
+            cls.shared_specs, System.MAX_ENTITIES, name_extra=next(counter)
+        )
 
 
 class MockProcess:

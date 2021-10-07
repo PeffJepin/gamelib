@@ -76,7 +76,9 @@ class SharedBlock:
 
     def _allocate_shm(self, spec: ArraySpec) -> None:
         init = np.zeros((self._max_entities,), spec.dtype)
-        shm = shared_memory.SharedMemory(spec.name + self._extra, create=True, size=init.nbytes)
+        shm = shared_memory.SharedMemory(
+            spec.name + self._extra, create=True, size=init.nbytes
+        )
         arr = np.ndarray((self._max_entities,), spec.dtype, shm.buf)
         arr[:] = init[:]
         self._array_lookup[spec.name] = arr
@@ -95,16 +97,14 @@ class DoubleBufferedArray:
     """
 
     def __init__(self, name, dtype):
-        self._read_spec = ArraySpec(name + '_r', dtype)
-        self._write_spec = ArraySpec(name + '_w', dtype)
+        self._read_spec = ArraySpec(name + "_r", dtype)
+        self._write_spec = ArraySpec(name + "_w", dtype)
         self._read_arr = None
         self._write_arr = None
 
     @property
     def is_open(self):
-        return not any(
-            (arr is None for arr in (self._read_arr, self._write_arr))
-        )
+        return not any((arr is None for arr in (self._read_arr, self._write_arr)))
 
     @property
     def specs(self):
