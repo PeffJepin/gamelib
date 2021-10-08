@@ -6,11 +6,15 @@ from multiprocessing.connection import Pipe
 import pytest
 
 from src.gamelib.events import (
-    MessageBus,
     Event,
     eventhandler,
     find_eventhandlers,
     _HANDLER_INJECTION_ATTRIBUTE,
+    register,
+    post_event,
+    unregister,
+    service_connection,
+    stop_connection_service,
 )
 
 
@@ -22,68 +26,58 @@ class SomeOtherEvent(Event):
     pass
 
 
-12
-
-
-class TestMessageBus:
+class TestEventHandling:
     def test_does_call_registered_callback(self, recorded_callback):
-        mb = MessageBus()
-        mb.register(Event, recorded_callback)
+        register(Event, recorded_callback)
 
-        mb.post_event(Event())
+        post_event(Event())
 
         assert recorded_callback.called
 
     def test_does_not_call_registered_callback(self, recorded_callback):
-        mb = MessageBus()
-        mb.register(Event, recorded_callback)
+        register(Event, recorded_callback)
 
-        mb.post_event(SomeEvent())
+        post_event(SomeEvent())
 
         assert not recorded_callback.called
 
     def test_does_call_registered_with_key(self, recorded_callback):
-        mb = MessageBus()
-        mb.register(Event.B, recorded_callback)
+        register(Event.B, recorded_callback)
 
-        mb.post_event(Event(), key="B")
+        post_event(Event(), key="B")
 
         assert recorded_callback.called
 
     def test_does_not_call_registered_with_key(self, recorded_callback):
-        mb = MessageBus()
-        mb.register(Event.B, recorded_callback)
+        register(Event.B, recorded_callback)
 
-        mb.post_event(Event(), key=1)
+        post_event(Event(), key=1)
 
         assert not recorded_callback.called
 
     def test_callback_receives_event_as_arg(self, recorded_callback):
-        mb = MessageBus()
-        mb.register(Event, recorded_callback)
+        register(Event, recorded_callback)
 
         event = Event()
-        mb.post_event(event)
+        post_event(event)
 
         assert recorded_callback.called
-        assert recorded_callback.args[0] is event
+        assert recorded_callback.event is event
 
     def test_not_called_after_being_unregistered(self, recorded_callback):
-        mb = MessageBus()
-        mb.register(Event, recorded_callback)
+        register(Event, recorded_callback)
 
-        mb.unregister(Event, recorded_callback)
-        mb.post_event(Event())
+        unregister(Event, recorded_callback)
+        post_event(Event())
 
         assert not recorded_callback.called
 
     def test_feeds_event_and_key_into_serviced_pipe(self):
         a, b = Pipe()
-        mb = MessageBus()
-        mb.service_connection(a, Event)
-
         event = Event()
-        mb.post_event(event)
+
+        service_connection(a, Event)
+        post_event(event)
 
         if not b.poll(10 / 1_000):
             raise AssertionError("Nothing in pipe.")
@@ -91,19 +85,18 @@ class TestMessageBus:
 
     def test_does_not_feed_event_into_serviced_pipe(self):
         a, b = Pipe()
-        mb = MessageBus()
-        mb.service_connection(a, Event)
-
         event = SomeEvent()
-        mb.post_event(event)
+
+        service_connection(a, Event)
+        post_event(event)
 
         assert not b.poll(0)
 
     def test_reads_event_sent_through_pipe_and_posts_them(self, recorded_callback):
         a, b = Pipe()
-        mb = MessageBus()
-        mb.service_connection(a)
-        mb.register(Event, recorded_callback)
+
+        service_connection(a)
+        register(Event, recorded_callback)
 
         b.send((Event(), None))
         for _ in range(100):
@@ -114,9 +107,9 @@ class TestMessageBus:
 
     def test_posts_events_sent_through_pipe_with_key(self, recorded_callback):
         a, b = Pipe()
-        mb = MessageBus()
-        mb.service_connection(a)
-        mb.register(Event.ABC, recorded_callback)
+
+        service_connection(a)
+        register(Event.ABC, recorded_callback)
 
         b.send((Event(), "ABC"))
         for _ in range(100):
@@ -127,23 +120,12 @@ class TestMessageBus:
 
     def test_pipe_does_not_get_event_after_service_stops(self):
         a, b = Pipe()
-        mb = MessageBus()
-        mb.service_connection(a, Event)
+        service_connection(a, Event)
 
-        mb.stop_connection_service(a)
-        mb.post_event(Event())
+        stop_connection_service(a)
+        post_event(Event())
 
         assert not b.poll(0)
-
-    def test_initial_handlers_can_be_passed_to_init_method(self, recorded_callback):
-        handlers = {Event: [recorded_callback], Event.ABC: [recorded_callback]}
-        mb = MessageBus(handlers)
-
-        mb.post_event(Event())
-        assert 1 == recorded_callback.called
-
-        mb.post_event(Event(), key="ABC")
-        assert 2 == recorded_callback.called
 
 
 class TestHandlerDecorator:

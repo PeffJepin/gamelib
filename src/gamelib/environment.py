@@ -2,10 +2,19 @@ from __future__ import annotations
 
 import abc
 from multiprocessing.connection import Connection
-from typing import List, Type, Hashable, Dict
+from typing import List, Type, Dict
 
-from . import SystemStop
-from .events import MessageBus, find_eventhandlers, eventhandler, Event
+from . import SystemStop, events
+from .events import (
+    find_eventhandlers,
+    eventhandler,
+    Event,
+    register_marked,
+    unregister_marked,
+    stop_connection_service,
+    post_event,
+    service_connection,
+)
 from .sharedmem import SharedBlock
 from .system import System, BaseComponent, SystemUpdateComplete, ProcessSystem
 from .textures import Asset, TextureAtlas
@@ -42,22 +51,16 @@ class Environment(abc.ABC):
     _MAX_ENTITIES: int = 1024
 
     _system_connections: Dict[Type[System], Connection]
-    _message_bus: MessageBus
     _shm_block: SharedBlock = None
 
-    def __init__(self, message_bus):
+    def __init__(self):
         """
         Environment handles the lifecycle of Systems, Entities and Components.
         This includes maintaining required assets.
 
         An Environment is not 'loaded' on __init__ and must call load() before
         being used. Exit should be called when the Environment is no longer in use.
-
-        Parameters
-        ----------
-        message_bus : MessageBus
         """
-        self._message_bus = message_bus
         self._system_connections = dict()
         self._index_assets()
         self._loaded = False
@@ -74,7 +77,7 @@ class Environment(abc.ABC):
             Rendering context to upload GFX assets to.
         """
         System.MAX_ENTITIES = self._MAX_ENTITIES
-        self._message_bus.register_marked(self)
+        register_marked(self)
         self._load_assets(ctx)
         self._init_shm()
         self._start_systems()
@@ -90,7 +93,7 @@ class Environment(abc.ABC):
             return
         self._release_assets()
         self._shutdown_systems()
-        self._message_bus.unregister_marked(self)
+        unregister_marked(self)
         self._loaded = False
 
     def find_asset(self, label):
@@ -136,9 +139,9 @@ class Environment(abc.ABC):
                 item.release_texture()
 
     def _shutdown_systems(self):
-        self._message_bus.post_event(SystemStop())
+        post_event(SystemStop())
         for _, (process, conn) in self._running_systems.items():
-            self._message_bus.stop_connection_service(conn)
+            stop_connection_service(conn)
             process.join()
         self._running_systems = None
 
@@ -147,7 +150,7 @@ class Environment(abc.ABC):
         for system in self.SYSTEMS:
             conn, process = system.run_in_process(self._MAX_ENTITIES)
             system_handler_types = find_eventhandlers(system).keys()
-            self._message_bus.service_connection(conn, *system_handler_types)
+            service_connection(conn, *system_handler_types)
             self._running_systems[system] = (process, conn)
 
     def _init_shm(self):
@@ -161,13 +164,12 @@ class Environment(abc.ABC):
         if self._system_update_complete_counter != len(self.SYSTEMS):
             return
         self._system_update_complete_counter = 0
-        self._message_bus.post_event(UpdateComplete())
+        events.post_event(UpdateComplete())
 
 
 class EntityFactory:
-    def __init__(self, message_bus: MessageBus, max_entities=1024):
-        self._mb = message_bus
-        self._mb.register_marked(self)
+    def __init__(self, max_entities=1024):
+        register_marked(self)
         self._id_handout = list(range(max_entities))
         self._max_entities = max_entities
 
@@ -177,10 +179,10 @@ class EntityFactory:
         for comp_spec in components:
             type_, *args = comp_spec
             event = ComponentCreated(entity_id=entity_id, type=type_, args=tuple(args))
-            self._mb.post_event(event)
+            post_event(event)
 
         event = EntityCreated(entity_id)
-        self._mb.post_event(event)
+        post_event(event)
 
     @eventhandler(EntityDestroyed)
     def _recycle_entity_id(self, event: EntityDestroyed):

@@ -8,7 +8,7 @@ from typing import Type, List
 import numpy as np
 
 from . import Update, SystemStop
-from .events import MessageBus, eventhandler, Event
+from .events import eventhandler, Event, register_marked, post_event, unregister_marked
 from .sharedmem import DoubleBufferedArray, SharedBlock, ArraySpec
 
 
@@ -106,7 +106,7 @@ class System(metaclass=_SystemMeta):
 
     MAX_ENTITIES: int = 1024
     Component: Type[BaseComponent]
-    _message_bus: MessageBus
+    _running: bool
 
     def update(self):
         """
@@ -118,11 +118,11 @@ class System(metaclass=_SystemMeta):
         """
 
     def post_event(self, event, key=None):
-        self._message_bus.post_event(event, key)
+        post_event(event, key)
 
     def stop(self):
-        self._message_bus.unregister_marked(self)
         self._running = False
+        unregister_marked(self)
 
     @eventhandler(Update)
     def _update_handler(self, event):
@@ -134,8 +134,7 @@ class ProcessSystem(System):
         self._conn = conn
         self._running = False
         self._event_queue = []
-        self._message_bus = MessageBus()
-        self._message_bus.register_marked(self)
+        register_marked(self)
 
     @classmethod
     def run_in_process(cls, max_entities, **kwargs):
@@ -204,7 +203,7 @@ class ProcessSystem(System):
         try:
             (event, key) = message
             if isinstance(event, Update) or isinstance(event, SystemStop):
-                self._message_bus.post_event(event, key=key)
+                post_event(event, key=key)
             else:
                 self._event_queue.append((event, key))
         except Exception as e:
@@ -227,7 +226,7 @@ class ProcessSystem(System):
     @eventhandler(Update)
     def _update_handler(self, _):
         for (event, key) in self._event_queue:
-            self._message_bus.post_event(event, key=key)
+            post_event(event, key=key)
         self._event_queue = []
         self.update()
         self.post_event(SystemUpdateComplete(type(self)))

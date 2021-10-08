@@ -10,6 +10,8 @@ from typing import Tuple, Callable
 import pytest
 from PIL import Image
 
+from src.gamelib import events
+from src.gamelib.events import clear_handlers
 from src.gamelib.sharedmem import SharedBlock
 from src.gamelib.system import ProcessSystem, PublicAttribute, System
 from src.gamelib.textures import Asset
@@ -20,17 +22,23 @@ counter = itertools.count(10_000)
 class RecordedCallback:
     def __init__(self):
         self.called = 0
-        self.args = None
-        self.kwargs = None
+        self.args = []
+        self.kwargs = []
 
     def __call__(self, *args, **kwargs):
-        self.args = args
-        self.kwargs = kwargs
+        self.args.append(args)
+        self.kwargs.append(kwargs)
         self.called += 1
 
     @property
     def event(self):
-        return self.args[0]
+        """Returns event from most recent call."""
+        return self.args[-1][0]
+
+    @property
+    def events(self):
+        """Returns all invoking events"""
+        return [a[0] for a in self.args]
 
     def wait_for_response(self, timeout=1, n=1):
         start = self.called
@@ -39,22 +47,6 @@ class RecordedCallback:
             if self.called >= start + n:
                 return
         raise TimeoutError("No Response")
-
-
-@pytest.fixture
-def fake_message_bus(mocker):
-    class FakeMessageBus(mocker.Mock):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self.posted = []
-
-        def post_event(self, event, key=None):
-            self.posted.append(event)
-
-        def pop_event(self, idx=-1):
-            return self.posted.pop(idx)
-
-    return FakeMessageBus()
 
 
 @pytest.fixture
@@ -117,6 +109,7 @@ def pipe_await_event():
             elif isinstance(message, tuple) and isinstance(message[0], event_type):
                 return message[0]
         raise TimeoutError("Didn't find event_type while polling connection.")
+
     return _reader
 
 
@@ -153,10 +146,9 @@ class SystemRunner(mp.Process):
         if message == self.GET_STATUS:
             return self.conn.send(self.READY)
         elif isinstance(message, tuple):
+            events.clear_handlers()
             system, conn, max_entities, shm_block = message
-
             self.conn.send("STARTING SYSTEM")
-
             system._run(conn, max_entities, shm_block, _runner_conn=self.conn)
 
     @classmethod
@@ -265,3 +257,8 @@ def cleanup_global_shm():
     if PublicAttribute.SHARED_BLOCK is not None:
         PublicAttribute.SHARED_BLOCK.unlink_shm()
         PublicAttribute.SHARED_BLOCK = None
+
+
+@pytest.fixture(autouse=True, scope="function")
+def cleanup_event_handlers():
+    clear_handlers()

@@ -2,12 +2,22 @@ from __future__ import annotations
 
 import inspect
 import threading
-import warnings
 from collections import defaultdict
 from multiprocessing.connection import Connection
 from typing import Type, Callable, Union, Tuple, Any, Sequence
 
 _HANDLER_INJECTION_ATTRIBUTE = "_gamelib_handler_"
+_event_handlers = defaultdict(list)
+_adapters = dict()
+_adapters_by_event_key = defaultdict(list)
+
+
+def clear_handlers():
+    _event_handlers.clear()
+    _adapters_by_event_key.clear()
+    for adapter in _adapters.values():
+        adapter.stop()
+    _adapters.clear()
 
 
 class _EventType(type):
@@ -175,149 +185,134 @@ def find_eventhandlers(obj):
     return handlers
 
 
-class MessageBus:
-    def __init__(self, initial_handlers=None):
-        """
-        Parameters
-        ----------
-        initial_handlers : dict[EventKey, list[EventHandler]] | None
-            Handlers can be registered after MessageBus construction or passed in this initial dict.
-        """
-        self.handlers = defaultdict(list)
-        if initial_handlers:
-            for event_type, callbacks in initial_handlers.items():
-                if isinstance(event_type, type(Event)):
-                    event_type = (event_type, None)
-                self.handlers[event_type].extend(callbacks)
-        self._adapters = dict()
-        self._adapters_by_event_key = defaultdict(list)
+def register(event_key, *callbacks) -> None:
+    """
+    Register a function as a callback for given event type.
 
-    def register(self, event_key, *callbacks) -> None:
-        """
-        Register a function as a callback for given event type.
+    Parameters
+    ----------
+    event_key : type[Event] | tuple[type[Event], Any]
+        A regular will be described by it's Type
+        A KeyedEvent will be described by a tuple of it's Type and some key value.
+    *callbacks : callable[type[Event], None]
+    """
+    if isinstance(event_key, type(Event)):
+        event_key = (event_key, None)
+    _event_handlers[event_key].extend(callbacks)
 
-        Parameters
-        ----------
-        event_key : type[Event] | tuple[type[Event], Any]
-            A regular will be described by it's Type
-            A KeyedEvent will be described by a tuple of it's Type and some key value.
-        *callbacks : callable[type[Event], None]
-        """
-        if isinstance(event_key, type(Event)):
-            event_key = (event_key, None)
-        self.handlers[event_key].extend(callbacks)
 
-    def unregister(self, event_key, *callbacks) -> None:
-        """
-        Stop handling this event type with this callback.
+def unregister(event_key, *callbacks) -> None:
+    """
+    Stop handling this event type with this callback.
 
-        Parameters
-        ----------
-        event_key : type[Event] | tuple[type[Event], Any]
-        *callbacks : callable[type[Event], None]
-        """
-        if isinstance(event_key, type(Event)):
-            event_key = (event_key, None)
-        for callback in callbacks:
-            try:
-                self.handlers[event_key].remove(callback)
-            except ValueError:
-                warnings.warn(
-                    f"Tried to unregister {callback!r} from {self!r} when it was not registered"
-                )
+    Parameters
+    ----------
+    event_key : type[Event] | tuple[type[Event], Any]
+    *callbacks : callable[type[Event], None]
+    """
+    if isinstance(event_key, type(Event)):
+        event_key = (event_key, None)
+    for callback in callbacks:
+        try:
+            _event_handlers[event_key].remove(callback)
+        except ValueError:
+            pass
 
-    def register_marked(self, obj):
-        """
-        Shorthand for finding the @eventhandler decorated functions on an object
-        and registering them as callbacks.
 
-        Parameters
-        ----------
-        obj : object
-            Object containing @eventhandler marked functions.
-        """
-        for event_key, handlers in find_eventhandlers(obj).items():
-            self.register(event_key, *handlers)
+def register_marked(obj):
+    """
+    Shorthand for finding the @eventhandler decorated functions on an object
+    and registering them as callbacks.
 
-    def unregister_marked(self, obj):
-        """
-        Shorthand for finding @eventhandler decorated functions and
-        unregistering them as callbacks.
+    Parameters
+    ----------
+    obj : object
+        Object containing @eventhandler marked functions.
+    """
+    for event_key, handlers in find_eventhandlers(obj).items():
+        register(event_key, *handlers)
 
-        Parameters
-        ----------
-        obj : object
-            Object containing @eventhandler marked functions
-        """
-        for event_key, handlers in find_eventhandlers(obj).items():
-            self.unregister(event_key, *handlers)
 
-    def post_event(self, event, key=None) -> None:
-        """
-        Calls all callbacks registered to the type of this event. This includes pushing
-        the event out through currently serviced connections.
+def unregister_marked(obj):
+    """
+    Shorthand for finding @eventhandler decorated functions and
+    unregistering them as callbacks.
 
-        Parameters
-        ----------
-        event : Event
-            The event instance to be posted.
-        key : Any
-            Key to be used when posting a KeyedEvent
-        """
-        event_key = (type(event), key)
-        for handler in self.handlers[event_key]:
-            handler(event)
-        for adapter in self._adapters_by_event_key[event_key]:
-            adapter.post_event(event, key)
+    Parameters
+    ----------
+    obj : object
+        Object containing @eventhandler marked functions
+    """
+    for event_key, handlers in find_eventhandlers(obj).items():
+        unregister(event_key, *handlers)
 
-    def service_connection(self, conn, *event_keys) -> None:
-        """
-        MessageBus will send all events it publishes through a serviced connection.
 
-        Parameters
-        ----------
-        conn : Connection
-            multiprocessing.Pipe connection
-        *event_keys : type[Event] | tuple[type[Event], Any]
-            Variable number of EventKeys that should be fed through this pipe.
+def post_event(event, key=None) -> None:
+    """
+    Calls all callbacks registered to the type of this event. This includes pushing
+    the event out through currently serviced connections.
 
-            If any of the keys are just a Type[Event] then they will be
-            assigned None key by default.
-        """
-        processed_keys = tuple(
-            key if isinstance(key, tuple) else (key, None) for key in event_keys
-        )
-        adapter = _ConnectionAdapter(self, conn, processed_keys)
-        for key in processed_keys:
-            self._adapters_by_event_key[key].append(adapter)
-        self._adapters[conn] = adapter
-        adapter.thread.start()
+    Parameters
+    ----------
+    event : Event
+        The event instance to be posted.
+    key : Any
+        Key to be used when posting a KeyedEvent
+    """
+    event_key = (type(event), key)
+    for handler in _event_handlers[event_key]:
+        handler(event)
+    for adapter in _adapters_by_event_key[event_key]:
+        adapter.post_event(event, key)
 
-    def stop_connection_service(self, conn) -> None:
-        """
-        Stops the MessageBus from sending events through this connection.
 
-        Parameters
-        ----------
-        conn : Connection
-            multiprocessing.Pipe connection
-        """
-        adapter = self._adapters.pop(conn, None)
-        if adapter is None:
-            return
-        for key in adapter.event_keys:
-            self._adapters_by_event_key[key].remove(adapter)
-        adapter.stop()
+def service_connection(conn, *event_keys) -> None:
+    """
+    MessageBus will send all events it publishes through a serviced connection.
+
+    Parameters
+    ----------
+    conn : Connection
+        multiprocessing.Pipe connection
+    *event_keys : type[Event] | tuple[type[Event], Any]
+        Variable number of EventKeys that should be fed through this pipe.
+
+        If any of the keys are just a Type[Event] then they will be
+        assigned None key by default.
+    """
+    processed_keys = tuple(
+        key if isinstance(key, tuple) else (key, None) for key in event_keys
+    )
+    adapter = _ConnectionAdapter(conn, processed_keys)
+    for key in processed_keys:
+        _adapters_by_event_key[key].append(adapter)
+    _adapters[conn] = adapter
+    adapter.thread.start()
+
+
+def stop_connection_service(conn) -> None:
+    """
+    Stops the MessageBus from sending events through this connection.
+
+    Parameters
+    ----------
+    conn : Connection
+        multiprocessing.Pipe connection
+    """
+    adapter = _adapters.pop(conn, None)
+    if adapter is None:
+        return
+    for key in adapter.event_keys:
+        _adapters_by_event_key[key].remove(adapter)
+    adapter.stop()
 
 
 class _ConnectionAdapter:
     def __init__(
         self,
-        mb: MessageBus,
         conn: Connection,
         event_keys: Sequence[EventKey],
     ):
-        self.mb = mb
         self.conn = conn
         self.event_keys = event_keys
         self._running = True
@@ -330,7 +325,7 @@ class _ConnectionAdapter:
                     continue
                 message = self.conn.recv()
                 event, key = message
-                self.mb.post_event(event, key)
+                post_event(event, key)
             except (BrokenPipeError, EOFError):
                 self._running = False
                 break

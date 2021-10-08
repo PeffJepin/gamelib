@@ -1,80 +1,48 @@
 from collections import defaultdict
 
+import pytest
+
 from src.gamelib import KeyDown, ModifierKeys, Keys
 from src.gamelib.events import (
     eventhandler,
     Event,
-    MessageBus,
-    find_eventhandlers,
+    post_event, register_marked,
 )
 
 
 class TestInternalIntegration:
-    def test_normal_event_should_be_called(self):
+    @pytest.fixture
+    def handler_container(self):
         container = HandlerContainer()
-        mb = MessageBus(find_eventhandlers(container))
+        register_marked(container)
+        return container
 
-        mb.post_event(Event())
+    def test_normal_event_should_be_called(self, handler_container):
+        post_event(Event())
 
-        assert 1 == container.calls[Event]
+        assert 1 == handler_container.calls[Event]
 
-    def test_normal_event_should_not_be_called(self):
+    def test_normal_event_should_not_be_called(self, handler_container):
         class OtherEvent(Event):
             pass
+        post_event(OtherEvent())
 
-        container = HandlerContainer()
-        mb = MessageBus(find_eventhandlers(container))
+        assert 0 == handler_container.calls[Event]
 
-        mb.post_event(OtherEvent())
+    def test_keyed_event_should_be_called(self, handler_container):
+        post_event(KeyedEvent(), key="ABC")
 
-        assert 0 == container.calls[Event]
+        assert 1 == handler_container.calls[KeyedEvent]
 
-    def test_keyed_event_should_be_called(self):
-        container = HandlerContainer()
-        mb = MessageBus(find_eventhandlers(container))
+    def test_keyed_event_should_not_be_called(self, handler_container):
+        post_event(KeyedEvent(), key="CBA")
 
-        mb.post_event(KeyedEvent(), key="ABC")
+        assert 0 == handler_container.calls[KeyedEvent]
 
-        assert 1 == container.calls[KeyedEvent]
+    def test_key_handler_maps_with_keys(self, handler_container):
+        post_event(KeyDown(ModifierKeys(False, False, False)), key=Keys.J)
 
-    def test_keyed_event_should_not_be_called(self):
-        container = HandlerContainer()
-        mb = MessageBus(find_eventhandlers(container))
-
-        mb.post_event(KeyedEvent(), key="CBA")
-
-        assert 0 == container.calls[KeyedEvent]
-
-    def test_key_handler_maps_with_keys(self):
-        container = HandlerContainer()
-        mb = MessageBus(find_eventhandlers(container))
-
-        mb.post_event(KeyDown(ModifierKeys(False, False, False)), key=Keys.J)
-
-        assert 1 == container.calls[KeyDown]
-
-    def test_register_marked_handlers_shorthand(self):
-        container = HandlerContainer()
-        mb1 = MessageBus(find_eventhandlers(container))
-        mb2 = MessageBus()
-
-        mb2.register_marked(container)
-
-        assert mb1.handlers == mb2.handlers
-
-    def test_unregister_marked_handlers_shorthand(self):
-        container = HandlerContainer()
-        mb = MessageBus()
-        mb.register_marked(container)
-
-        mb.unregister_marked(container)
-        mb.post_event(Event())
-        mb.post_event(KeyedEvent(), key="ABC")
-        mb.post_event(KeyDown(), key=Keys.J)
-
-        assert not container.calls[Event]
-        assert not container.calls[KeyedEvent]
-        assert not container.calls[KeyDown]
+        assert 1 == handler_container.calls[KeyDown]
 
 
 class KeyedEvent(Event):
