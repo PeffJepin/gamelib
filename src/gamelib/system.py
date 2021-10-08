@@ -6,6 +6,7 @@ from multiprocessing.connection import Connection
 from typing import Type, List
 
 import numpy as np
+from numpy import ma
 
 from . import Update, SystemStop, events
 from .events import eventhandler, Event
@@ -242,19 +243,17 @@ class SystemUpdateComplete(Event):
 class ArrayAttribute:
     _owner: Type[BaseComponent]
     _name: str
+    _array: ma.MaskedArray
 
-    def __init__(self, dtype, length=1):
+    def __init__(self, dtype):
         """
         A Descriptor that manages a numpy array. This should be used on a System.Component.
 
         Parameters
         ----------
         dtype : type[int] | type[float] | np.dtype
-        length : int
-            The underlying array will be 1 dimensional with this length
         """
-        self._array = np.zeros((length,), dtype)
-        self.dtype = dtype
+        self._dtype = dtype
 
     def __set_name__(self, owner, name):
         if not issubclass(owner, BaseComponent):
@@ -269,7 +268,7 @@ class ArrayAttribute:
         """
         Returns
         -------
-        value : numpy.ndarray | int | float | str
+        value : ma.MaskedArray | int | float | str
             If invoked on an instance returns an entry from the array using entity_id as index.
             Otherwise if invoked from the Type object it returns the entire array.
         """
@@ -284,7 +283,8 @@ class ArrayAttribute:
 
     def reallocate(self):
         """Reallocates the underlying array. Does not preserve data."""
-        self._array = np.zeros((self.length,), self.dtype)
+        self._array = ma.zeros((self.length,), self._dtype)
+        self._array[:] = ma.masked
 
     @property
     def length(self):

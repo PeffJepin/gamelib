@@ -74,13 +74,13 @@ class TestArrayAttribute:
         obj = self.ExampleComponent(14)
         obj.attr = 14
 
-        assert 14 == self.ExampleComponent.attr[14]
+        assert self.ExampleComponent.attr[14] == 14
 
     def test_must_be_used_on_a_component(self):
         with pytest.raises(RuntimeError):
 
             class NotAComponent:
-                attr = ArrayAttribute(int, 10)
+                attr = ArrayAttribute(int)
 
     def test_index_error_on_out_of_bounds_entity_id(self):
         obj = self.ExampleComponent(1_000_000)
@@ -95,11 +95,23 @@ class TestArrayAttribute:
 
         assert 25 == len(self.ExampleComponent.attr)
 
+    def test_array_masks_components_that_dont_exist(self):
+        for i in range(10):
+            comp = self.ExampleComponent(i)
+            comp.attr = 1
+        assert all(1 == self.ExampleComponent.attr[:10])
+        assert not any(self.ExampleComponent.attr[10:])
+
     class ExampleSystem(ProcessSystem):
         pass
 
     class ExampleComponent(ExampleSystem.Component):
         attr = ArrayAttribute(np.uint8)
+
+    @pytest.fixture(autouse=True)
+    def reallocate_attribute(self):
+        attr = vars(self.ExampleComponent)['attr']
+        attr.reallocate()
 
 
 class TestPublicAttribute:
