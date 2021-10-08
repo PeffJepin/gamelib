@@ -223,12 +223,12 @@ class System1(PatchedSystem):
     @eventhandler(Event.QUERY_PUBLIC_ATTR_LENGTH)
     def public_attr_length_response(self, event):
         res = Response(len(Component1.public_attr))
-        self.post_event(res, key="QUERY_PUBLIC_ATTR_LENGTH")
+        self.raise_event(res, key="QUERY_PUBLIC_ATTR_LENGTH")
 
     @eventhandler(Event.QUERY_ARRAY_ATTR_LENGTH)
     def array_attr_length_response(self, event):
         res = Response(len(Component1.array_attr))
-        self.post_event(res, key="QUERY_ARRAY_ATTR_LENGTH")
+        self.raise_event(res, key="QUERY_ARRAY_ATTR_LENGTH")
 
     @eventhandler(Event.PUBLIC_ATTR_MULTIPLE_ACCESS)
     def multiple_access_increment(self, event):
@@ -248,7 +248,7 @@ class System2(PatchedSystem):
     @eventhandler(Event.PUBLIC_ATTR_MULTIPLE_ACCESS)
     def multiple_access_increment(self, event):
         res = Response(Component1.public_attr[0])
-        self.post_event(res, key="PUBLIC_ATTR_MULTIPLE_ACCESS")
+        self.raise_event(res, key="PUBLIC_ATTR_MULTIPLE_ACCESS")
 
 
 @pytest.fixture

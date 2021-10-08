@@ -7,8 +7,8 @@ from typing import Type, List
 
 import numpy as np
 
-from . import Update, SystemStop
-from .events import eventhandler, Event, register_marked, post_event, unregister_marked
+from . import Update, SystemStop, events
+from .events import eventhandler, Event
 from .sharedmem import DoubleBufferedArray, SharedBlock, ArraySpec
 
 
@@ -117,12 +117,9 @@ class System(metaclass=_SystemMeta):
         to the main process.
         """
 
-    def post_event(self, event, key=None):
-        post_event(event, key)
-
     def stop(self):
         self._running = False
-        unregister_marked(self)
+        events.unregister_marked(self)
 
     @eventhandler(Update)
     def _update_handler(self, event):
@@ -134,7 +131,7 @@ class ProcessSystem(System):
         self._conn = conn
         self._running = False
         self._event_queue = []
-        register_marked(self)
+        events.register_marked(self)
 
     @classmethod
     def run_in_process(cls, max_entities, **kwargs):
@@ -186,7 +183,7 @@ class ProcessSystem(System):
         for attr in cls.public_attributes:
             attr.open = False
 
-    def post_event(self, event, key=None):
+    def raise_event(self, event, key=None):
         """Sends an event back to the main process."""
         self._conn.send((event, key))
 
@@ -203,7 +200,7 @@ class ProcessSystem(System):
         try:
             (event, key) = message
             if isinstance(event, Update) or isinstance(event, SystemStop):
-                post_event(event, key=key)
+                events.post_event(event, key=key)
             else:
                 self._event_queue.append((event, key))
         except Exception as e:
@@ -226,10 +223,10 @@ class ProcessSystem(System):
     @eventhandler(Update)
     def _update_handler(self, _):
         for (event, key) in self._event_queue:
-            post_event(event, key=key)
+            events.post_event(event, key=key)
         self._event_queue = []
         self.update()
-        self.post_event(SystemUpdateComplete(type(self)))
+        self.raise_event(SystemUpdateComplete(type(self)))
 
 
 class SystemUpdateComplete(Event):

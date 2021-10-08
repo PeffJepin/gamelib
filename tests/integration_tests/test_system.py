@@ -106,7 +106,7 @@ class ExampleSystem(PatchedSystem):
 
     @eventhandler(Event.KEYED_TEST)
     def _test_interprocess_keyed_event(self, event):
-        self.post_event(Event(), key="KEYED_RESPONSE")
+        self.raise_event(Event(), key="KEYED_RESPONSE")
 
     def update(self):
         self._conn.send("updated")

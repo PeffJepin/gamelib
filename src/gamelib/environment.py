@@ -5,38 +5,29 @@ from multiprocessing.connection import Connection
 from typing import List, Type, Dict
 
 from . import SystemStop, events
-from .events import (
-    find_eventhandlers,
-    eventhandler,
-    Event,
-    register_marked,
-    unregister_marked,
-    stop_connection_service,
-    post_event,
-    service_connection,
-)
 from .sharedmem import SharedBlock
+from .events import eventhandler
 from .system import System, BaseComponent, SystemUpdateComplete, ProcessSystem
 from .textures import Asset, TextureAtlas
 
 
-class UpdateComplete(Event):
+class UpdateComplete(events.Event):
     pass
 
 
-class EntityCreated(Event):
+class EntityCreated(events.Event):
     __slots__ = ["id"]
 
     id: int
 
 
-class EntityDestroyed(Event):
+class EntityDestroyed(events.Event):
     __slots__ = ["id"]
 
     id: int
 
 
-class ComponentCreated(Event):
+class ComponentCreated(events.Event):
     __slots__ = ["entity_id", "type", "args"]
 
     entity_id: int
@@ -77,7 +68,7 @@ class Environment(abc.ABC):
             Rendering context to upload GFX assets to.
         """
         System.MAX_ENTITIES = self._MAX_ENTITIES
-        register_marked(self)
+        events.register_marked(self)
         self._load_assets(ctx)
         self._init_shm()
         self._start_systems()
@@ -93,7 +84,7 @@ class Environment(abc.ABC):
             return
         self._release_assets()
         self._shutdown_systems()
-        unregister_marked(self)
+        events.unregister_marked(self)
         self._loaded = False
 
     def find_asset(self, label):
@@ -139,9 +130,9 @@ class Environment(abc.ABC):
                 item.release_texture()
 
     def _shutdown_systems(self):
-        post_event(SystemStop())
+        events.post_event(SystemStop())
         for _, (process, conn) in self._running_systems.items():
-            stop_connection_service(conn)
+            events.stop_connection_service(conn)
             process.join()
         self._running_systems = None
 
@@ -149,8 +140,8 @@ class Environment(abc.ABC):
         self._running_systems = dict()
         for system in self.SYSTEMS:
             conn, process = system.run_in_process(self._MAX_ENTITIES)
-            system_handler_types = find_eventhandlers(system).keys()
-            service_connection(conn, *system_handler_types)
+            system_handler_types = events.find_eventhandlers(system).keys()
+            events.service_connection(conn, *system_handler_types)
             self._running_systems[system] = (process, conn)
 
     def _init_shm(self):
@@ -169,7 +160,7 @@ class Environment(abc.ABC):
 
 class EntityFactory:
     def __init__(self, max_entities=1024):
-        register_marked(self)
+        events.register_marked(self)
         self._id_handout = list(range(max_entities))
         self._max_entities = max_entities
 
@@ -179,10 +170,10 @@ class EntityFactory:
         for comp_spec in components:
             type_, *args = comp_spec
             event = ComponentCreated(entity_id=entity_id, type=type_, args=tuple(args))
-            post_event(event)
+            events.post_event(event)
 
         event = EntityCreated(entity_id)
-        post_event(event)
+        events.post_event(event)
 
     @eventhandler(EntityDestroyed)
     def _recycle_entity_id(self, event: EntityDestroyed):
