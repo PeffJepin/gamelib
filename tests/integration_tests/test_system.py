@@ -5,7 +5,7 @@ import pytest
 
 from src.gamelib import events, SystemStop, Update
 from src.gamelib.events import eventhandler, Event
-from src.gamelib.system import SystemUpdateComplete, PublicAttribute, System
+from src.gamelib.system import SystemUpdateComplete, PublicAttribute, ProcessSystem
 from ..conftest import PatchedSystem
 
 
@@ -13,7 +13,9 @@ class TestSystem:
     def test_events_are_pooled_until_update(self, pipe_reader):
         with self.system_tester(ExampleSystem) as conn:
             conn.send((ExampleEvent(10), None))
-            assert pipe_reader(conn, timeout=0.1) is None
+
+            with pytest.raises(TimeoutError):
+                pipe_reader(conn, timeout=0.1)
 
             conn.send((Update(), None))
             assert pipe_reader(conn) is not None
@@ -26,9 +28,9 @@ class TestSystem:
 
             responses = pipe_reader(conn, n=4)
             assert [
-                "updated",  # update() function runs once Update event comes
                 10,  # first sent event is handled
                 15,  # second sent event is handled
+                "updated",  # update() function runs after events are handled
                 (
                     SystemUpdateComplete(ExampleSystem),
                     None,
@@ -42,7 +44,7 @@ class TestSystem:
             assert "updated" == value
 
     def test_process_shuts_down_gracefully_on_stop_event(self):
-        System.SHARED_BLOCK = ExampleSystem.make_test_shm_block()
+        ProcessSystem.SHARED_BLOCK = ExampleSystem.make_test_shm_block()
         conn, process = ExampleSystem.run_in_process(max_entities=10)
         conn.send((SystemStop(), None))
         process.join(5)
@@ -70,8 +72,8 @@ class TestSystem:
             conn.send((Update(), None))
 
             expected = [
-                "updated",
                 (Event(), "KEYED_RESPONSE"),
+                "updated",
                 (SystemUpdateComplete(ExampleSystem), None),
             ]
             responses = pipe_reader(conn, n=3)
@@ -79,7 +81,7 @@ class TestSystem:
 
     @contextmanager
     def system_tester(self, sys_type, max_entities=100):
-        System.set_shared_block(sys_type.make_test_shm_block())
+        ProcessSystem.set_shared_block(sys_type.make_test_shm_block())
         conn, process = sys_type.run_in_process(max_entities)
         try:
             yield conn
@@ -91,6 +93,10 @@ class ExampleEvent(events.Event):
     __slots__ = ["value"]
 
     value: int
+
+
+class Response(Event):
+    __slots__ = ["value"]
 
 
 class ExampleSystem(PatchedSystem):
@@ -108,3 +114,7 @@ class ExampleSystem(PatchedSystem):
 
 class ExampleComponent(ExampleSystem.Component):
     nums = PublicAttribute(np.uint8)
+
+    def __init__(self, entity_id, *args):
+        super().__init__(entity_id)
+        self.args = args

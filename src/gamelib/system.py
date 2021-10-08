@@ -106,29 +106,36 @@ class System(metaclass=_SystemMeta):
 
     MAX_ENTITIES: int = 1024
     Component: Type[BaseComponent]
+    _message_bus: MessageBus
 
+    def update(self):
+        """
+        Stub for subclass defined behavior.
+
+        The Update event will first invoke this method, then post all events
+        pooled in the event queue, and finally send a SystemUpdateComplete back
+        to the main process.
+        """
+
+    def post_event(self, event, key=None):
+        self._message_bus.post_event(event, key)
+
+    def stop(self):
+        self._message_bus.unregister_marked(self)
+        self._running = False
+
+    @eventhandler(Update)
+    def _update_handler(self, event):
+        self.update()
+
+
+class ProcessSystem(System):
     def __init__(self, conn, **kwargs):
-        """
-        Parameters
-        ----------
-        conn : Connection
-            The Connection object from a multiprocessing.Pipe() used for communication.
-        """
+        self._conn = conn
+        self._running = False
+        self._event_queue = []
         self._message_bus = MessageBus()
         self._message_bus.register_marked(self)
-        self._conn = conn
-        self._running = True
-        self._event_queue = []
-
-    @classmethod
-    def _run(cls, conn, max_entities, shared_block, **kwargs):
-        """Internal process entry point. Sets global System state before starting."""
-        System.MAX_ENTITIES = max_entities
-        System.set_shared_block(shared_block)
-        for attr in cls.array_attributes:
-            attr.reallocate()
-        inst = cls(conn, **kwargs)
-        inst._main()
 
     @classmethod
     def run_in_process(cls, max_entities, **kwargs):
@@ -163,6 +170,16 @@ class System(metaclass=_SystemMeta):
         PublicAttribute.SHARED_BLOCK = shared_block
 
     @classmethod
+    def _run(cls, conn, max_entities, shared_block, **kwargs):
+        """Internal process entry point. Sets global System state before starting."""
+        System.MAX_ENTITIES = max_entities
+        cls.set_shared_block(shared_block)
+        for attr in cls.array_attributes:
+            attr.reallocate()
+        inst = cls(conn, **kwargs)
+        inst._main()
+
+    @classmethod
     def teardown_shared_state(cls):
         if PublicAttribute.SHARED_BLOCK is not None:
             PublicAttribute.SHARED_BLOCK.unlink_shm()
@@ -170,29 +187,12 @@ class System(metaclass=_SystemMeta):
         for attr in cls.public_attributes:
             attr.open = False
 
-    def _teardown_shared_state(self):
-        """Local only teardown."""
-        if PublicAttribute.SHARED_BLOCK is None:
-            return
-        PublicAttribute.SHARED_BLOCK.close_shm()
-        PublicAttribute.SHARED_BLOCK = None
-        for attr in type(self).public_attributes:
-            attr.open = False
-
-    def update(self):
-        """
-        Stub for subclass defined behavior.
-
-        The Update event will first invoke this method, then post all events
-        pooled in the event queue, and finally send a SystemUpdateComplete back
-        to the main process.
-        """
-
     def post_event(self, event, key=None):
         """Sends an event back to the main process."""
         self._conn.send((event, key))
 
     def _main(self):
+        self._running = True
         while self._running:
             self._poll()
         self._teardown_shared_state()
@@ -211,17 +211,26 @@ class System(metaclass=_SystemMeta):
             msg_with_traceback = f"{e}\n\n{traceback.format_exc()}"
             self._conn.send(type(e)(msg_with_traceback))
 
-    @eventhandler(Update)
-    def _update(self, _):
-        self.update()
-        for (event, key) in self._event_queue:
-            self._message_bus.post_event(event, key=key)
-        self._event_queue = []
-        self.post_event(SystemUpdateComplete(type(self)))
+    def _teardown_shared_state(self):
+        """Local only teardown."""
+        if PublicAttribute.SHARED_BLOCK is None:
+            return
+        PublicAttribute.SHARED_BLOCK.close_shm()
+        PublicAttribute.SHARED_BLOCK = None
+        for attr in type(self).public_attributes:
+            attr.open = False
 
     @eventhandler(SystemStop)
     def _stop(self, _):
-        self._running = False
+        self.stop()
+
+    @eventhandler(Update)
+    def _update_handler(self, _):
+        for (event, key) in self._event_queue:
+            self._message_bus.post_event(event, key=key)
+        self._event_queue = []
+        self.update()
+        self.post_event(SystemUpdateComplete(type(self)))
 
 
 class SystemUpdateComplete(Event):

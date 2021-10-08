@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from src.gamelib.sharedmem import SharedBlock
-from src.gamelib.system import System, ArrayAttribute, PublicAttribute
+from src.gamelib.system import System, ArrayAttribute, PublicAttribute, ProcessSystem
 
 
 class TestSystem:
@@ -42,10 +42,10 @@ class TestSystem:
         for attr in self.System1.array_attributes:
             assert attr in all_array_attrs
 
-    class System1(System):
+    class System1(ProcessSystem):
         pass
 
-    class System2(System):
+    class System2(ProcessSystem):
         pass
 
     class Comp1(System1.Component):
@@ -95,7 +95,7 @@ class TestArrayAttribute:
 
         assert 25 == len(self.ExampleComponent.attr)
 
-    class ExampleSystem(System):
+    class ExampleSystem(ProcessSystem):
         pass
 
     class ExampleComponent(ExampleSystem.Component):
@@ -113,7 +113,7 @@ class TestPublicAttribute:
     def test_cannot_be_accessed_after_closed(self):
         attr = vars(ExampleComponent)["attr"]
         blk = SharedBlock(attr.shared_specs, System.MAX_ENTITIES)
-        System.set_shared_block(blk)
+        ProcessSystem.set_shared_block(blk)
 
         try:
             ExampleComponent.attr[:] = 1
@@ -135,7 +135,7 @@ class TestPublicAttribute:
         System.MAX_ENTITIES = 16
         attr = vars(ExampleComponent)["attr"]
         blk = SharedBlock(attr.shared_specs, System.MAX_ENTITIES)
-        System.set_shared_block(blk)
+        ProcessSystem.set_shared_block(blk)
 
         try:
             assert len(ExampleComponent.attr) == 16
@@ -165,7 +165,7 @@ class TestPublicAttribute:
     def allocated_attr(self):
         attr = vars(ExampleComponent)["attr"]
         blk = SharedBlock(attr.shared_specs, System.MAX_ENTITIES)
-        System.set_shared_block(blk)
+        ProcessSystem.set_shared_block(blk)
         try:
             yield attr
         finally:
@@ -173,7 +173,7 @@ class TestPublicAttribute:
             blk.unlink_shm()
 
 
-class ExampleSystem(System):
+class ExampleSystem(ProcessSystem):
     MAX_ENTITIES = 100
 
 

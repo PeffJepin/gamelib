@@ -7,7 +7,7 @@ from typing import List, Type, Hashable, Dict
 from . import SystemStop
 from .events import MessageBus, find_eventhandlers, eventhandler, Event
 from .sharedmem import SharedBlock
-from .system import System, BaseComponent, SystemUpdateComplete
+from .system import System, BaseComponent, SystemUpdateComplete, ProcessSystem
 from .textures import Asset, TextureAtlas
 
 
@@ -38,7 +38,7 @@ class ComponentCreated(Event):
 class Environment(abc.ABC):
     ASSETS: list
 
-    SYSTEMS: List[Type[System]]
+    SYSTEMS: List[Type[ProcessSystem]]
     _MAX_ENTITIES: int = 1024
 
     _system_connections: Dict[Type[System], Connection]
@@ -153,7 +153,7 @@ class Environment(abc.ABC):
     def _init_shm(self):
         System.MAX_ENTITIES = self._MAX_ENTITIES
         specs = sum((system.shared_specs for system in self.SYSTEMS), [])
-        System.set_shared_block(SharedBlock(specs, self._MAX_ENTITIES))
+        ProcessSystem.set_shared_block(SharedBlock(specs, self._MAX_ENTITIES))
 
     @eventhandler(SystemUpdateComplete)
     def _track_system_updates(self, event):

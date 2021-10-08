@@ -11,7 +11,7 @@ import pytest
 from PIL import Image
 
 from src.gamelib.sharedmem import SharedBlock
-from src.gamelib.system import System, PublicAttribute
+from src.gamelib.system import ProcessSystem, PublicAttribute, System
 from src.gamelib.textures import Asset
 
 counter = itertools.count(10_000)
@@ -93,7 +93,7 @@ def pipe_reader():
         messages = []
         for _ in range(n):
             if not conn.poll(timeout):
-                return None
+                raise TimeoutError()
             else:
                 incoming = conn.recv()
                 if isinstance(incoming, Exception):
@@ -101,6 +101,22 @@ def pipe_reader():
                 messages.append(incoming)
         return messages if n > 1 else messages[0]
 
+    return _reader
+
+
+@pytest.fixture
+def pipe_await_event():
+    def _reader(conn, event_type, timeout=1):
+        ts = time.time()
+        while time.time() < ts + timeout:
+            if not conn.poll(0):
+                continue
+            message = conn.recv()
+            if isinstance(message, event_type):
+                return message
+            elif isinstance(message, tuple) and isinstance(message[0], event_type):
+                return message[0]
+        raise TimeoutError("Didn't find event_type while polling connection.")
     return _reader
 
 
@@ -156,7 +172,7 @@ class SystemRunner(mp.Process):
         return conn
 
 
-class PatchedSystem(System):
+class PatchedSystem(ProcessSystem):
     """
     Subclassing this in test code avoids booting up a new process for every test
     """
