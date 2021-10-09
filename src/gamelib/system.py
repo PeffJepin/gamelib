@@ -10,7 +10,7 @@ from numpy import ma
 
 from . import Update, SystemStop, events, sharedmem
 from .events import eventhandler, Event
-from .sharedmem import DoubleBufferedArray, SharedBlock, ArraySpec
+from .sharedmem import DoubleBufferedArray, ArraySpec
 
 
 class BaseComponent:
@@ -167,6 +167,13 @@ class ProcessSystem(System):
         inst._main()
         cls._teardown_shared_state()
 
+    @classmethod
+    def _teardown_shared_state(cls):
+        """Local only teardown."""
+        for attr in cls.public_attributes:
+            attr.close_view()
+        sharedmem.close()
+
     def raise_event(self, event, key=None):
         """Sends an event back to the main process."""
         self._conn.send((event, key))
@@ -189,13 +196,6 @@ class ProcessSystem(System):
         except Exception as e:
             msg_with_traceback = f"{e}\n\n{traceback.format_exc()}"
             self._conn.send(type(e)(msg_with_traceback))
-
-    @classmethod
-    def _teardown_shared_state(cls):
-        """Local only teardown."""
-        for attr in cls.public_attributes:
-            attr.close()
-        sharedmem.close()
 
     @eventhandler(SystemStop)
     def _stop(self, _):
@@ -272,7 +272,6 @@ class ArrayAttribute:
 
 
 class PublicAttribute:
-
     _dbl_buffer: DoubleBufferedArray | None = None
 
     def __init__(self, dtype):
@@ -294,7 +293,7 @@ class PublicAttribute:
         ----------
         dtype : type[int] | type[float] | np.dtype
         """
-        self.open = False
+        self.is_open = False
         self._dtype = dtype
 
     def __set_name__(self, owner, name):
@@ -321,7 +320,7 @@ class PublicAttribute:
         FileNotFoundError:
             If memory has not been allocated by the time of access.
         """
-        if not self.open:
+        if not self.is_open:
             self._open()
         if instance is None:
             return self._dbl_buffer
@@ -337,15 +336,15 @@ class PublicAttribute:
         FileNotFoundError:
             If shm has not been allocated by time of use.
         """
-        if not self.open:
+        if not self.is_open:
             self._open()
         index = obj.entity_id
         self._dbl_buffer[index] = value
 
     def __repr__(self):
-        return f"<PublicAttribute({self._owner.__name__}.{self._name}, open={self._dbl_buffer.is_open})>"
+        return f"<PublicAttribute({self._owner.__name__}.{self._name}, open={self.is_open})>"
 
-    def update(self):
+    def update_buffer(self):
         """
         Copies the write buffer into the read buffer.
 
@@ -353,8 +352,8 @@ class PublicAttribute:
         """
         self._dbl_buffer.flip()
 
-    def close(self):
-        self.open = False
+    def close_view(self):
+        self.is_open = False
         self._dbl_buffer = None
 
     @property
@@ -366,8 +365,10 @@ class PublicAttribute:
         -------
         specs : tuple[ArraySpec]
         """
-        if not self.open:
-            return DoubleBufferedArray(self._shm_name, self._dtype, System.MAX_ENTITIES).specs
+        if not self.is_open:
+            return DoubleBufferedArray(
+                self._shm_name, self._dtype, System.MAX_ENTITIES
+            ).specs
         return self._dbl_buffer.specs
 
     @property
@@ -375,6 +376,8 @@ class PublicAttribute:
         return f"{self._owner.__class__.__name__}__{self._name}"
 
     def _open(self):
-        self._dbl_buffer = DoubleBufferedArray(self._shm_name, self._dtype, System.MAX_ENTITIES)
+        self._dbl_buffer = DoubleBufferedArray(
+            self._shm_name, self._dtype, System.MAX_ENTITIES
+        )
         self._dbl_buffer.connect()
-        self.open = True
+        self.is_open = True

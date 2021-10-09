@@ -1,8 +1,6 @@
 import numpy as np
 import pytest
 
-from src.gamelib import sharedmem
-from src.gamelib.sharedmem import SharedBlock
 from src.gamelib.system import System, ArrayAttribute, PublicAttribute, ProcessSystem
 
 
@@ -111,67 +109,8 @@ class TestArrayAttribute:
 
     @pytest.fixture(autouse=True)
     def reallocate_attribute(self):
-        attr = vars(self.ExampleComponent)['attr']
+        attr = vars(self.ExampleComponent)["attr"]
         attr.reallocate()
-
-
-class TestPublicAttribute:
-    def test_public_attribute_does_not_work_before_allocation(self, attr):
-        with pytest.raises(Exception):
-            attr = ExampleComponent.attr
-
-    def test_access_can_be_made_after_allocation(self, allocated_attr):
-        assert all(ExampleComponent.attr[:] == 0)
-
-    def test_cannot_be_accessed_after_closed(self):
-        attr = vars(ExampleComponent)["attr"]
-        sharedmem.allocate(attr.shared_specs)
-        ExampleComponent.attr[:] = 1
-
-        sharedmem.unlink()
-        attr.open = False
-        with pytest.raises(Exception):
-            ExampleComponent.attr
-
-    def test_changes_not_reflected_until_update(self, allocated_attr):
-        ExampleComponent.attr[:] = 10
-
-        assert all(ExampleComponent.attr[:] == 0)
-        allocated_attr.update()
-        assert all(ExampleComponent.attr[:] == 10)
-
-    def test_array_size_dictated_by_System_MAX_ENTITIES(self, attr):
-        System.MAX_ENTITIES = 16
-        attr = vars(ExampleComponent)["attr"]
-        sharedmem.allocate(attr.shared_specs)
-
-        assert len(ExampleComponent.attr) == 16
-
-    def test_indexed_by_object_entity_id(self, allocated_attr):
-        inst = ExampleComponent(5)
-        inst.attr = 10
-
-        assert ExampleComponent.attr[5] == 0
-        allocated_attr.update()
-        assert ExampleComponent.attr[5] == 10
-
-    @pytest.fixture
-    def attr(self):
-        attr = vars(ExampleComponent)["attr"]
-        try:
-            yield attr
-        finally:
-            attr.open = False
-
-    @pytest.fixture
-    def allocated_attr(self):
-        attr = vars(ExampleComponent)["attr"]
-        sharedmem.allocate(attr.shared_specs)
-
-        try:
-            yield attr
-        finally:
-            attr.open = False
 
 
 class ExampleSystem(ProcessSystem):
@@ -185,4 +124,4 @@ class ExampleComponent(ExampleSystem.Component):
 @pytest.fixture(autouse=True)
 def close_public_attrs():
     for attr in ExampleSystem.public_attributes:
-        attr.open = False
+        attr.close_view()

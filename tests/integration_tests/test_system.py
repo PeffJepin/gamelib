@@ -5,7 +5,12 @@ import pytest
 
 from src.gamelib import events, SystemStop, Update, sharedmem
 from src.gamelib.events import eventhandler, Event
-from src.gamelib.system import SystemUpdateComplete, PublicAttribute, ProcessSystem, System
+from src.gamelib.system import (
+    SystemUpdateComplete,
+    PublicAttribute,
+    ProcessSystem,
+    System,
+)
 from ..conftest import PatchedSystem
 
 
@@ -44,7 +49,7 @@ class TestSystem:
             assert "updated" == value
 
     def test_process_shuts_down_gracefully_on_stop_event(self):
-        ProcessSystem.SHARED_BLOCK = ExampleSystem.make_test_shm_block()
+        sharedmem.allocate(ExampleSystem.shared_specs)
         conn, process = ExampleSystem.run_in_process(max_entities=10)
         conn.send((SystemStop(), None))
         process.join(5)
@@ -90,6 +95,65 @@ class TestSystem:
             process.join()
 
 
+class TestPublicAttribute:
+    def test_public_attribute_does_not_work_before_allocation(self, attr):
+        with pytest.raises(Exception):
+            attr = ExampleComponent.attr
+
+    def test_access_can_be_made_after_allocation(self, allocated_attr):
+        assert all(ExampleComponent.attr[:] == 0)
+
+    def test_cannot_be_accessed_after_closed(self):
+        attr = vars(ExampleComponent)["attr"]
+        sharedmem.allocate(attr.shared_specs)
+        ExampleComponent.attr[:] = 1
+
+        sharedmem.unlink()
+        attr.is_open = False
+        with pytest.raises(Exception):
+            ExampleComponent.attr
+
+    def test_changes_not_reflected_until_update(self, allocated_attr):
+        ExampleComponent.attr[:] = 10
+
+        assert all(ExampleComponent.attr[:] == 0)
+        allocated_attr.update_buffer()
+        assert all(ExampleComponent.attr[:] == 10)
+
+    def test_array_size_dictated_by_System_MAX_ENTITIES(self, attr):
+        System.MAX_ENTITIES = 16
+        attr = vars(ExampleComponent)["attr"]
+        sharedmem.allocate(attr.shared_specs)
+
+        assert len(ExampleComponent.attr) == 16
+
+    def test_indexed_by_object_entity_id(self, allocated_attr):
+        inst = ExampleComponent(5)
+        inst.attr = 10
+
+        assert ExampleComponent.attr[5] == 0
+        allocated_attr.update_buffer()
+        assert ExampleComponent.attr[5] == 10
+
+    @pytest.fixture
+    def attr(self):
+        attr = vars(ExampleComponent)["attr"]
+        try:
+            yield attr
+        finally:
+            attr.is_open = False
+
+    @pytest.fixture
+    def allocated_attr(self):
+        attr = vars(ExampleComponent)["attr"]
+        sharedmem.allocate(attr.shared_specs)
+
+        try:
+            yield attr
+        finally:
+            attr.is_open = False
+
+
 class ExampleEvent(events.Event):
     __slots__ = ["value"]
 
@@ -115,6 +179,7 @@ class ExampleSystem(PatchedSystem):
 
 class ExampleComponent(ExampleSystem.Component):
     nums = PublicAttribute(np.uint8)
+    attr = PublicAttribute(int)
 
     def __init__(self, entity_id, *args):
         super().__init__(entity_id)

@@ -6,7 +6,8 @@ from src.gamelib import KeyDown, ModifierKeys, Keys
 from src.gamelib.events import (
     eventhandler,
     Event,
-    post_event, register_marked,
+    post_event,
+    register_marked,
 )
 
 
@@ -25,6 +26,7 @@ class TestInternalIntegration:
     def test_normal_event_should_not_be_called(self, handler_container):
         class OtherEvent(Event):
             pass
+
         post_event(OtherEvent())
 
         assert 0 == handler_container.calls[Event]

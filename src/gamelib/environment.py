@@ -5,7 +5,6 @@ from multiprocessing.connection import Connection
 from typing import List, Type, Dict
 
 from . import SystemStop, events, sharedmem
-from .sharedmem import SharedBlock
 from .events import eventhandler
 from .system import System, BaseComponent, SystemUpdateComplete, ProcessSystem
 from .textures import Asset, TextureAtlas
@@ -79,7 +78,7 @@ class Environment(abc.ABC):
         sharedmem.unlink()
         for system in self.SYSTEMS:
             for attr in system.public_attributes:
-                attr.open = False
+                attr.is_open = False
         if not self._loaded:
             return
         self._release_assets()
@@ -104,7 +103,7 @@ class Environment(abc.ABC):
         """
         for system_type in self.SYSTEMS:
             for attr in system_type.public_attributes:
-                attr.update()
+                attr.update_buffer()
 
     def _index_assets(self):
         self._asset_lookup = dict()

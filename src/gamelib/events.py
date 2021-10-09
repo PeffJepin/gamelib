@@ -266,7 +266,7 @@ def post_event(event, key=None) -> None:
         adapter.post_event(event, key)
 
 
-def service_connection(conn, *event_keys) -> None:
+def service_connection(conn, *event_keys, poll=True) -> None:
     """
     MessageBus will send all events it publishes through a serviced connection.
 
@@ -279,6 +279,8 @@ def service_connection(conn, *event_keys) -> None:
 
         If any of the keys are just a Type[Event] then they will be
         assigned None key by default.
+    poll : bool
+        Should the adapter handle polling the pipe for events?
     """
     processed_keys = tuple(
         key if isinstance(key, tuple) else (key, None) for key in event_keys
@@ -287,7 +289,8 @@ def service_connection(conn, *event_keys) -> None:
     for key in processed_keys:
         _adapters_by_event_key[key].append(adapter)
     _adapters[conn] = adapter
-    adapter.thread.start()
+    if poll:
+        adapter.thread.start()
 
 
 def stop_connection_service(conn) -> None:
@@ -315,10 +318,11 @@ class _ConnectionAdapter:
     ):
         self.conn = conn
         self.event_keys = event_keys
-        self._running = True
+        self._running = False
         self.thread = threading.Thread(target=self._poll, daemon=True)
 
     def _poll(self):
+        self._running = True
         while self._running:
             try:
                 if not self.conn.poll(0.01):

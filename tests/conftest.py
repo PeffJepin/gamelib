@@ -12,8 +12,7 @@ from PIL import Image
 
 from src.gamelib import events, sharedmem
 from src.gamelib.events import clear_handlers
-from src.gamelib.sharedmem import SharedBlock
-from src.gamelib.system import ProcessSystem, PublicAttribute, System
+from src.gamelib.system import ProcessSystem, System
 from src.gamelib.textures import Asset
 
 counter = itertools.count(10_000)
@@ -132,6 +131,7 @@ class SystemRunner(mp.Process):
         self.conn = conn
 
     def run(self):
+        """Always try to run mainloop and send reports of exceptions back."""
         while True:
             try:
                 self._main()
@@ -140,6 +140,7 @@ class SystemRunner(mp.Process):
                 self.conn.send(type(e)(msg_with_traceback))
 
     def _main(self):
+        """Try to get a command from the main process and run it."""
         if not self.conn.poll(0.05):
             return
         message = self.conn.recv()
@@ -154,6 +155,7 @@ class SystemRunner(mp.Process):
 
     @classmethod
     def get_connection(cls):
+        """Get a pipe connection to an already running SystemRunner."""
         if not cls.available_connections:
             a, b = mp.Pipe()
             runner = SystemRunner(b)
@@ -203,12 +205,6 @@ class PatchedSystem(ProcessSystem):
         assert message == "STARTING SYSTEM"
         return local_conn, (MockProcess(runner_connection))
 
-    @classmethod
-    def make_test_shm_block(cls):
-        return SharedBlock(
-            cls.shared_specs, System.MAX_ENTITIES, name_extra=next(counter)
-        )
-
 
 class MockProcess:
     """
@@ -221,6 +217,7 @@ class MockProcess:
         self.runner_conn = system_runner_connection
 
     def join(self, timeout=1):
+        """Reclaim control of the SystemRunner Process."""
         self.runner_conn.send(SystemRunner.STOP)
         self.runner_conn.send(SystemRunner.GET_STATUS)
         ts = time.time()
@@ -239,6 +236,7 @@ class MockProcess:
         raise TimeoutError("Could not get response from SystemRunner process.")
 
     def kill(self):
+        # join reclaims process forcibly
         self.join()
 
 

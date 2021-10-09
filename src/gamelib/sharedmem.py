@@ -101,190 +101,17 @@ def unlink():
         pass
 
 
-def _cleanup_arrays():
-    for arr in _arrays:
-        arr.buffer = None
-
-
-class _SharedMemoryFile:
-    """
-    Internal manager of the shared memory file.
-
-    Allocated specs are described in a header so no metadata
-    needs to be passed across process boundaries for access.
-
-    The first four bytes (int) describes the length of the header in bytes.
-    """
-
-    _HEADER_DTYPE = np.dtype([("name", "U100"), ("offset", "i4"), ("length", "i4")])
-    _shm = shared_memory.SharedMemory
-
-    def __init__(self, specs=None):
-        if specs is None:
-            self._load_header()
-        else:
-            self._create_new_shm(specs)
-
-    def retrieve_from_spec(self, spec):
-        for entry in self._header:
-            if entry[0] == spec.name:
-                return np.ndarray(
-                    shape=(spec.length,),
-                    dtype=spec.dtype,
-                    buffer=self._shm.buf,
-                    offset=entry[1],
-                )
-
-    def close(self):
-        self._shm.close()
-        self._shm = None
-
-    def unlink(self):
-        self._shm.unlink()
-        self._shm = None
-
-    def _load_header(self):
-        self._shm = shared_memory.SharedMemory(_SHM_NAME)
-        header_desc = np.ndarray(
-            shape=(1,),
-            dtype=int,
-            buffer=self._shm.buf,
-        )
-        header_size = header_desc[0]
-        self._header = np.ndarray(
-            shape=(header_size//self._HEADER_DTYPE.itemsize,),
-            dtype=self._HEADER_DTYPE,
-            buffer=self._shm.buf,
-            offset=header_desc.nbytes
-        )
-
-    def _create_new_shm(self, specs):
-        # figure out how much memory is needed
-        header_desc, header, body = self._calculate_allocations(specs)
-        total_size = header_desc.nbytes + header.nbytes + body.nbytes
-        self._shm = shared_memory.SharedMemory(_SHM_NAME, create=True, size=total_size)
-
-        # copy initial data into shm
-        offset = 0
-        for initial_data in (header_desc, header, body):
-            view = np.ndarray(
-                shape=initial_data.shape,
-                dtype=initial_data.dtype,
-                buffer=self._shm.buf,
-                offset=offset,
-            )
-            view[:] = initial_data[:]
-            offset += initial_data.nbytes
-
-        # cache a view into the header
-        self._header = np.ndarray(
-            shape=header.shape,
-            dtype=header.dtype,
-            buffer=self._shm.buf,
-            offset=header_desc.nbytes,
-        )
-
-    def _calculate_allocations(self, specs):
-        offset = 0
-        header_data = []
-        for spec in specs:
-            blank = np.empty((spec.length,), spec.dtype)
-            header_data.append((spec.name, offset, blank.nbytes))
-            offset += blank.nbytes
-
-        header = np.array(header_data, self._HEADER_DTYPE)
-        header_desc = np.array([header.nbytes], int)
-        header["offset"] += header.nbytes + header_desc.nbytes
-        body = np.zeros((offset,), np.uint8)
-
-        return header_desc, header, body
-
-
 class ArraySpec(NamedTuple):
     name: str
     dtype: Union[np.number, Type[int], Type[float]]
     length: int
 
 
-class SharedBlock:
-    def __init__(self, array_specs, max_entities, *, name_extra=""):
-        """
-        Allocates passed in arrays and keeps references to the arrays and created shm.
-
-        Parameters
-        ----------
-        array_specs : Iterable[ArraySpec]
-            The datatype and identifier to classify a piece of shared memory
-        max_entities : int
-            Arrays are allocated at this length.
-        name_extra : str
-            Optionally gets added to array.name to mutate shm names.
-        """
-        self._extra = str(name_extra)
-        self._max_entities = max_entities
-        self._array_lookup = dict()
-        self._shm_lookup = dict()
-
-        for spec in array_specs:
-            self._allocate_shm(spec)
-
-    def __getitem__(self, spec):
-        """
-        Parameters
-        ----------
-        spec : ArraySpec
-
-        Returns
-        -------
-        arr : np.ndarray
-        """
-        if spec.name not in self._array_lookup:
-            self._connect_array(spec)
-        return self._array_lookup[spec.name]
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        state["_array_lookup"] = dict()
-        return state
-
-    def __setstate__(self, state):
-        self.__dict__.update(state)
-
-    def close_shm(self):
-        """Closes this view into the block. Called on every instance for cleanup."""
-        if self._shm_lookup is not None:
-            for shm in self._shm_lookup.values():
-                shm.close()
-        self._array_lookup = None
-        self._shm_lookup = None
-
-    def unlink_shm(self):
-        """Un-links the shm. Called once by the main process for the lifetime of the shm."""
-        if self._shm_lookup is not None:
-            for shm in self._shm_lookup.values():
-                shm.unlink()
-        self._array_lookup = None
-        self._shm_lookup = None
-
-    def _allocate_shm(self, spec: ArraySpec) -> None:
-        init = np.zeros((self._max_entities,), spec.dtype)
-        shm = shared_memory.SharedMemory(
-            spec.name + self._extra, create=True, size=init.nbytes
-        )
-        arr = np.ndarray((self._max_entities,), spec.dtype, shm.buf)
-        arr[:] = init[:]
-        self._array_lookup[spec.name] = arr
-        self._shm_lookup[spec.name] = shm
-
-    def _connect_array(self, spec: ArraySpec) -> None:
-        shm = self._shm_lookup[spec.name]
-        array = np.ndarray((self._max_entities,), spec.dtype, shm.buf)
-        self._array_lookup[spec.name] = array
-
-
 class DoubleBufferedArray:
     """
-    Maintains two SharedArray instances and delegates reads/writes to separate arrays.
+    Maintains two np.ndarray instances that are views into shared memory
+    and delegates reads/writes to separate arrays.
+
     The flip method can be called to copy the write array into the read array.
     """
 
@@ -301,11 +128,11 @@ class DoubleBufferedArray:
 
     @property
     def _read_spec(self):
-        return ArraySpec(self._name + '_r', self._dtype, self._length)
+        return ArraySpec(self._name + "_r", self._dtype, self._length)
 
     @property
     def _write_spec(self):
-        return ArraySpec(self._name + '_w', self._dtype, self._length)
+        return ArraySpec(self._name + "_w", self._dtype, self._length)
 
     @property
     def specs(self):
@@ -390,3 +217,102 @@ class DoubleBufferedArray:
             input_ if input_ is not self else self._read_arr for input_ in inputs
         )
         return getattr(ufunc, method)(*corrected_inputs, **kwargs)
+
+
+def _cleanup_arrays():
+    for arr in _arrays:
+        arr.buffer = None
+
+
+class _SharedMemoryFile:
+    """
+    Internal manager of the shared memory file.
+
+    Allocated specs are described in a header so no metadata
+    needs to be passed across process boundaries for access.
+
+    The first four bytes (int) describes the length of the header in bytes.
+    """
+
+    _HEADER_DTYPE = np.dtype([("name", "U100"), ("offset", "i4"), ("length", "i4")])
+    _shm = shared_memory.SharedMemory
+
+    def __init__(self, specs=None):
+        if specs is None:
+            self._load_header()
+        else:
+            self._create_new_shm(specs)
+
+    def retrieve_from_spec(self, spec):
+        for entry in self._header:
+            if entry[0] == spec.name:
+                return np.ndarray(
+                    shape=(spec.length,),
+                    dtype=spec.dtype,
+                    buffer=self._shm.buf,
+                    offset=entry[1],
+                )
+
+    def close(self):
+        self._shm.close()
+        self._shm = None
+
+    def unlink(self):
+        self._shm.unlink()
+        self._shm = None
+
+    def _load_header(self):
+        self._shm = shared_memory.SharedMemory(_SHM_NAME)
+        header_desc = np.ndarray(
+            shape=(1,),
+            dtype=int,
+            buffer=self._shm.buf,
+        )
+        header_size = header_desc[0]
+        self._header = np.ndarray(
+            shape=(header_size // self._HEADER_DTYPE.itemsize,),
+            dtype=self._HEADER_DTYPE,
+            buffer=self._shm.buf,
+            offset=header_desc.nbytes,
+        )
+
+    def _create_new_shm(self, specs):
+        # figure out how much memory is needed
+        header_desc, header, body = self._calculate_allocations(specs)
+        total_size = header_desc.nbytes + header.nbytes + body.nbytes
+        self._shm = shared_memory.SharedMemory(_SHM_NAME, create=True, size=total_size)
+
+        # copy initial data into shm
+        offset = 0
+        for initial_data in (header_desc, header, body):
+            view = np.ndarray(
+                shape=initial_data.shape,
+                dtype=initial_data.dtype,
+                buffer=self._shm.buf,
+                offset=offset,
+            )
+            view[:] = initial_data[:]
+            offset += initial_data.nbytes
+
+        # cache a view into the header
+        self._header = np.ndarray(
+            shape=header.shape,
+            dtype=header.dtype,
+            buffer=self._shm.buf,
+            offset=header_desc.nbytes,
+        )
+
+    def _calculate_allocations(self, specs):
+        offset = 0
+        header_data = []
+        for spec in specs:
+            blank = np.empty((spec.length,), spec.dtype)
+            header_data.append((spec.name, offset, blank.nbytes))
+            offset += blank.nbytes
+
+        header = np.array(header_data, self._HEADER_DTYPE)
+        header_desc = np.array([header.nbytes], int)
+        header["offset"] += header.nbytes + header_desc.nbytes
+        body = np.zeros((offset,), np.uint8)
+
+        return header_desc, header, body

@@ -1,11 +1,10 @@
-import multiprocessing
 import multiprocessing.shared_memory as sm
 from contextlib import contextmanager
 
 import numpy as np
 import pytest
 
-from src.gamelib.sharedmem import DoubleBufferedArray, SharedBlock, ArraySpec
+from src.gamelib.sharedmem import DoubleBufferedArray, ArraySpec
 from src.gamelib import sharedmem
 
 
@@ -161,20 +160,20 @@ class TestDoubleBufferedArray:
 
 class TestModule:
     def test_allocate_creates_a_shared_memory_file(self):
-        spec = sharedmem.ArraySpec('arr1', int, 100)
+        spec = sharedmem.ArraySpec("arr1", int, 100)
 
         sharedmem.allocate([spec])
 
         assert sm.SharedMemory(sharedmem._SHM_NAME)
 
     def test_connection_before_allocation_fails(self):
-        spec = sharedmem.ArraySpec('arr1', int, 100)
+        spec = sharedmem.ArraySpec("arr1", int, 100)
 
         with pytest.raises(FileNotFoundError):
             sharedmem.connect(spec)
 
     def test_after_allocation_connect_returns_array(self):
-        spec = sharedmem.ArraySpec('arr1', int, 100)
+        spec = sharedmem.ArraySpec("arr1", int, 100)
         sharedmem.allocate([spec])
 
         arr = sharedmem.connect(spec)
@@ -183,7 +182,7 @@ class TestModule:
         assert arr.dtype == int
 
     def test_multiple_connections_share_the_same_array(self):
-        spec = sharedmem.ArraySpec('arr1', int, 100)
+        spec = sharedmem.ArraySpec("arr1", int, 100)
         sharedmem.allocate([spec])
 
         arr1 = sharedmem.connect(spec)
@@ -193,7 +192,7 @@ class TestModule:
         assert np.all(arr1 == arr2)
 
     def test_unlink_closes_the_shm_file(self):
-        spec = sharedmem.ArraySpec('arr1', int, 100)
+        spec = sharedmem.ArraySpec("arr1", int, 100)
         sharedmem.allocate([spec])
 
         sharedmem.unlink()
@@ -205,8 +204,7 @@ class TestModule:
         dtypes = [int, bool, float]
         lengths = [100, 200, 50, 133]
         specs = [
-            ArraySpec(f'arr{i}', dtypes[i % 3], lengths[i % 4])
-            for i in range(100)
+            ArraySpec(f"arr{i}", dtypes[i % 3], lengths[i % 4]) for i in range(100)
         ]
         sharedmem.allocate(specs)
 

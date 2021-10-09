@@ -303,4 +303,4 @@ def create_test_env(image_file_maker, fake_ctx):
 def auto_cleanup():
     for system in PatchedSystem.__subclasses__():
         for attr in system.public_attributes:
-            attr.open = False
+            attr.is_open = False
