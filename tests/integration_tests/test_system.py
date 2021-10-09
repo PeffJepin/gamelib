@@ -2,15 +2,12 @@ from contextlib import contextmanager
 
 import numpy as np
 import pytest
+from numpy import ma
 
-from src.gamelib import events, SystemStop, Update, sharedmem
+from src.gamelib import events, SystemStop, Update, sharedmem, Config, EntityDestroyed
 from src.gamelib.events import eventhandler, Event
-from src.gamelib.system import (
-    SystemUpdateComplete,
-    PublicAttribute,
-    ProcessSystem,
-    System,
-)
+from src.gamelib.system import SystemUpdateComplete, System
+from src.gamelib.component import PublicAttribute, ComponentCreated, ArrayAttribute
 from ..conftest import PatchedSystem
 
 
@@ -84,9 +81,38 @@ class TestSystem:
             responses = pipe_reader(conn, n=3)
             assert expected == responses
 
+    def test_components_created_by_event(self):
+        system = LocalSystem()
+        event = ComponentCreated(entity_id=0, type=LocalComponent, args=(1, 2))
+        events.post_event(event)
+
+        component = system.get_component(type_=LocalComponent, entity_id=0)
+        assert 0 == component.entity_id
+        assert (1, 2) == component.args
+        assert isinstance(component, LocalComponent)
+
+    def test_components_destroyed_by_event(self):
+        system = LocalSystem()
+        event = ComponentCreated(entity_id=0, type=LocalComponent, args=(1, 2))
+        events.post_event(event)
+        events.post_event(EntityDestroyed(0))
+
+        component = system.get_component(type_=LocalComponent, entity_id=0)
+        assert component is None
+
+    def test_array_attributes_are_masked_after_being_destroyed(self):
+        system = LocalSystem()
+        event = ComponentCreated(entity_id=0, type=LocalComponent, args=(1, 2))
+        events.post_event(event)
+
+        assert 100 == LocalComponent.arr[0]
+
+        events.post_event(EntityDestroyed(0))
+        assert not LocalComponent.arr[0]
+
     @contextmanager
     def system_tester(self, sys_type, max_entities=100):
-        System.MAX_ENTITIES = max_entities
+        Config.MAX_ENTITIES = max_entities
         sharedmem.allocate(sys_type.shared_specs)
         conn, process = sys_type.run_in_process()
         try:
@@ -109,9 +135,9 @@ class TestPublicAttribute:
         ExampleComponent.attr[:] = 1
 
         sharedmem.unlink()
-        attr.is_open = False
+        attr.close_view()
         with pytest.raises(Exception):
-            ExampleComponent.attr
+            ExampleComponent.attr += 1
 
     def test_changes_not_reflected_until_update(self, allocated_attr):
         ExampleComponent.attr[:] = 10
@@ -121,7 +147,7 @@ class TestPublicAttribute:
         assert all(ExampleComponent.attr[:] == 10)
 
     def test_array_size_dictated_by_System_MAX_ENTITIES(self, attr):
-        System.MAX_ENTITIES = 16
+        Config.MAX_ENTITIES = 16
         attr = vars(ExampleComponent)["attr"]
         sharedmem.allocate(attr.shared_specs)
 
@@ -184,3 +210,17 @@ class ExampleComponent(ExampleSystem.Component):
     def __init__(self, entity_id, *args):
         super().__init__(entity_id)
         self.args = args
+
+
+class LocalSystem(System):
+    pass
+
+
+class LocalComponent(LocalSystem.Component):
+
+    arr = ArrayAttribute(int)
+
+    def __init__(self, entity_id, *args):
+        super().__init__(entity_id)
+        self.args = args
+        self.arr = 100

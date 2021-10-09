@@ -4,34 +4,15 @@ import abc
 from multiprocessing.connection import Connection
 from typing import List, Type, Dict
 
-from . import SystemStop, events, sharedmem
+from . import SystemStop, events, sharedmem, Config, EntityCreated, EntityDestroyed
 from .events import eventhandler
-from .system import System, BaseComponent, SystemUpdateComplete, ProcessSystem
+from .system import System, SystemUpdateComplete, ProcessSystem
+from .component import ComponentCreated
 from .textures import Asset, TextureAtlas
 
 
 class UpdateComplete(events.Event):
     pass
-
-
-class EntityCreated(events.Event):
-    __slots__ = ["id"]
-
-    id: int
-
-
-class EntityDestroyed(events.Event):
-    __slots__ = ["id"]
-
-    id: int
-
-
-class ComponentCreated(events.Event):
-    __slots__ = ["entity_id", "type", "args"]
-
-    entity_id: int
-    type: Type[BaseComponent]
-    args: tuple
 
 
 class Environment(abc.ABC):
@@ -64,7 +45,7 @@ class Environment(abc.ABC):
         ctx : moderngl.Context
             Rendering context to upload GFX assets to.
         """
-        System.MAX_ENTITIES = self._MAX_ENTITIES
+        Config.MAX_ENTITIES = self._MAX_ENTITIES
         events.register_marked(self)
         self._load_assets(ctx)
         self._init_shm()

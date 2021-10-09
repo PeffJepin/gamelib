@@ -3,17 +3,15 @@ from contextlib import contextmanager
 
 import pytest
 
-from src.gamelib import Update, events
+from src.gamelib import Update, events, EntityCreated, EntityDestroyed
 from src.gamelib import environment
 from src.gamelib.environment import (
     UpdateComplete,
-    EntityCreated,
     EntityFactory,
-    EntityDestroyed,
-    ComponentCreated,
 )
 from src.gamelib.events import eventhandler, Event
-from src.gamelib.system import PublicAttribute, SystemUpdateComplete, ArrayAttribute
+from src.gamelib.system import SystemUpdateComplete
+from src.gamelib.component import ComponentCreated, ArrayAttribute, PublicAttribute
 from src.gamelib.textures import Asset, TextureAtlas
 from ..conftest import PatchedSystem, RecordedCallback
 
@@ -57,20 +55,20 @@ class TestEnvironment:
             assert 0 == env.abc_event_handled
 
     def test_shared_memory_is_initialized_after_load(self, create_test_env):
-        with create_test_env(loaded=True) as env:
+        with create_test_env(loaded=True):
             assert all(Component1.public_attr[:] == 0)
 
     def test_shared_memory_is_released_after_exit(self, create_test_env):
         with create_test_env(loaded=True) as env:
             env.exit()
             with pytest.raises(Exception):
-                should_raise_error = Component1.public_attr
+                Component1.public_attr += 1
 
     def test_systems_begin_handling_events_after_load(
         self, create_test_env, recorded_callback
     ):
         events.register(SystemUpdateComplete, recorded_callback)
-        with create_test_env(loaded=True) as env:
+        with create_test_env(loaded=True):
             events.post_event(Update())
             recorded_callback.wait_for_response(n=2)
 
@@ -97,7 +95,7 @@ class TestEnvironment:
         self, create_test_env, recorded_callback
     ):
         events.register(Response.QUERY_PUBLIC_ATTR_LENGTH, recorded_callback)
-        with create_test_env(loaded=True, max_entities=111) as env:
+        with create_test_env(loaded=True, max_entities=111):
             events.post_event(Event(), key="QUERY_PUBLIC_ATTR_LENGTH")
             events.post_event(Update())
             recorded_callback.wait_for_response()
@@ -107,7 +105,7 @@ class TestEnvironment:
         self, create_test_env, recorded_callback
     ):
         events.register(Response.QUERY_ARRAY_ATTR_LENGTH, recorded_callback)
-        with create_test_env(max_entities=12, loaded=True) as env:
+        with create_test_env(max_entities=12, loaded=True):
             events.post_event(Event(), key="QUERY_ARRAY_ATTR_LENGTH")
             events.post_event(Update())
             recorded_callback.wait_for_response()
@@ -118,7 +116,7 @@ class TestEnvironment:
         self, create_test_env, recorded_callback
     ):
         events.register(UpdateComplete, recorded_callback)
-        with create_test_env(loaded=True) as env:
+        with create_test_env(loaded=True):
             events.post_event(Update())
             # this will raise timeout error on test fail
             recorded_callback.wait_for_response()
@@ -221,17 +219,17 @@ class TestEntityFactory:
 
 class System1(PatchedSystem):
     @eventhandler(Event.QUERY_PUBLIC_ATTR_LENGTH)
-    def public_attr_length_response(self, event):
+    def public_attr_length_response(self, _):
         res = Response(len(Component1.public_attr))
         self.raise_event(res, key="QUERY_PUBLIC_ATTR_LENGTH")
 
     @eventhandler(Event.QUERY_ARRAY_ATTR_LENGTH)
-    def array_attr_length_response(self, event):
+    def array_attr_length_response(self, _):
         res = Response(len(Component1.array_attr))
         self.raise_event(res, key="QUERY_ARRAY_ATTR_LENGTH")
 
     @eventhandler(Event.PUBLIC_ATTR_MULTIPLE_ACCESS)
-    def multiple_access_increment(self, event):
+    def multiple_access_increment(self, _):
         Component1.public_attr[0] += 1
 
 
@@ -246,7 +244,7 @@ class Component1(System1.Component):
 
 class System2(PatchedSystem):
     @eventhandler(Event.PUBLIC_ATTR_MULTIPLE_ACCESS)
-    def multiple_access_increment(self, event):
+    def multiple_access_increment(self, _):
         res = Response(Component1.public_attr[0])
         self.raise_event(res, key="PUBLIC_ATTR_MULTIPLE_ACCESS")
 
@@ -278,11 +276,11 @@ def create_test_env(image_file_maker, fake_ctx):
         SYSTEMS = [System1, System2]
 
         @eventhandler(Event.ABC)
-        def abc_handler(self, event):
+        def abc_handler(self, _):
             self.abc_event_handled += 1
 
         @eventhandler(SystemUpdateComplete)
-        def update_complete_counter(self, event):
+        def update_complete_counter(self, _):
             self.updates_completed += 1
 
     @contextmanager

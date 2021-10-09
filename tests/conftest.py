@@ -10,9 +10,9 @@ from typing import Tuple, Callable
 import pytest
 from PIL import Image
 
-from src.gamelib import events, sharedmem
+from src.gamelib import events, sharedmem, Config
 from src.gamelib.events import clear_handlers
-from src.gamelib.system import ProcessSystem, System
+from src.gamelib.system import ProcessSystem
 from src.gamelib.textures import Asset
 
 counter = itertools.count(10_000)
@@ -194,7 +194,7 @@ class PatchedSystem(ProcessSystem):
         start_system_command = (
             cls,
             internal_conn,
-            System.MAX_ENTITIES,
+            Config.MAX_ENTITIES,
         )
         runner_connection.send(start_system_command)
 
