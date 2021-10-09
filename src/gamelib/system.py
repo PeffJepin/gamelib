@@ -8,7 +8,7 @@ from typing import Type, List
 import numpy as np
 from numpy import ma
 
-from . import Update, SystemStop, events
+from . import Update, SystemStop, events, sharedmem
 from .events import eventhandler, Event
 from .sharedmem import DoubleBufferedArray, SharedBlock, ArraySpec
 
@@ -135,16 +135,12 @@ class ProcessSystem(System):
         events.register_marked(self)
 
     @classmethod
-    def run_in_process(cls, max_entities, **kwargs):
+    def run_in_process(cls, **kwargs):
         """
         Method that should be called from the main process to actually start the system.
 
-        If PublicAttributes are in use System.set_shared_block() must be called before running systems.
-
-        Parameters
-        ----------
-        max_entities : int
-            Lets the system know how much memory to allocate for numpy arrays.
+        System.MAX_ENTITIES should be set before calling if not default.
+        If using PublicAttributes sharedmem should be allocated first.
 
         Returns
         -------
@@ -155,34 +151,21 @@ class ProcessSystem(System):
         local, foreign = mp.Pipe()
         process = mp.Process(
             target=cls._run,
-            args=(foreign, max_entities, PublicAttribute.SHARED_BLOCK),
+            args=(foreign, System.MAX_ENTITIES),
             kwargs=kwargs,
         )
         process.start()
         return local, process
 
     @classmethod
-    def set_shared_block(cls, shared_block):
-        """Sets the global SharedBlock that systems will use to attach to shm."""
-        PublicAttribute.SHARED_BLOCK = shared_block
-
-    @classmethod
-    def _run(cls, conn, max_entities, shared_block, **kwargs):
+    def _run(cls, conn, max_entities, **kwargs):
         """Internal process entry point. Sets global System state before starting."""
         System.MAX_ENTITIES = max_entities
-        cls.set_shared_block(shared_block)
         for attr in cls.array_attributes:
             attr.reallocate()
         inst = cls(conn, **kwargs)
         inst._main()
-
-    @classmethod
-    def teardown_shared_state(cls):
-        if PublicAttribute.SHARED_BLOCK is not None:
-            PublicAttribute.SHARED_BLOCK.unlink_shm()
-            PublicAttribute.SHARED_BLOCK = None
-        for attr in cls.public_attributes:
-            attr.open = False
+        cls._teardown_shared_state()
 
     def raise_event(self, event, key=None):
         """Sends an event back to the main process."""
@@ -192,7 +175,6 @@ class ProcessSystem(System):
         self._running = True
         while self._running:
             self._poll()
-        self._teardown_shared_state()
 
     def _poll(self):
         if not self._conn.poll(0):
@@ -208,14 +190,12 @@ class ProcessSystem(System):
             msg_with_traceback = f"{e}\n\n{traceback.format_exc()}"
             self._conn.send(type(e)(msg_with_traceback))
 
-    def _teardown_shared_state(self):
+    @classmethod
+    def _teardown_shared_state(cls):
         """Local only teardown."""
-        if PublicAttribute.SHARED_BLOCK is None:
-            return
-        PublicAttribute.SHARED_BLOCK.close_shm()
-        PublicAttribute.SHARED_BLOCK = None
-        for attr in type(self).public_attributes:
-            attr.open = False
+        for attr in cls.public_attributes:
+            attr.close()
+        sharedmem.close()
 
     @eventhandler(SystemStop)
     def _stop(self, _):
@@ -293,8 +273,7 @@ class ArrayAttribute:
 
 class PublicAttribute:
 
-    SHARED_BLOCK: SharedBlock = None
-    _dbl_buffer: DoubleBufferedArray = None
+    _dbl_buffer: DoubleBufferedArray | None = None
 
     def __init__(self, dtype):
         """
@@ -325,8 +304,6 @@ class PublicAttribute:
             )
         self._owner = owner
         self._name = name
-        shm_name = f"{owner.__class__.__name__}__{name}"
-        self._dbl_buffer = DoubleBufferedArray(shm_name, self._dtype)
 
     def __get__(self, instance, owner):
         """
@@ -336,13 +313,13 @@ class PublicAttribute:
         Returns
         -------
         value : Numeric | DoubleBufferedArray
-            A value from the array at index = entity_id if accessed on an instance.
-            The whole array if accessed on the owner.
+            A value from the array at index = entity_id if accessed from an instance.
+            The whole array if accessed from the component type.
 
         Raises
         ------
         FileNotFoundError:
-            If memory has not been allocated by time of access.
+            If memory has not been allocated by the time of access.
         """
         if not self.open:
             self._open()
@@ -376,6 +353,10 @@ class PublicAttribute:
         """
         self._dbl_buffer.flip()
 
+    def close(self):
+        self.open = False
+        self._dbl_buffer = None
+
     @property
     def shared_specs(self):
         """
@@ -385,8 +366,15 @@ class PublicAttribute:
         -------
         specs : tuple[ArraySpec]
         """
+        if not self.open:
+            return DoubleBufferedArray(self._shm_name, self._dtype, System.MAX_ENTITIES).specs
         return self._dbl_buffer.specs
 
+    @property
+    def _shm_name(self):
+        return f"{self._owner.__class__.__name__}__{self._name}"
+
     def _open(self):
-        self._dbl_buffer.connect(PublicAttribute.SHARED_BLOCK)
+        self._dbl_buffer = DoubleBufferedArray(self._shm_name, self._dtype, System.MAX_ENTITIES)
+        self._dbl_buffer.connect()
         self.open = True

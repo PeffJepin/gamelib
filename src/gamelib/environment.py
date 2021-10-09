@@ -4,7 +4,7 @@ import abc
 from multiprocessing.connection import Connection
 from typing import List, Type, Dict
 
-from . import SystemStop, events
+from . import SystemStop, events, sharedmem
 from .sharedmem import SharedBlock
 from .events import eventhandler
 from .system import System, BaseComponent, SystemUpdateComplete, ProcessSystem
@@ -37,12 +37,10 @@ class ComponentCreated(events.Event):
 
 class Environment(abc.ABC):
     ASSETS: list
-
     SYSTEMS: List[Type[ProcessSystem]]
     _MAX_ENTITIES: int = 1024
 
     _system_connections: Dict[Type[System], Connection]
-    _shm_block: SharedBlock = None
 
     def __init__(self):
         """
@@ -78,8 +76,10 @@ class Environment(abc.ABC):
         """
         Cleans up resources this Environment is using and exits the MessageBus.
         """
+        sharedmem.unlink()
         for system in self.SYSTEMS:
-            system.teardown_shared_state()
+            for attr in system.public_attributes:
+                attr.open = False
         if not self._loaded:
             return
         self._release_assets()
@@ -139,15 +139,14 @@ class Environment(abc.ABC):
     def _start_systems(self):
         self._running_systems = dict()
         for system in self.SYSTEMS:
-            conn, process = system.run_in_process(self._MAX_ENTITIES)
+            conn, process = system.run_in_process()
             system_handler_types = events.find_eventhandlers(system).keys()
             events.service_connection(conn, *system_handler_types)
             self._running_systems[system] = (process, conn)
 
     def _init_shm(self):
-        System.MAX_ENTITIES = self._MAX_ENTITIES
         specs = sum((system.shared_specs for system in self.SYSTEMS), [])
-        ProcessSystem.set_shared_block(SharedBlock(specs, self._MAX_ENTITIES))
+        sharedmem.allocate(specs)
 
     @eventhandler(SystemUpdateComplete)
     def _track_system_updates(self, event):

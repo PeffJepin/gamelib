@@ -3,9 +3,9 @@ from contextlib import contextmanager
 import numpy as np
 import pytest
 
-from src.gamelib import events, SystemStop, Update
+from src.gamelib import events, SystemStop, Update, sharedmem
 from src.gamelib.events import eventhandler, Event
-from src.gamelib.system import SystemUpdateComplete, PublicAttribute, ProcessSystem
+from src.gamelib.system import SystemUpdateComplete, PublicAttribute, ProcessSystem, System
 from ..conftest import PatchedSystem
 
 
@@ -81,8 +81,9 @@ class TestSystem:
 
     @contextmanager
     def system_tester(self, sys_type, max_entities=100):
-        ProcessSystem.set_shared_block(sys_type.make_test_shm_block())
-        conn, process = sys_type.run_in_process(max_entities)
+        System.MAX_ENTITIES = max_entities
+        sharedmem.allocate(sys_type.shared_specs)
+        conn, process = sys_type.run_in_process()
         try:
             yield conn
         finally:

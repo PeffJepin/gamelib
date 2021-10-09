@@ -10,7 +10,7 @@ from typing import Tuple, Callable
 import pytest
 from PIL import Image
 
-from src.gamelib import events
+from src.gamelib import events, sharedmem
 from src.gamelib.events import clear_handlers
 from src.gamelib.sharedmem import SharedBlock
 from src.gamelib.system import ProcessSystem, PublicAttribute, System
@@ -147,9 +147,10 @@ class SystemRunner(mp.Process):
             return self.conn.send(self.READY)
         elif isinstance(message, tuple):
             events.clear_handlers()
-            system, conn, max_entities, shm_block = message
+            system, conn, max_entities = message
             self.conn.send("STARTING SYSTEM")
-            system._run(conn, max_entities, shm_block, _runner_conn=self.conn)
+            system._run(conn, max_entities, _runner_conn=self.conn)
+            sharedmem.close()
 
     @classmethod
     def get_connection(cls):
@@ -184,15 +185,14 @@ class PatchedSystem(ProcessSystem):
         super()._poll()
 
     @classmethod
-    def run_in_process(cls, max_entities, **kwargs):
+    def run_in_process(cls, **kwargs):
         """Dispatch to an already running process."""
         runner_connection = SystemRunner.get_connection()
         local_conn, internal_conn = mp.Pipe()
         start_system_command = (
             cls,
             internal_conn,
-            max_entities,
-            PublicAttribute.SHARED_BLOCK,
+            System.MAX_ENTITIES,
         )
         runner_connection.send(start_system_command)
 
@@ -254,9 +254,7 @@ def setup_logging():
 
 @pytest.fixture(autouse=True, scope="function")
 def cleanup_global_shm():
-    if PublicAttribute.SHARED_BLOCK is not None:
-        PublicAttribute.SHARED_BLOCK.unlink_shm()
-        PublicAttribute.SHARED_BLOCK = None
+    sharedmem.unlink()
 
 
 @pytest.fixture(autouse=True, scope="function")

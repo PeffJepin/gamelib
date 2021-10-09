@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from src.gamelib import sharedmem
 from src.gamelib.sharedmem import SharedBlock
 from src.gamelib.system import System, ArrayAttribute, PublicAttribute, ProcessSystem
 
@@ -124,17 +125,13 @@ class TestPublicAttribute:
 
     def test_cannot_be_accessed_after_closed(self):
         attr = vars(ExampleComponent)["attr"]
-        blk = SharedBlock(attr.shared_specs, System.MAX_ENTITIES)
-        ProcessSystem.set_shared_block(blk)
+        sharedmem.allocate(attr.shared_specs)
+        ExampleComponent.attr[:] = 1
 
-        try:
-            ExampleComponent.attr[:] = 1
-            blk.unlink_shm()
-            attr.open = False
-            with pytest.raises(Exception):
-                ExampleComponent.attr
-        finally:
-            blk.unlink_shm()
+        sharedmem.unlink()
+        attr.open = False
+        with pytest.raises(Exception):
+            ExampleComponent.attr
 
     def test_changes_not_reflected_until_update(self, allocated_attr):
         ExampleComponent.attr[:] = 10
@@ -146,13 +143,9 @@ class TestPublicAttribute:
     def test_array_size_dictated_by_System_MAX_ENTITIES(self, attr):
         System.MAX_ENTITIES = 16
         attr = vars(ExampleComponent)["attr"]
-        blk = SharedBlock(attr.shared_specs, System.MAX_ENTITIES)
-        ProcessSystem.set_shared_block(blk)
+        sharedmem.allocate(attr.shared_specs)
 
-        try:
-            assert len(ExampleComponent.attr) == 16
-        finally:
-            blk.unlink_shm()
+        assert len(ExampleComponent.attr) == 16
 
     def test_indexed_by_object_entity_id(self, allocated_attr):
         inst = ExampleComponent(5)
@@ -168,21 +161,17 @@ class TestPublicAttribute:
         try:
             yield attr
         finally:
-            if PublicAttribute.SHARED_BLOCK is not None:
-                PublicAttribute.SHARED_BLOCK.unlink_shm()
-                PublicAttribute.SHARED_BLOCK = None
-            attr.is_open = False
+            attr.open = False
 
     @pytest.fixture
     def allocated_attr(self):
         attr = vars(ExampleComponent)["attr"]
-        blk = SharedBlock(attr.shared_specs, System.MAX_ENTITIES)
-        ProcessSystem.set_shared_block(blk)
+        sharedmem.allocate(attr.shared_specs)
+
         try:
             yield attr
         finally:
-            attr.is_open = False
-            blk.unlink_shm()
+            attr.open = False
 
 
 class ExampleSystem(ProcessSystem):

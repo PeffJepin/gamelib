@@ -1,25 +1,31 @@
 import multiprocessing
+import multiprocessing.shared_memory as sm
 from contextlib import contextmanager
 
 import numpy as np
+import pytest
 
 from src.gamelib.sharedmem import DoubleBufferedArray, SharedBlock, ArraySpec
+from src.gamelib import sharedmem
 
 
 class TestDoubleBufferedArray:
     def test_not_open_upon_init(self):
-        dbl = DoubleBufferedArray("my name", float)
+        dbl = DoubleBufferedArray("my name", float, 8)
         assert not dbl.is_open
 
-    def test_is_open_after_connecting_to_shared_block(self):
-        dbl = DoubleBufferedArray("my name", int)
-        blk = SharedBlock(dbl.specs, 8)
-        dbl.connect(blk)
+    def test_connecting_before_allocation_happens_errors(self):
+        dbl = DoubleBufferedArray("my name", int, 16)
 
-        try:
-            assert dbl.is_open
-        finally:
-            blk.unlink_shm()
+        with pytest.raises(FileNotFoundError):
+            dbl.connect()
+
+    def test_is_open_after_connecting_to_shared_block(self):
+        dbl = DoubleBufferedArray("my name", int, 16)
+        sharedmem.allocate(dbl.specs)
+        dbl.connect()
+
+        assert dbl.is_open
 
     def test_making_changes_to_a_view_of_the_array(self):
         data_in = [1, 3, 3, 3, 5]
@@ -109,98 +115,109 @@ class TestDoubleBufferedArray:
             dbl -= 5
 
     def test_flip_effects_all_instances(self):
-        dbls = [DoubleBufferedArray("id", int) for _ in range(3)]
-        blk = SharedBlock(dbls[0].specs, 16)
+        dbls = [DoubleBufferedArray("id", int, 10) for _ in range(3)]
+        specs = [spec for dbl in dbls for spec in dbl.specs]
+        sharedmem.allocate(specs)
+
         for dbl in dbls:
-            dbl.connect(blk)
+            dbl.connect()
 
-        try:
-            dbls[0][:] = 123
+        dbls[0][:] = 123
 
-            for arr in dbls:
-                assert all(arr == 0)
+        for arr in dbls:
+            assert all(arr == 0)
 
-            dbls[0].flip()
+        dbls[0].flip()
 
-            for arr in dbls:
-                assert all(arr == 123)
-
-        finally:
-            blk.unlink_shm()
+        for arr in dbls:
+            assert all(arr == 123)
 
     @contextmanager
     def dbl_buffered(self, initial_data):
-        dbl = DoubleBufferedArray("id", type(initial_data[0]))
-        blk = SharedBlock(dbl.specs, len(initial_data))
-        dbl.connect(blk)
+        dbl = DoubleBufferedArray("id", type(initial_data[0]), len(initial_data))
+        sharedmem.allocate(dbl.specs)
+        dbl.connect()
+
         for arr in (dbl._read_arr, dbl._write_arr):
             arr[:] = initial_data[:]
 
-        try:
-            yield dbl
-        finally:
-            blk.unlink_shm()
+        yield dbl
 
     @contextmanager
     def mutating_operations_tester(self, initial_data, expected_data):
-        dbl = DoubleBufferedArray("id", type(initial_data[0]))
-        blk = SharedBlock(dbl.specs, len(initial_data))
-        dbl.connect(blk)
+        dbl = DoubleBufferedArray("id", type(initial_data[0]), len(initial_data))
+        sharedmem.allocate(dbl.specs)
+        dbl.connect()
+
         for arr in (dbl._read_arr, dbl._write_arr):
             arr[:] = initial_data[:]
 
-        try:
-            yield dbl
-            assert isinstance(dbl, DoubleBufferedArray)
-            assert all(dbl[:] == initial_data[:])
-            dbl.flip()
-            assert all(dbl[:] == expected_data[:])
-        finally:
-            blk.unlink_shm()
+        yield dbl
+        assert isinstance(dbl, DoubleBufferedArray)
+        assert all(dbl[:] == initial_data[:])
+        dbl.flip()
+        assert all(dbl[:] == expected_data[:])
 
 
-class TestSharedBlock:
-    def test_shared_arrays_are_automatically_allocated(self):
-        specs = [ArraySpec(str(i), int) for i in range(4)]
-        blk = SharedBlock(specs, 100)
-        arr01 = blk[specs[0]]
+class TestModule:
+    def test_allocate_creates_a_shared_memory_file(self):
+        spec = sharedmem.ArraySpec('arr1', int, 100)
 
-        try:
-            all(arr01 == 0)
-        finally:
-            blk.unlink_shm()
+        sharedmem.allocate([spec])
 
-    def test_max_entities_dictates_length_of_array(self):
-        spec1 = ArraySpec("id1", int)
-        spec2 = ArraySpec("id2", int)
-        blk1 = SharedBlock([spec1], max_entities=10)
-        blk2 = SharedBlock([spec2], max_entities=20)
+        assert sm.SharedMemory(sharedmem._SHM_NAME)
 
-        arr1 = blk1[spec1]
-        arr2 = blk2[spec2]
+    def test_connection_before_allocation_fails(self):
+        spec = sharedmem.ArraySpec('arr1', int, 100)
 
-        try:
-            assert len(arr1) == 10
-            assert len(arr2) == 20
-        finally:
-            blk1.unlink_shm()
-            blk2.unlink_shm()
+        with pytest.raises(FileNotFoundError):
+            sharedmem.connect(spec)
 
-    def test_arrays_share_the_same_memory_when_created_across_a_pipe_connection(self):
-        a, b = multiprocessing.Pipe()
-        spec = ArraySpec("some id", int)
-        blk1 = SharedBlock([spec], 8)
-        arr1 = blk1[spec]
+    def test_after_allocation_connect_returns_array(self):
+        spec = sharedmem.ArraySpec('arr1', int, 100)
+        sharedmem.allocate([spec])
 
-        a.send(blk1)
-        assert b.poll(1)
-        blk2 = b.recv()
-        arr2 = blk2[spec]
+        arr = sharedmem.connect(spec)
+        assert isinstance(arr, np.ndarray)
+        assert arr.shape == (100,)
+        assert arr.dtype == int
 
-        try:
-            assert all(arr1 == arr2)
-            arr1 += 100
-            assert all(arr1 == arr2)
-        finally:
-            blk2.close_shm()
-            blk1.unlink_shm()
+    def test_multiple_connections_share_the_same_array(self):
+        spec = sharedmem.ArraySpec('arr1', int, 100)
+        sharedmem.allocate([spec])
+
+        arr1 = sharedmem.connect(spec)
+        arr2 = sharedmem.connect(spec)
+
+        arr1 += 5
+        assert np.all(arr1 == arr2)
+
+    def test_unlink_closes_the_shm_file(self):
+        spec = sharedmem.ArraySpec('arr1', int, 100)
+        sharedmem.allocate([spec])
+
+        sharedmem.unlink()
+
+        with pytest.raises(FileNotFoundError):
+            sm.SharedMemory(sharedmem._SHM_NAME)
+
+    def test_with_many_different_specs(self):
+        dtypes = [int, bool, float]
+        lengths = [100, 200, 50, 133]
+        specs = [
+            ArraySpec(f'arr{i}', dtypes[i % 3], lengths[i % 4])
+            for i in range(100)
+        ]
+        sharedmem.allocate(specs)
+
+        for spec in specs:
+            arr = sharedmem.connect(spec)
+            assert spec.dtype == arr.dtype
+            assert spec.length == len(arr)
+
+            # ensure no buffer overlap
+            assert np.all(arr == 0)
+            if arr.dtype == bool:
+                arr[:] = True
+            else:
+                arr += 1
