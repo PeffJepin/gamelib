@@ -7,7 +7,7 @@ from multiprocessing.connection import Connection
 from typing import Type, List
 
 from . import Update, SystemStop, events, sharedmem, Config, EntityDestroyed
-from .component import ComponentCreated, BaseComponent, ArrayAttribute, PublicAttribute
+from .component import ComponentCreated, BaseComponent
 from .events import eventhandler, Event
 
 
@@ -94,6 +94,7 @@ class System(metaclass=_SystemMeta):
     _running: bool
 
     def __init__(self):
+        Config.local_components.extend(self.Component.__subclasses__())
         events.register_marked(self)
         self._component_lookup = defaultdict(dict)
 
@@ -107,6 +108,8 @@ class System(metaclass=_SystemMeta):
         """
 
     def stop(self):
+        for component in self.Component.__subclasses__():
+            Config.local_components.remove(component)
         self._running = False
         events.unregister_marked(self)
 
@@ -138,6 +141,7 @@ class ProcessSystem(System):
         self._running = False
         self._event_queue = []
         super().__init__()
+        Config.local_systems = [type(self)]
 
     @classmethod
     def run_in_process(cls, **kwargs):
@@ -164,8 +168,10 @@ class ProcessSystem(System):
 
     @classmethod
     def _run(cls, conn, max_entities, **kwargs):
-        """Internal process entry point. Sets global System state before starting."""
+        """Internal process entry point. Sets some global state and clears forked state."""
         Config.MAX_ENTITIES = max_entities
+        Config.local_components = []
+        events.clear_handlers()
         for attr in cls.array_attributes:
             attr.reallocate()
         inst = cls(conn, **kwargs)

@@ -13,6 +13,7 @@ _MOUSE_MAP = {"LEFT": 1, "RIGHT": 2, "MIDDLE": 3}
 
 class Config:
     MAX_ENTITIES: int = 1024
+    local_components = []
 
 
 class Update(Event):

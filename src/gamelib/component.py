@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import abc
-from functools import partial
 from typing import Type
 
+import numpy as np
 from numpy import ma
 
 
-from . import events, Config
-from .sharedmem import DoubleBufferedArray
+from . import events, sharedmem, Config
 
 
 class ArrayAttribute:
@@ -63,29 +62,32 @@ class ArrayAttribute:
 
 
 class PublicAttribute:
-    _dbl_buffer: DoubleBufferedArray | None = None
-
     def __init__(self, dtype):
         """
         A Descriptor for a shared public attribute.
 
-        Normally an array attribute is localized to its own process,
-        data stored in one of these attributes can be accessed from any
-        process.
+        When accessed from a process which is running the parent System
+        locally, the "write array" will be accessed. Otherwise a read-only
+        view of the "read array" will be given.
 
         THERE ARE NO LOCKING MECHANISMS IN PLACE
 
-        The array will be double buffered, with writes going to
-        one array and reads to the other. Once all systems have
-        signaled that they are done Updating the main process
-        will copy the write buffer into the read buffer.
+        Once all systems have signaled that they are done updating
+        the main process will copy the write buffer into the read buffer.
 
         Parameters
         ----------
-        dtype : type[int] | type[float] | np.dtype
+        dtype : type[int] | type[float] | np.number
         """
-        self.is_open = False
         self._dtype = dtype
+
+        # Used when attempting to access..
+        # Might be read or write array depending on where access occurs.
+        self._array = None
+
+        # Used when updating buffers
+        self._read_view = None
+        self._write_view = None
 
     def __set_name__(self, owner, name):
         if not issubclass(owner, BaseComponent) and owner != BaseComponent:
@@ -97,8 +99,9 @@ class PublicAttribute:
 
     def __get__(self, instance, owner):
         """
-        Get reference to the DoubleBufferedArray. Will attempt to connect the array to shm
-        if it is not already connected.
+        Get a view into the shared memory. If the parent System is running on
+        this process, then the "write" buffer is used, otherwise the "read" buffer
+        is used.
 
         Returns
         -------
@@ -114,9 +117,9 @@ class PublicAttribute:
         if not self.is_open:
             self._open()
         if instance is None:
-            return self._dbl_buffer
+            return self._array
         index = instance.entity_id
-        return self._dbl_buffer[index]
+        return self._array[index]
 
     def __set__(self, obj, value):
         """
@@ -130,7 +133,7 @@ class PublicAttribute:
         if not self.is_open:
             self._open()
         index = obj.entity_id
-        self._dbl_buffer[index] = value
+        self._array[index] = value
 
     def __repr__(self):
         return f"<PublicAttribute({self._owner.__name__}.{self._name}, open={self.is_open})>"
@@ -141,11 +144,20 @@ class PublicAttribute:
 
         Note that there are no synchronization primitives guarding this process.
         """
-        self._dbl_buffer.flip()
+        if self._read_view is None:
+            self._read_view = sharedmem.connect(self._read_spec)
+        if self._write_view is None:
+            self._write_view = sharedmem.connect(self._write_spec)
+        self._read_view[:] = self._write_view[:]
 
     def close_view(self):
-        self.is_open = False
-        self._dbl_buffer = None
+        self._array = None
+        self._read_view = None
+        self._write_view = None
+
+    @property
+    def is_open(self):
+        return self._array is not None
 
     @property
     def shared_specs(self):
@@ -156,22 +168,28 @@ class PublicAttribute:
         -------
         specs : tuple[ArraySpec]
         """
-        if not self.is_open:
-            return DoubleBufferedArray(
-                self._shm_name, self._dtype, Config.MAX_ENTITIES
-            ).specs
-        return self._dbl_buffer.specs
+        return self._read_spec, self._write_spec
 
     @property
     def _shm_name(self):
         return f"{self._owner.__class__.__name__}__{self._name}"
 
-    def _open(self):
-        self._dbl_buffer = DoubleBufferedArray(
-            self._shm_name, self._dtype, Config.MAX_ENTITIES
+    @property
+    def _read_spec(self):
+        return sharedmem.ArraySpec(
+            self._shm_name + "_r", self._dtype, Config.MAX_ENTITIES
         )
-        self._dbl_buffer.connect()
-        self.is_open = True
+
+    @property
+    def _write_spec(self):
+        return sharedmem.ArraySpec(
+            self._shm_name + "_w", self._dtype, Config.MAX_ENTITIES
+        )
+
+    def _open(self):
+        local = self._owner in Config.local_components
+        spec = self._write_spec if local else self._read_spec
+        self._array = sharedmem.connect(spec, readonly=(not local))
 
 
 class ComponentCreated(events.Event):

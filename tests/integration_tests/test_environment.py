@@ -3,14 +3,14 @@ from contextlib import contextmanager
 
 import pytest
 
-from src.gamelib import Update, events, EntityCreated, EntityDestroyed
+from src.gamelib import Update, events, EntityCreated, EntityDestroyed, Config
 from src.gamelib import environment
 from src.gamelib.environment import (
     UpdateComplete,
     EntityFactory,
 )
 from src.gamelib.events import eventhandler, Event
-from src.gamelib.system import SystemUpdateComplete
+from src.gamelib.system import SystemUpdateComplete, System
 from src.gamelib.component import ComponentCreated, ArrayAttribute, PublicAttribute
 from src.gamelib.textures import Asset, TextureAtlas
 from ..conftest import PatchedSystem, RecordedCallback
@@ -87,9 +87,9 @@ class TestEnvironment:
 
     def test_systems_shut_down_after_exit(self, create_test_env):
         with create_test_env(loaded=True) as env:
-            assert env._running_systems is not None
+            assert env._running_processes is not None
             env.exit()
-            assert env._running_systems is None
+            assert env._running_processes is None
 
     def test_public_attr_correct_length_in_process(
         self, create_test_env, recorded_callback
@@ -139,6 +139,19 @@ class TestEnvironment:
                 if update_watcher.called <= i:
                     update_watcher.wait_for_response()
                 env.update_public_attributes()
+
+    def test_config_local_components_accurately_tracks_components_on_a_process(
+        self, create_test_env, recorded_callback
+    ):
+        events.register(Response.TEST_CONFIG_LOCAL_COMPONENTS, recorded_callback)
+        with create_test_env(loaded=True):
+            events.post_event(Event(), key="TEST_CONFIG_LOCAL_COMPONENTS")
+            events.post_event(Update())
+            recorded_callback.await_called(2)
+
+            assert Response([Component1]) in recorded_callback.events
+            assert Response([Component2]) in recorded_callback.events
+            assert Config.local_components == [LocalComponent]
 
 
 class TestEntityFactory:
@@ -232,6 +245,12 @@ class System1(PatchedSystem):
     def multiple_access_increment(self, _):
         Component1.public_attr[0] += 1
 
+    @eventhandler(Event.TEST_CONFIG_LOCAL_COMPONENTS)
+    def local_system_check(self, _):
+        self.raise_event(
+            Response(Config.local_components), key="TEST_CONFIG_LOCAL_COMPONENTS"
+        )
+
 
 class Response(Event):
     __slots__ = ["value"]
@@ -247,6 +266,24 @@ class System2(PatchedSystem):
     def multiple_access_increment(self, _):
         res = Response(Component1.public_attr[0])
         self.raise_event(res, key="PUBLIC_ATTR_MULTIPLE_ACCESS")
+
+    @eventhandler(Event.TEST_CONFIG_LOCAL_COMPONENTS)
+    def local_system_check(self, _):
+        self.raise_event(
+            Response(Config.local_components), key="TEST_CONFIG_LOCAL_COMPONENTS"
+        )
+
+
+class Component2(System2.Component):
+    pass
+
+
+class LocalSystem(System):
+    pass
+
+
+class LocalComponent(LocalSystem.Component):
+    pass
 
 
 @pytest.fixture
@@ -273,7 +310,7 @@ def create_test_env(image_file_maker, fake_ctx):
             ),
         ]
 
-        SYSTEMS = [System1, System2]
+        SYSTEMS = [LocalSystem, System1, System2]
 
         @eventhandler(Event.ABC)
         def abc_handler(self, _):
@@ -295,10 +332,3 @@ def create_test_env(image_file_maker, fake_ctx):
             env.exit()
 
     return env_manager
-
-
-@pytest.fixture(autouse=True)
-def auto_cleanup():
-    for system in PatchedSystem.__subclasses__():
-        for attr in system.public_attributes:
-            attr.is_open = False

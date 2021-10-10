@@ -11,7 +11,6 @@ import pytest
 from PIL import Image
 
 from src.gamelib import events, sharedmem, Config
-from src.gamelib.events import clear_handlers
 from src.gamelib.system import ProcessSystem
 from src.gamelib.textures import Asset
 
@@ -38,6 +37,15 @@ class RecordedCallback:
     def events(self):
         """Returns all invoking events"""
         return [a[0] for a in self.args]
+
+    def await_called(self, num_times_called, timeout=1):
+        ts = time.time()
+        while time.time() < ts + timeout:
+            if self.called == num_times_called:
+                return
+        raise TimeoutError(
+            f"Target times called = {num_times_called}. Current times called = {self.called}"
+        )
 
     def wait_for_response(self, timeout=1, n=1):
         start = self.called
@@ -257,4 +265,9 @@ def cleanup_global_shm():
 
 @pytest.fixture(autouse=True, scope="function")
 def cleanup_event_handlers():
-    clear_handlers()
+    events.clear_handlers()
+
+
+@pytest.fixture(autouse=True, scope="function")
+def cleanup_config():
+    Config.local_components.clear()

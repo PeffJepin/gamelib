@@ -8,8 +8,7 @@ import numpy as np
 
 _POSIX = os.name == "posix"
 _SHM_NAME = "__gamelib_shm__"
-_shm_file = None
-_arrays = []
+_shm_file: _SharedMemoryFile | None = None
 
 
 def allocate(specs):
@@ -22,14 +21,19 @@ def allocate(specs):
     ----------
     specs : Iterable[ArraySpec]
         Specifications for allocating this apps memory.
+
+    Raises
+    ------
+    FileExistsError:
+        If allocate has already been called and has not since been unlinked.
     """
     global _shm_file
     if _shm_file is not None:
-        unlink()
+        raise FileExistsError("Shared memory has already been allocated.")
     _shm_file = _SharedMemoryFile(specs)
 
 
-def connect(spec):
+def connect(spec, readonly=False):
     """
     Connect to a shared block of memory described by spec.
 
@@ -37,6 +41,7 @@ def connect(spec):
     ----------
     spec : ArraySpec
         This spec should have been allocated by this point.
+    readonly : bool
 
     Returns
     -------
@@ -52,7 +57,8 @@ def connect(spec):
     if _shm_file is None:
         _shm_file = _SharedMemoryFile()
     array = _shm_file.retrieve_from_spec(spec)
-    _arrays.append(array)
+    if readonly:
+        array.flags.writeable = False
     return array
 
 
@@ -76,13 +82,14 @@ def unlink():
     """
     Unlink the underlying shared memory.
 
+    # WARNING
+    Trying to use an array after tearing away its buffer may cause SegmentationFault
+
     This should be called once for the entire app using shared memory, once
     all other processes are finished with the memory.
 
     Unlink doesn't actually do anything on windows, instead windows connections
     should all be closed and the file will be unlinked. This function accounts for that.
-
-    Trying to use an array after tearing away its buffer may cause SegmentationFault
     """
     global _shm_file
 
@@ -105,123 +112,6 @@ class ArraySpec(NamedTuple):
     name: str
     dtype: Union[np.number, Type[int], Type[float]]
     length: int
-
-
-class DoubleBufferedArray:
-    """
-    Maintains two np.ndarray instances that are views into shared memory
-    and delegates reads/writes to separate arrays.
-
-    The flip method can be called to copy the write array into the read array.
-    """
-
-    def __init__(self, name, dtype, length):
-        self._name = name
-        self._dtype = dtype
-        self._length = length
-        self._read_arr = None
-        self._write_arr = None
-
-    @property
-    def is_open(self):
-        return not any((arr is None for arr in (self._read_arr, self._write_arr)))
-
-    @property
-    def _read_spec(self):
-        return ArraySpec(self._name + "_r", self._dtype, self._length)
-
-    @property
-    def _write_spec(self):
-        return ArraySpec(self._name + "_w", self._dtype, self._length)
-
-    @property
-    def specs(self):
-        """
-        Get the specs describing the two shared memory arrays.
-
-        Returns
-        -------
-        specs : tuple[ArraySpec]
-        """
-        return self._read_spec, self._write_spec
-
-    def flip(self):
-        """Copy the write array into the read array."""
-        self._read_arr[:] = self._write_arr[:]
-
-    def connect(self):
-        """Gets a reference to a view into shared memory."""
-        self._read_arr = connect(self._read_spec)
-        self._write_arr = connect(self._write_spec)
-
-    def disconnect(self):
-        self._read_arr = None
-        self._write_arr = None
-
-    def __len__(self):
-        return len(self._read_arr)
-
-    def __eq__(self, other):
-        return self._read_arr == other
-
-    def __getitem__(self, idx):
-        return self._read_arr[idx]
-
-    def __setitem__(self, idx, value):
-        self._write_arr[idx] = value
-
-    def __getattr__(self, item):
-        return getattr(self._read_arr, item)
-
-    def __add__(self, other):
-        return self._read_arr + other
-
-    def __sub__(self, other):
-        return self._read_arr - other
-
-    def __mul__(self, other):
-        return self._read_arr * other
-
-    def __truediv__(self, other):
-        return self._read_arr / other
-
-    def __iadd__(self, other):
-        self._write_arr += other
-        return self
-
-    def __isub__(self, other):
-        self._write_arr -= other
-        return self
-
-    def __imul__(self, other):
-        self._write_arr *= other
-        return self
-
-    def __itruediv__(self, other):
-        self._write_arr /= other
-        return self
-
-    def __ifloordiv__(self, other):
-        self._write_arr //= other
-        return self
-
-    def __array_ufunc__(self, ufunc, method, *inputs, **kwargs):
-        """
-        Documentation for np array class extensions found here.
-        https://numpy.org/doc/stable/reference/arrays.classes.html
-
-        This allows this class to behave like an np.ndarray for ufuncs by finding
-        itself in the proposed function arguments and replacing itself with the current read array
-        """
-        corrected_inputs = (
-            input_ if input_ is not self else self._read_arr for input_ in inputs
-        )
-        return getattr(ufunc, method)(*corrected_inputs, **kwargs)
-
-
-def _cleanup_arrays():
-    for arr in _arrays:
-        arr.buffer = None
 
 
 class _SharedMemoryFile:
@@ -306,9 +196,9 @@ class _SharedMemoryFile:
         offset = 0
         header_data = []
         for spec in specs:
-            blank = np.empty((spec.length,), spec.dtype)
-            header_data.append((spec.name, offset, blank.nbytes))
-            offset += blank.nbytes
+            empty_spec = np.empty((spec.length,), spec.dtype)
+            header_data.append((spec.name, offset, empty_spec.nbytes))
+            offset += empty_spec.nbytes
 
         header = np.array(header_data, self._HEADER_DTYPE)
         header_desc = np.array([header.nbytes], int)

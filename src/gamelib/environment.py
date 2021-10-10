@@ -17,10 +17,8 @@ class UpdateComplete(events.Event):
 
 class Environment(abc.ABC):
     ASSETS: list
-    SYSTEMS: List[Type[ProcessSystem]]
+    SYSTEMS: List[Type[System]]
     _MAX_ENTITIES: int = 1024
-
-    _system_connections: Dict[Type[System], Connection]
 
     def __init__(self):
         """
@@ -59,7 +57,7 @@ class Environment(abc.ABC):
         sharedmem.unlink()
         for system in self.SYSTEMS:
             for attr in system.public_attributes:
-                attr.is_open = False
+                attr.close_view()
         if not self._loaded:
             return
         self._release_assets()
@@ -111,27 +109,34 @@ class Environment(abc.ABC):
 
     def _shutdown_systems(self):
         events.post_event(SystemStop())
-        for _, (process, conn) in self._running_systems.items():
+        for _, (process, conn) in self._running_processes.items():
             events.stop_connection_service(conn)
             process.join()
-        self._running_systems = None
+        for system in self._local_systems:
+            system.stop()
+        self._running_processes = None
+        self._local_systems = None
 
     def _start_systems(self):
-        self._running_systems = dict()
-        for system in self.SYSTEMS:
-            conn, process = system.run_in_process()
-            system_handler_types = events.find_eventhandlers(system).keys()
-            events.service_connection(conn, *system_handler_types)
-            self._running_systems[system] = (process, conn)
+        self._running_processes = dict()
+        self._local_systems = []
+        for system_type in self.SYSTEMS:
+            if issubclass(system_type, ProcessSystem):
+                conn, process = system_type.run_in_process()
+                system_handler_types = events.find_eventhandlers(system_type).keys()
+                events.service_connection(conn, *system_handler_types)
+                self._running_processes[system_type] = (process, conn)
+            else:
+                self._local_systems.append(system_type())
 
     def _init_shm(self):
         specs = sum((system.shared_specs for system in self.SYSTEMS), [])
         sharedmem.allocate(specs)
 
     @eventhandler(SystemUpdateComplete)
-    def _track_system_updates(self, event):
+    def _track_system_updates(self, _):
         self._system_update_complete_counter += 1
-        if self._system_update_complete_counter != len(self.SYSTEMS):
+        if self._system_update_complete_counter != len(self._running_processes):
             return
         self._system_update_complete_counter = 0
         events.post_event(UpdateComplete())
