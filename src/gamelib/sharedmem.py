@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from multiprocessing import shared_memory
-from typing import Union, NamedTuple, Type, Iterable
+from typing import Union, NamedTuple, Type, Iterable, Any
 
 import numpy as np
 
@@ -33,7 +33,7 @@ def allocate(specs):
     _shm_file = _SharedMemoryFile(specs)
 
 
-def connect(spec, readonly=False):
+def connect(spec, *, readonly=False):
     """
     Connect to a shared block of memory described by spec.
 
@@ -109,8 +109,9 @@ def unlink():
 
 
 class ArraySpec(NamedTuple):
+    # See np.dtype documentation for supported data types.
     name: str
-    dtype: Union[np.number, Type[int], Type[float]]
+    dtype: Any
     length: int
 
 
@@ -133,7 +134,7 @@ class _SharedMemoryFile:
         else:
             self._create_new_shm(specs)
 
-    def retrieve_from_spec(self, spec):
+    def retrieve_from_spec(self, spec) -> np.ndarray:
         for entry in self._header:
             if entry[0] == spec.name:
                 return np.ndarray(

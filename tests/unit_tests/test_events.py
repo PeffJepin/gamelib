@@ -1,21 +1,22 @@
 from __future__ import annotations
 
+import pytest
 import time
+from collections import defaultdict
 from multiprocessing.connection import Pipe
 
-import pytest
+from src.gamelib import Keys
 
+from src.gamelib import events, KeyDown, ModifierKeys
 from src.gamelib.events import (
     Event,
     eventhandler,
-    find_eventhandlers,
     _HANDLER_INJECTION_ATTRIBUTE,
-    register,
-    post_event,
-    unregister,
-    service_connection,
-    stop_connection_service,
 )
+
+
+class KeyedEvent(Event):
+    pass
 
 
 class SomeEvent(Event):
@@ -28,47 +29,47 @@ class SomeOtherEvent(Event):
 
 class TestEventHandling:
     def test_does_call_registered_callback(self, recorded_callback):
-        register(Event, recorded_callback)
+        events.register(Event, recorded_callback)
 
-        post_event(Event())
+        events.post_event(Event())
 
         assert recorded_callback.called
 
     def test_does_not_call_registered_callback(self, recorded_callback):
-        register(Event, recorded_callback)
+        events.register(Event, recorded_callback)
 
-        post_event(SomeEvent())
+        events.post_event(SomeEvent())
 
         assert not recorded_callback.called
 
     def test_does_call_registered_with_key(self, recorded_callback):
-        register(Event.B, recorded_callback)
+        events.register(Event.B, recorded_callback)
 
-        post_event(Event(), key="B")
+        events.post_event(Event(), key="B")
 
         assert recorded_callback.called
 
     def test_does_not_call_registered_with_key(self, recorded_callback):
-        register(Event.B, recorded_callback)
+        events.register(Event.B, recorded_callback)
 
-        post_event(Event(), key=1)
+        events.post_event(Event(), key=1)
 
         assert not recorded_callback.called
 
     def test_callback_receives_event_as_arg(self, recorded_callback):
-        register(Event, recorded_callback)
+        events.register(Event, recorded_callback)
 
         event = Event()
-        post_event(event)
+        events.post_event(event)
 
         assert recorded_callback.called
         assert recorded_callback.event is event
 
     def test_not_called_after_being_unregistered(self, recorded_callback):
-        register(Event, recorded_callback)
+        events.register(Event, recorded_callback)
 
-        unregister(Event, recorded_callback)
-        post_event(Event())
+        events.unregister(Event, recorded_callback)
+        events.post_event(Event())
 
         assert not recorded_callback.called
 
@@ -76,8 +77,8 @@ class TestEventHandling:
         a, b = Pipe()
         event = Event()
 
-        service_connection(a, Event)
-        post_event(event)
+        events.service_connection(a, Event)
+        events.post_event(event)
 
         if not b.poll(10 / 1_000):
             raise AssertionError("Nothing in pipe.")
@@ -87,16 +88,16 @@ class TestEventHandling:
         a, b = Pipe()
         event = SomeEvent()
 
-        service_connection(a, Event)
-        post_event(event)
+        events.service_connection(a, Event)
+        events.post_event(event)
 
         assert not b.poll(0)
 
     def test_reads_event_sent_through_pipe_and_posts_them(self, recorded_callback):
         a, b = Pipe()
 
-        service_connection(a)
-        register(Event, recorded_callback)
+        events.service_connection(a)
+        events.register(Event, recorded_callback)
 
         b.send((Event(), None))
         for _ in range(100):
@@ -108,8 +109,8 @@ class TestEventHandling:
     def test_posts_events_sent_through_pipe_with_key(self, recorded_callback):
         a, b = Pipe()
 
-        service_connection(a)
-        register(Event.ABC, recorded_callback)
+        events.service_connection(a)
+        events.register(Event.ABC, recorded_callback)
 
         b.send((Event(), "ABC"))
         for _ in range(100):
@@ -120,10 +121,10 @@ class TestEventHandling:
 
     def test_pipe_does_not_get_event_after_service_stops(self):
         a, b = Pipe()
-        service_connection(a, Event)
+        events.service_connection(a, Event)
 
-        stop_connection_service(a)
-        post_event(Event())
+        events.stop_connection_service(a)
+        events.post_event(Event())
 
         assert not b.poll(0)
 
@@ -169,7 +170,7 @@ class TestHandlerDecorator:
             instance.keyed_handler,
         ]
         discovered = []
-        for handlers in find_eventhandlers(instance).values():
+        for handlers in events.find_eventhandlers(instance).values():
             discovered.extend(handlers)
         for fn in fns:
             assert fn in discovered
@@ -182,7 +183,7 @@ class TestHandlerDecorator:
 
     def test_methods_discovered_by_events_module_are_bound_to_the_given_instance(self):
         inst = self.ExampleUsage()
-        handlers = find_eventhandlers(inst)
+        handlers = events.find_eventhandlers(inst)
         for handler_ in handlers[(SomeEvent, None)]:
             handler_(SomeEvent())
 
@@ -199,7 +200,7 @@ class TestEvent:
 
         assert LimitedEvent.A == (LimitedEvent, "A")
         with pytest.raises(ValueError):
-            key = LimitedEvent.D
+            error = LimitedEvent.D
 
     def test_keys_can_be_mapped_to_other_values_with_a_class(self):
         class KeyMap:
@@ -212,7 +213,7 @@ class TestEvent:
 
         assert MappedEvent.A == (MappedEvent, 1)
         with pytest.raises(AttributeError):
-            key = MappedEvent.D
+            error = MappedEvent.D
 
     def test_keys_can_be_mapped_to_other_values_with_a_dict(self):
         map_ = {
@@ -226,7 +227,7 @@ class TestEvent:
 
         assert MappedEvent.B == (MappedEvent, 2)
         with pytest.raises(KeyError):
-            key = MappedEvent.D
+            error = MappedEvent.D
 
     def test_default_init_with_args(self):
         class MyEvent(Event):
@@ -249,4 +250,57 @@ class TestEvent:
             __slots__ = ["field1", "field2"]
 
         with pytest.raises(ValueError):
-            event = MyEvent(1, field2=2)
+            MyEvent(1, field2=2)
+
+
+class TestModule:
+    @pytest.fixture
+    def handler_container(self):
+        container = HandlerContainer()
+        events.register_marked(container)
+        return container
+
+    def test_normal_event_should_be_called(self, handler_container):
+        events.post_event(Event())
+
+        assert 1 == handler_container.calls[Event]
+
+    def test_normal_event_should_not_be_called(self, handler_container):
+        class OtherEvent(Event):
+            pass
+
+        events.post_event(OtherEvent())
+
+        assert 0 == handler_container.calls[Event]
+
+    def test_keyed_event_should_be_called(self, handler_container):
+        events.post_event(KeyedEvent(), key="ABC")
+
+        assert 1 == handler_container.calls[KeyedEvent]
+
+    def test_keyed_event_should_not_be_called(self, handler_container):
+        events.post_event(KeyedEvent(), key="CBA")
+
+        assert 0 == handler_container.calls[KeyedEvent]
+
+    def test_key_handler_maps_with_keys(self, handler_container):
+        events.post_event(KeyDown(ModifierKeys(False, False, False)), key=Keys.J)
+
+        assert 1 == handler_container.calls[KeyDown]
+
+
+class HandlerContainer:
+    def __init__(self):
+        self.calls = defaultdict(int)
+
+    @eventhandler(Event)
+    def some_event_handler(self, _):
+        self.calls[Event] += 1
+
+    @eventhandler(KeyedEvent.ABC)
+    def keyed_event_handler(self, _):
+        self.calls[KeyedEvent] += 1
+
+    @eventhandler(KeyDown.J)
+    def j_down_handler(self, _):
+        self.calls[KeyDown] += 1

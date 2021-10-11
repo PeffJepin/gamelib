@@ -68,3 +68,12 @@ class TestModule:
                 arr[:] = True
             else:
                 arr += 1
+
+    def test_readonly_optional_flag(self):
+        spec = sharedmem.ArraySpec("arr1", int, 100)
+        sharedmem.allocate([spec])
+
+        readonly = sharedmem.connect(spec, readonly=True)
+
+        with pytest.raises(ValueError):
+            readonly += 1

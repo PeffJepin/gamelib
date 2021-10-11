@@ -9,7 +9,7 @@ from src.gamelib.system import SystemUpdateComplete, System, ProcessSystem
 from src.gamelib.component import PublicAttribute, ComponentCreated, ArrayAttribute
 
 
-class TestSystem:
+class TestProcessSystem:
     def test_events_are_pooled_until_update(self, pipe_reader):
         with self.system_tester(ExampleSystem) as conn:
             conn.send((ExampleEvent(10), None))
@@ -79,7 +79,7 @@ class TestSystem:
             responses = pipe_reader(conn, n=3)
             assert expected == responses
 
-    def test_components_created_by_event(self):
+    def test_components_are_created_by_events(self):
         system = LocalSystem()
         event = ComponentCreated(entity_id=0, type=LocalComponent, args=(1, 2))
         events.post_event(event)
@@ -89,7 +89,7 @@ class TestSystem:
         assert (1, 2) == component.args
         assert isinstance(component, LocalComponent)
 
-    def test_components_destroyed_by_event(self):
+    def test_components_are_destroyed_by_events(self):
         system = LocalSystem()
         event = ComponentCreated(entity_id=0, type=LocalComponent, args=(1, 2))
         events.post_event(event)
