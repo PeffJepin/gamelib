@@ -1,9 +1,7 @@
 import itertools
 import logging
-import multiprocessing as mp
 import pathlib
 import time
-import traceback
 from multiprocessing.connection import Connection
 from typing import Tuple, Callable
 
@@ -11,7 +9,6 @@ import pytest
 from PIL import Image
 
 from src.gamelib import events, sharedmem, Config
-from src.gamelib.system import ProcessSystem
 from src.gamelib.textures import Asset
 
 counter = itertools.count(10_000)
@@ -118,139 +115,6 @@ def pipe_await_event():
         raise TimeoutError("Didn't find event_type while polling connection.")
 
     return _reader
-
-
-class SystemRunner(mp.Process):
-    """
-    Process that wraps a running system.
-    """
-
-    available_connections = []
-    busy_connections = []
-    all_processes = []
-
-    STOP = "STOP"
-    GET_STATUS = "GET STATUS"
-    READY = "READY"
-    BUSY = "BUSY"
-
-    def __init__(self, conn, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.conn = conn
-
-    def run(self):
-        """Always try to run mainloop and send reports of exceptions back."""
-        while True:
-            try:
-                self._main()
-            except Exception as e:
-                msg_with_traceback = f"{e}\n\n{traceback.format_exc()}"
-                self.conn.send(type(e)(msg_with_traceback))
-
-    def _main(self):
-        """Try to get a command from the main process and run it."""
-        if not self.conn.poll(0.05):
-            return
-        message = self.conn.recv()
-        if message == self.GET_STATUS:
-            return self.conn.send(self.READY)
-        elif isinstance(message, tuple):
-            events.clear_handlers()
-            system, conn, max_entities = message
-            self.conn.send("STARTING SYSTEM")
-            system._run(conn, max_entities, _runner_conn=self.conn)
-            sharedmem.close()
-
-    @classmethod
-    def get_connection(cls):
-        """Get a pipe connection to an already running SystemRunner."""
-        if not cls.available_connections:
-            a, b = mp.Pipe()
-            runner = SystemRunner(b)
-            runner.start()
-            cls.all_processes.append(runner)
-            cls.available_connections.append(a)
-        conn = cls.available_connections.pop(0)
-        cls.busy_connections.append(conn)
-        return conn
-
-
-class PatchedSystem(ProcessSystem):
-    """
-    Subclassing this in test code avoids booting up a new process for every test
-    """
-
-    def __init__(self, conn, _runner_conn):
-        super().__init__(conn)
-        self._runner_conn = _runner_conn
-
-    def _poll(self):
-        """Service pipe runner connection first."""
-        if self._runner_conn.poll(0):
-            message = self._runner_conn.recv()
-            if message == SystemRunner.STOP:
-                self._running = False
-            elif message == SystemRunner.GET_STATUS:
-                self._runner_conn.send(SystemRunner.BUSY)
-        super()._poll()
-
-    @classmethod
-    def run_in_process(cls, **kwargs):
-        """Dispatch to an already running process."""
-        runner_connection = SystemRunner.get_connection()
-        local_conn, internal_conn = mp.Pipe()
-        start_system_command = (
-            cls,
-            internal_conn,
-            Config.MAX_ENTITIES,
-        )
-        runner_connection.send(start_system_command)
-
-        assert runner_connection.poll(3)
-        message = runner_connection.recv()
-        if isinstance(message, Exception):
-            raise message
-        assert message == "STARTING SYSTEM"
-        return local_conn, (MockProcess(runner_connection))
-
-
-class MockProcess:
-    """
-    Allows a PatchedSystem to return an object that can be
-    joined as if it were running in a normal process.
-    """
-
-    def __init__(self, system_runner_connection):
-        self.exitcode = None
-        self.runner_conn = system_runner_connection
-
-    def join(self, timeout=1):
-        """Reclaim control of the SystemRunner Process."""
-        self.runner_conn.send(SystemRunner.STOP)
-        self.runner_conn.send(SystemRunner.GET_STATUS)
-        ts = time.time()
-        while time.time() < ts + timeout:
-            if self.runner_conn.poll(0.05):
-                message = self.runner_conn.recv()
-                if isinstance(message, Exception):
-                    raise message
-                if message == SystemRunner.READY:
-                    SystemRunner.available_connections.append(self.runner_conn)
-                    SystemRunner.busy_connections.remove(self.runner_conn)
-                    self.exitcode = 0
-                    return
-                if message == SystemRunner.BUSY:
-                    self.runner_conn.send(SystemRunner.GET_STATUS)
-        raise TimeoutError("Could not get response from SystemRunner process.")
-
-    def kill(self):
-        # join reclaims process forcibly
-        self.join()
-
-
-def pytest_sessionfinish(session, exitstatus):
-    for p in SystemRunner.all_processes:
-        p.kill()
 
 
 @pytest.fixture(autouse=True, scope="session")

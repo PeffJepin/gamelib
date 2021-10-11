@@ -10,10 +10,10 @@ from src.gamelib.environment import (
     EntityFactory,
 )
 from src.gamelib.events import eventhandler, Event
-from src.gamelib.system import SystemUpdateComplete, System
+from src.gamelib.system import SystemUpdateComplete, System, ProcessSystem
 from src.gamelib.component import ComponentCreated, ArrayAttribute, PublicAttribute
 from src.gamelib.textures import Asset, TextureAtlas
-from ..conftest import PatchedSystem, RecordedCallback
+from ..conftest import RecordedCallback
 
 counter = itertools.count(0)
 
@@ -87,9 +87,9 @@ class TestEnvironment:
 
     def test_systems_shut_down_after_exit(self, create_test_env):
         with create_test_env(loaded=True) as env:
-            assert env._running_processes is not None
+            assert env._running_processes
             env.exit()
-            assert env._running_processes is None
+            assert not env._running_processes
 
     def test_public_attr_correct_length_in_process(
         self, create_test_env, recorded_callback
@@ -112,7 +112,7 @@ class TestEnvironment:
 
             assert 12 == recorded_callback.event.value
 
-    def test_posts_event_complete_after_update_completes(
+    def test_posts_event_update_complete_after_processes_finish_updating(
         self, create_test_env, recorded_callback
     ):
         events.register(UpdateComplete, recorded_callback)
@@ -120,6 +120,15 @@ class TestEnvironment:
             events.post_event(Update())
             # this will raise timeout error on test fail
             recorded_callback.wait_for_response()
+
+    def test_public_attribute_buffers_update_automatically_after_update(self, create_test_env, recorded_callback):
+        events.register(UpdateComplete, recorded_callback)
+        with create_test_env(loaded=True):
+            events.post_event(Event(), key="INCREMENT_PUBLIC_ATTR")
+            events.post_event(Update())
+            recorded_callback.wait_for_response()
+
+            assert all(Component1.public_attr == 1)
 
     def test_public_attr_access_from_multiple_processes(self, create_test_env):
         response_watcher = RecordedCallback()
@@ -131,14 +140,10 @@ class TestEnvironment:
             for i in range(10):
                 events.post_event(Event(), key="PUBLIC_ATTR_MULTIPLE_ACCESS")
                 events.post_event(Update())
-                response_watcher.wait_for_response()
+                update_watcher.wait_for_response()
 
-                assert i == Component1.public_attr[0]
-                assert i == response_watcher.event.value
-
-                if update_watcher.called <= i:
-                    update_watcher.wait_for_response()
-                env.update_public_attributes()
+                assert i + 1 == Component1.public_attr[0]  # swap has happened automatically
+                assert i == response_watcher.event.value  # swap had not happened yet within process
 
     def test_config_local_components_accurately_tracks_components_on_a_process(
         self, create_test_env, recorded_callback
@@ -230,7 +235,7 @@ class TestEntityFactory:
             factory.create()
 
 
-class System1(PatchedSystem):
+class System1(ProcessSystem):
     @eventhandler(Event.QUERY_PUBLIC_ATTR_LENGTH)
     def public_attr_length_response(self, _):
         res = Response(len(Component1.public_attr))
@@ -251,6 +256,10 @@ class System1(PatchedSystem):
             Response(Config.local_components), key="TEST_CONFIG_LOCAL_COMPONENTS"
         )
 
+    @eventhandler(Event.INCREMENT_PUBLIC_ATTR)
+    def public_attr_incrementer(self, _):
+        Component1.public_attr += 1
+
 
 class Response(Event):
     __slots__ = ["value"]
@@ -261,7 +270,7 @@ class Component1(System1.Component):
     array_attr = ArrayAttribute(int)
 
 
-class System2(PatchedSystem):
+class System2(ProcessSystem):
     @eventhandler(Event.PUBLIC_ATTR_MULTIPLE_ACCESS)
     def multiple_access_increment(self, _):
         res = Response(Component1.public_attr[0])

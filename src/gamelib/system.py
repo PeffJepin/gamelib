@@ -136,12 +136,11 @@ class System(metaclass=_SystemMeta):
 
 
 class ProcessSystem(System):
-    def __init__(self, conn, **kwargs):
+    def __init__(self, conn):
         self._conn = conn
         self._running = False
         self._event_queue = []
         super().__init__()
-        Config.local_systems = [type(self)]
 
     @classmethod
     def run_in_process(cls, **kwargs):
@@ -167,14 +166,14 @@ class ProcessSystem(System):
         return local, process
 
     @classmethod
-    def _run(cls, conn, max_entities, **kwargs):
+    def _run(cls, conn, max_entities):
         """Internal process entry point. Sets some global state and clears forked state."""
         Config.MAX_ENTITIES = max_entities
         Config.local_components = []
         events.clear_handlers()
         for attr in cls.array_attributes:
             attr.reallocate()
-        inst = cls(conn, **kwargs)
+        inst = cls(conn)
         inst._main()
         cls._teardown_shared_state()
 

@@ -2,13 +2,11 @@ from contextlib import contextmanager
 
 import numpy as np
 import pytest
-from numpy import ma
 
 from src.gamelib import events, SystemStop, Update, sharedmem, Config, EntityDestroyed
 from src.gamelib.events import eventhandler, Event
-from src.gamelib.system import SystemUpdateComplete, System
+from src.gamelib.system import SystemUpdateComplete, System, ProcessSystem
 from src.gamelib.component import PublicAttribute, ComponentCreated, ArrayAttribute
-from ..conftest import PatchedSystem
 
 
 class TestSystem:
@@ -47,7 +45,7 @@ class TestSystem:
 
     def test_process_shuts_down_gracefully_on_stop_event(self):
         sharedmem.allocate(ExampleSystem.shared_specs)
-        conn, process = ExampleSystem.run_in_process(max_entities=10)
+        conn, process = ExampleSystem.run_in_process()
         conn.send((SystemStop(), None))
         process.join(5)
         assert process.exitcode == 0
@@ -118,7 +116,7 @@ class TestSystem:
         try:
             yield conn
         finally:
-            process.join()
+            process.kill()
 
 
 class TestPublicAttribute:
@@ -221,13 +219,13 @@ class Response(Event):
     __slots__ = ["value"]
 
 
-class ExampleSystem(PatchedSystem):
+class ExampleSystem(ProcessSystem):
     @eventhandler(ExampleEvent)
     def _example_handler(self, event: ExampleEvent):
         self._conn.send(event.value)
 
     @eventhandler(Event.KEYED_TEST)
-    def _test_interprocess_keyed_event(self, event):
+    def _test_interprocess_keyed_event(self, _):
         self.raise_event(Event(), key="KEYED_RESPONSE")
 
     def update(self):

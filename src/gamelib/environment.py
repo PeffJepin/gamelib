@@ -28,10 +28,11 @@ class Environment(abc.ABC):
         An Environment is not 'loaded' on __init__ and must call load() before
         being used. Exit should be called when the Environment is no longer in use.
         """
-        self._system_connections = dict()
         self._index_assets()
         self._loaded = False
         self._system_update_complete_counter = 0
+        self._running_processes = dict()
+        self._local_systems = []
 
     def load(self, ctx):
         """
@@ -54,35 +55,18 @@ class Environment(abc.ABC):
         """
         Cleans up resources this Environment is using and exits the MessageBus.
         """
-        sharedmem.unlink()
+        self._loaded = False
+        self._shutdown_systems()
         for system in self.SYSTEMS:
             for attr in system.public_attributes:
                 attr.close_view()
-        if not self._loaded:
-            return
+        sharedmem.unlink()
         self._release_assets()
-        self._shutdown_systems()
         events.unregister_marked(self)
-        self._loaded = False
 
     def find_asset(self, label):
         """Returns reference to some Asset by Asset.label value."""
         return self._asset_lookup.get(label, None)
-
-    def update_public_attributes(self):
-        """
-        This should be called from the main thread. Don't try to call it with an event
-        handler, since the message bus runs on another thread.
-
-        This shouldn't be a problem, as this function can be called from the top level
-        at the same time the frame buffer is swapped.
-
-        This restricts the game update loop to once per frame without some kind of change.
-        This procedure would probably benefit a lot from an async implementation.
-        """
-        for system_type in self.SYSTEMS:
-            for attr in system_type.public_attributes:
-                attr.update_buffer()
 
     def _index_assets(self):
         self._asset_lookup = dict()
@@ -114,12 +98,10 @@ class Environment(abc.ABC):
             process.join()
         for system in self._local_systems:
             system.stop()
-        self._running_processes = None
-        self._local_systems = None
+        self._running_processes.clear()
+        self._local_systems.clear()
 
     def _start_systems(self):
-        self._running_processes = dict()
-        self._local_systems = []
         for system_type in self.SYSTEMS:
             if issubclass(system_type, ProcessSystem):
                 conn, process = system_type.run_in_process()
@@ -140,6 +122,14 @@ class Environment(abc.ABC):
             return
         self._system_update_complete_counter = 0
         events.post_event(UpdateComplete())
+
+    @eventhandler(UpdateComplete)
+    def _update_public_attributes(self, _):
+        if not self._loaded:
+            return
+        for system_type in self.SYSTEMS:
+            for attr in system_type.public_attributes:
+                attr.update_buffer()
 
 
 class EntityFactory:
