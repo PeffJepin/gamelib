@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from multiprocessing import shared_memory
-from typing import Union, NamedTuple, Type, Iterable, Any
+from typing import NamedTuple, Iterable, Any
 
 import numpy as np
 
@@ -21,6 +21,10 @@ def allocate(specs):
     ----------
     specs : Iterable[ArraySpec]
         Specifications for allocating this apps memory.
+
+    Returns
+    -------
+    None
 
     Raises
     ------
@@ -70,6 +74,10 @@ def close():
     before exiting.
 
     Trying to use an array after tearing away its buffer may cause SegmentationFault
+
+    Returns
+    -------
+    None
     """
     global _shm_file
     if _shm_file is None:
@@ -90,6 +98,10 @@ def unlink():
 
     Unlink doesn't actually do anything on windows, instead windows connections
     should all be closed and the file will be unlinked. This function accounts for that.
+
+    Returns
+    -------
+    None
     """
     global _shm_file
 

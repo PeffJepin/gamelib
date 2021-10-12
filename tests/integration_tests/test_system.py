@@ -84,7 +84,7 @@ class TestProcessSystem:
         event = ComponentCreated(entity_id=0, type=LocalComponent, args=(1, 2))
         events.post_event(event)
 
-        component = system.get_component(type_=LocalComponent, entity_id=0)
+        component = LocalComponent[0]
         assert 0 == component.entity_id
         assert (1, 2) == component.args
         assert isinstance(component, LocalComponent)
@@ -95,7 +95,7 @@ class TestProcessSystem:
         events.post_event(event)
         events.post_event(EntityDestroyed(0))
 
-        component = system.get_component(type_=LocalComponent, entity_id=0)
+        component = LocalComponent[0]
         assert component is None
 
     def test_array_attributes_are_masked_after_being_destroyed(self):
@@ -181,7 +181,7 @@ class TestPublicAttribute:
         assert all(123 == write_view)
         assert all(0 == read_view)
 
-        allocated_attr.update_buffer()
+        allocated_attr.copy_buffer()
         assert all(123 == read_view)
 
     def test_array_size_dictated_by_config_max_entities(self, attr):

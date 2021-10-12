@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import abc
-from multiprocessing.connection import Connection
-from typing import List, Type, Dict
+from typing import List, Type
 
 from . import SystemStop, events, sharedmem, Config, EntityCreated, EntityDestroyed
 from .events import eventhandler
@@ -56,13 +55,13 @@ class Environment(abc.ABC):
         Cleans up resources this Environment is using and exits the MessageBus.
         """
         self._loaded = False
+        events.unregister_marked(self)
         self._shutdown_systems()
-        for system in self.SYSTEMS:
-            for attr in system.public_attributes:
+        for system_type in self.SYSTEMS:
+            for attr in system_type.public_attributes:
                 attr.close_view()
         sharedmem.unlink()
         self._release_assets()
-        events.unregister_marked(self)
 
     def find_asset(self, label):
         """Returns reference to some Asset by Asset.label value."""
@@ -115,21 +114,21 @@ class Environment(abc.ABC):
         specs = sum((system.shared_specs for system in self.SYSTEMS), [])
         sharedmem.allocate(specs)
 
+    def _update_public_attributes(self):
+        if not self._loaded:
+            return
+        for system_type in self.SYSTEMS:
+            for attr in system_type.public_attributes:
+                attr.copy_buffer()
+
     @eventhandler(SystemUpdateComplete)
     def _track_system_updates(self, _):
         self._system_update_complete_counter += 1
         if self._system_update_complete_counter != len(self._running_processes):
             return
         self._system_update_complete_counter = 0
+        self._update_public_attributes()
         events.post_event(UpdateComplete())
-
-    @eventhandler(UpdateComplete)
-    def _update_public_attributes(self, _):
-        if not self._loaded:
-            return
-        for system_type in self.SYSTEMS:
-            for attr in system_type.public_attributes:
-                attr.update_buffer()
 
 
 class EntityFactory:

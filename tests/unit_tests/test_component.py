@@ -82,8 +82,32 @@ class TestComponent:
             ]
         )
 
+    def test_created_instances_can_be_found_by_the_type(self):
+        instance = self.ExampleComponent(0)
+
+        assert self.ExampleComponent[0] is instance
+
+    def test_destroyed_instances_cannot_be_found_by_the_type(self):
+        instance = self.ExampleComponent(0)
+        instance.destroy()
+
+        assert self.ExampleComponent[0] is None
+
+    def test_can_destroy_all_instances_from_type(self):
+        for i in range(10):
+            self.ExampleComponent(i)
+
+        self.ExampleComponent.destroy_all()
+        retrieved_instances = [self.ExampleComponent[i] for i in range(10)]
+
+        assert not any(retrieved_instances)
+
     class ExampleComponent(BaseComponent):
         arr1 = ArrayAttribute(int)
         arr2 = ArrayAttribute(float)
         pub1 = PublicAttribute(float)
         pub2 = PublicAttribute(float)
+
+    @pytest.fixture(autouse=True)
+    def clear_instances(self):
+        self.ExampleComponent.destroy_all()

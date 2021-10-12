@@ -56,7 +56,7 @@ class Event(metaclass=_EventType):
     With key_options = None (default)
 
     >>> Event.anything_that_could_be_a_valid_attr_name
-    (KeyedEvent, 'anything_that_could_be_a_valid_attr_name')
+    (Event, 'anything_that_could_be_a_valid_attr_name')
 
     Keys should not start with a leading underscore.
 

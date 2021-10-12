@@ -21,16 +21,9 @@ class _SystemMeta(type):
 
     Component: Type[BaseComponent]
 
-    def __new__(mcs, *args, **kwargs):
-        cls: _SystemMeta = super().__new__(mcs, *args, **kwargs)
-        # cls.Component.SYSTEM = cls
-        return cls
-
-    @classmethod
-    def __prepare__(mcs, name, bases, **kwargs):
-        namespace: dict = super().__prepare__(name, bases, **kwargs)
+    def __new__(mcs, name, bases, namespace):
         namespace["Component"] = type("SystemBaseComponent", (BaseComponent,), {})
-        return namespace
+        return super().__new__(mcs, name, bases, namespace)
 
     @property
     def public_attributes(cls):
@@ -96,7 +89,7 @@ class System(metaclass=_SystemMeta):
     def __init__(self):
         Config.local_components.extend(self.Component.__subclasses__())
         events.register_marked(self)
-        self._component_lookup = defaultdict(dict)
+        self._running = True
 
     def update(self):
         """
@@ -113,22 +106,15 @@ class System(metaclass=_SystemMeta):
         self._running = False
         events.unregister_marked(self)
 
-    def get_component(self, type_, entity_id):
-        try:
-            return self._component_lookup[entity_id][type_]
-        except KeyError:
-            return None
-
     @eventhandler(EntityDestroyed)
     def _destroy_related_components(self, event: EntityDestroyed):
-        for component in self._component_lookup[event.id].values():
-            component.destroy()
-        self._component_lookup[event.id].clear()
+        for component_type in self.Component.__subclasses__():
+            if (comp := component_type[event.id]) is not None:
+                comp.destroy()
 
     @eventhandler(ComponentCreated)
     def _create_component(self, event: ComponentCreated):
-        component = event.type(event.entity_id, *event.args)
-        self._component_lookup[event.entity_id][event.type] = component
+        event.type(event.entity_id, *event.args)
 
     @eventhandler(Update)
     def _update_handler(self, event):
@@ -169,19 +155,14 @@ class ProcessSystem(System):
     def _run(cls, conn, max_entities):
         """Internal process entry point. Sets some global state and clears forked state."""
         Config.MAX_ENTITIES = max_entities
-        Config.local_components = []
+        Config.local_components.clear()
         events.clear_handlers()
+
         for attr in cls.array_attributes:
             attr.reallocate()
+
         inst = cls(conn)
         inst._main()
-        cls._teardown_shared_state()
-
-    @classmethod
-    def _teardown_shared_state(cls):
-        """Local only teardown."""
-        for attr in cls.public_attributes:
-            attr.close_view()
         sharedmem.close()
 
     def raise_event(self, event, key=None):
@@ -189,7 +170,6 @@ class ProcessSystem(System):
         self._conn.send((event, key))
 
     def _main(self):
-        self._running = True
         while self._running:
             self._poll()
 

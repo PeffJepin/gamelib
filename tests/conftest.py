@@ -1,4 +1,3 @@
-import itertools
 import logging
 import pathlib
 import time
@@ -10,8 +9,6 @@ from PIL import Image
 
 from src.gamelib import events, sharedmem, Config
 from src.gamelib.textures import Asset
-
-counter = itertools.count(10_000)
 
 
 class RecordedCallback:

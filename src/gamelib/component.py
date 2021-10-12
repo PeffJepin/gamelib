@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import abc
-from typing import Type
+from typing import Type, Dict
 
 import numpy as np
 from numpy import ma
@@ -21,7 +20,8 @@ class ArrayAttribute:
 
         Parameters
         ----------
-        dtype : type[int] | type[float] | np.dtype
+        dtype : Any
+            Any numpy compatible dtype
         """
         self._dtype = dtype
 
@@ -38,7 +38,7 @@ class ArrayAttribute:
         """
         Returns
         -------
-        value : ma.MaskedArray | int | float | str
+        value : ma.MaskedArray | Any
             If invoked on an instance returns an entry from the array using entity_id as index.
             Otherwise if invoked from the Type object it returns the entire array.
         """
@@ -53,12 +53,8 @@ class ArrayAttribute:
 
     def reallocate(self):
         """Reallocates the underlying array. Does not preserve data."""
-        self._array = ma.zeros((self.length,), self._dtype)
+        self._array = ma.zeros((Config.MAX_ENTITIES,), self._dtype)
         self._array[:] = ma.masked
-
-    @property
-    def length(self):
-        return Config.MAX_ENTITIES
 
 
 class PublicAttribute:
@@ -77,7 +73,8 @@ class PublicAttribute:
 
         Parameters
         ----------
-        dtype : type[int] | type[float] | np.number
+        dtype : Any
+            Any numpy compatibly dtype
         """
         self._dtype = dtype
 
@@ -105,7 +102,7 @@ class PublicAttribute:
 
         Returns
         -------
-        value : Numeric | DoubleBufferedArray
+        value : np.ndarray | Any
             A value from the array at index = entity_id if accessed from an instance.
             The whole array if accessed from the component type.
 
@@ -138,11 +135,11 @@ class PublicAttribute:
     def __repr__(self):
         return f"<PublicAttribute({self._owner.__name__}.{self._name}, open={self.is_open})>"
 
-    def update_buffer(self):
+    def copy_buffer(self):
         """
         Copies the write buffer into the read buffer.
 
-        Note that there are no synchronization primitives guarding this process.
+        Note: No synchronization primitives in place.
         """
         if self._read_view is None:
             self._read_view = sharedmem.connect(self._read_spec)
@@ -151,6 +148,9 @@ class PublicAttribute:
         self._read_view[:] = self._write_view[:]
 
     def close_view(self):
+        """
+        Close the view to be sure access is not attempted once the shm file is closed.
+        """
         self._array = None
         self._read_view = None
         self._write_view = None
@@ -200,11 +200,23 @@ class ComponentCreated(events.Event):
     args: tuple
 
 
-class BaseComponent(abc.ABC):
+class ComponentMeta(type):
+    instances: Dict[int, BaseComponent]
+
+    def __new__(mcs, name, bases, namespace):
+        namespace["instances"] = dict()
+        return super().__new__(mcs, name, bases, namespace)
+
+    def __getitem__(self, item):
+        return self.instances.get(item, None)
+
+
+class BaseComponent(metaclass=ComponentMeta):
     _array_attributes: dict
     _public_attributes: dict
 
     def __init__(self, entity_id):
+        type(self).instances[entity_id] = self
         self.entity_id = entity_id
 
     def __init_subclass__(cls, **kwargs):
@@ -217,8 +229,14 @@ class BaseComponent(abc.ABC):
         }
 
     def destroy(self):
+        del type(self).instances[self.entity_id]
         for name in self._array_attributes.keys():
             setattr(self, name, ma.masked)
+
+    @classmethod
+    def destroy_all(cls):
+        for component in cls.instances.copy().values():
+            component.destroy()
 
     @classmethod
     def get_array_attributes(cls):
