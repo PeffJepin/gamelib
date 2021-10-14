@@ -5,8 +5,8 @@ import pytest
 
 from src.gamelib import events, SystemStop, Update, sharedmem, Config, EntityDestroyed
 from src.gamelib.events import eventhandler, Event
-from src.gamelib.system import SystemUpdateComplete, System, ProcessSystem
-from src.gamelib.component import PublicAttribute, ComponentCreated, ArrayAttribute
+from src.gamelib.ecs.system import SystemUpdateComplete, System, ProcessSystem
+from src.gamelib.ecs.component import PublicAttribute, ComponentCreated, ArrayAttribute
 
 
 class TestProcessSystem:

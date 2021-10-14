@@ -6,9 +6,9 @@ from collections import defaultdict
 from multiprocessing.connection import Connection
 from typing import Type, List
 
-from . import Update, SystemStop, events, sharedmem, Config, EntityDestroyed
+from src.gamelib import Update, SystemStop, events, sharedmem, Config, EntityDestroyed
 from .component import ComponentCreated, BaseComponent
-from .events import eventhandler, Event
+from src.gamelib.events import eventhandler, Event
 
 
 class _SystemMeta(type):

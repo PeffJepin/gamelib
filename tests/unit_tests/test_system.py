@@ -1,5 +1,5 @@
-from src.gamelib.system import System
-from src.gamelib.component import ArrayAttribute, PublicAttribute
+from src.gamelib.ecs.system import System
+from src.gamelib.ecs.component import ArrayAttribute, PublicAttribute
 
 
 class TestSystem:

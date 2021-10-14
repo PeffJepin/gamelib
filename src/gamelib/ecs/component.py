@@ -6,7 +6,7 @@ import numpy as np
 from numpy import ma
 
 
-from . import events, sharedmem, Config
+from src.gamelib import events, sharedmem, Config
 
 
 class ArrayAttribute:

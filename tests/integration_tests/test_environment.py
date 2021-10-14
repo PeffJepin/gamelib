@@ -1,14 +1,14 @@
 import pytest
 
 from src.gamelib import Update, events, EntityCreated, EntityDestroyed, Config
-from src.gamelib.environment import (
+from src.gamelib.ecs.environment import (
     UpdateComplete,
     EntityFactory,
     Environment,
 )
 from src.gamelib.events import eventhandler, Event
-from src.gamelib.system import SystemUpdateComplete, System, ProcessSystem
-from src.gamelib.component import ComponentCreated, ArrayAttribute, PublicAttribute
+from src.gamelib.ecs.system import SystemUpdateComplete, System, ProcessSystem
+from src.gamelib.ecs.component import ComponentCreated, ArrayAttribute, PublicAttribute
 from src.gamelib.textures import Asset, TextureAtlas
 from ..conftest import RecordedCallback
 

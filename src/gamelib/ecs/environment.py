@@ -3,11 +3,11 @@ from __future__ import annotations
 import abc
 from typing import List, Type
 
-from . import SystemStop, events, sharedmem, Config, EntityCreated, EntityDestroyed
-from .events import eventhandler
+from src.gamelib import SystemStop, events, sharedmem, Config, EntityCreated, EntityDestroyed
+from src.gamelib.events import eventhandler
 from .system import System, SystemUpdateComplete, ProcessSystem
 from .component import ComponentCreated
-from .textures import Asset, TextureAtlas
+from src.gamelib.textures import Asset, TextureAtlas
 
 
 class UpdateComplete(events.Event):
