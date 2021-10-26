@@ -88,4 +88,3 @@ class MouseUp(_BaseMouseEvent):
 
 class MouseIsPressed(_BaseMouseEvent):
     pass
-

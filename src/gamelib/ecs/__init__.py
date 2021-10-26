@@ -5,12 +5,12 @@ import os
 
 from src.gamelib import events
 
-_POSIX = os.name == 'posix'
+_POSIX = os.name == "posix"
 _globals: _EcsGlobals | None = None
 
 
 def reset_globals(statics=None):
-    """ Get a fresh global object instance.
+    """Get a fresh global object instance.
 
     Can be initialized with some static values.
 
@@ -29,7 +29,7 @@ def reset_globals(statics=None):
 
 
 def export_globals():
-    """ Expose the globals object. This should be used to get a reference to it
+    """Expose the globals object. This should be used to get a reference to it
     to send it to a child process.
 
     Does nothing on posix, windows has to do this because of process spawning.
@@ -43,7 +43,7 @@ def export_globals():
 
 
 def import_globals(instance):
-    """ Import an instance of the globals object from the main process.
+    """Import an instance of the globals object from the main process.
 
     Does nothing on posix, windows has to do this because of process spawning.
     Posix systems will inherit globals from fork.
@@ -59,7 +59,7 @@ def import_globals(instance):
 
 
 def add_static_global(key, value):
-    """ Add a static variable to the globals shared between processes.
+    """Add a static variable to the globals shared between processes.
 
     Parameters
     ----------
@@ -72,27 +72,27 @@ def add_static_global(key, value):
 
 
 def get_static_global(key):
-    """ Retrieve a static variable from the globals shared between processes.
+    """Retrieve a static variable from the globals shared between processes.
 
-        Parameters
-        ----------
-        key : Any
+    Parameters
+    ----------
+    key : Any
 
-        Returns
-        -------
-        static : Any
+    Returns
+    -------
+    static : Any
 
-        Raises
-        ------
-        KeyError:
-            If you haven't added a static with this key or
-            globals weren't sent to a child process.
+    Raises
+    ------
+    KeyError:
+        If you haven't added a static with this key or
+        globals weren't sent to a child process.
     """
     return _globals.statics[key]
 
 
 def register_shared_array(key, array):
-    """ Register a shared memory array with the globals object so windows
+    """Register a shared memory array with the globals object so windows
     processes can find it.
 
     Parameters
@@ -104,7 +104,7 @@ def register_shared_array(key, array):
 
 
 def get_shared_array(key):
-    """ Get a reference to a previously registered multiprocessing.Array
+    """Get a reference to a previously registered multiprocessing.Array
 
     Parameters
     ----------
@@ -125,9 +125,7 @@ def get_shared_array(key):
 
 class _EcsGlobals:
     def __init__(self, max_entities=1024):
-        self.statics = {
-            StaticGlobals.MAX_ENTITIES: max_entities
-        }
+        self.statics = {StaticGlobals.MAX_ENTITIES: max_entities}
         self.shm = dict()
 
 

@@ -3,9 +3,10 @@ from __future__ import annotations
 from typing import List, Type, Iterable
 
 from src.gamelib import (
-    events, )
+    events,
+)
 from src.gamelib.events import eventhandler
-from . import EntityDestroyed, add_static_global, StaticGlobals, reset_globals
+from . import EntityDestroyed, StaticGlobals, reset_globals
 from .component import Component
 from .system import System, SystemRunner
 from src.gamelib.textures import Asset, TextureAtlas
@@ -16,7 +17,7 @@ class UpdateComplete(events.Event):
 
 
 class Environment:
-    """ An Environment wraps a group of Components and Systems
+    """An Environment wraps a group of Components and Systems
     and manages setting up / tearing down state when used
     as a context manager.
 
@@ -49,7 +50,7 @@ class Environment:
         process_systems=None,
         max_entities=None,
     ):
-        """ Parameters passed in here take precedence over those defined
+        """Parameters passed in here take precedence over those defined
         in the class body. They are optional.
 
         Parameters
@@ -81,7 +82,7 @@ class Environment:
         self._entity_pool = []
 
     def __enter__(self):
-        """ An Environment should be used as a context manager to
+        """An Environment should be used as a context manager to
         set up all the required state for running Systems.
 
         Entering the context manager allocated shared memory,
@@ -106,7 +107,7 @@ class Environment:
         self._loaded = False
 
     def create_entity(self, *components):
-        """ Write component data into shared arrays and unmask entity.
+        """Write component data into shared arrays and unmask entity.
 
         Parameters
         ----------

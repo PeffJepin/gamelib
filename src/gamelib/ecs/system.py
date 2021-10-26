@@ -4,13 +4,13 @@ import multiprocessing as mp
 import traceback
 from typing import Type
 
-from . import _EcsGlobals, export_globals, import_globals
+from . import export_globals, import_globals
 from .. import events
 from .. import Update, SystemStop
 
 
 class System:
-    """ Responsible for manipulating Component data.
+    """Responsible for manipulating Component data.
 
     A System can be run either locally on the main process
     or it can run with a SystemRunner which will run it in a process
@@ -22,7 +22,7 @@ class System:
     """
 
     def __init__(self, runner=None):
-        """ Start the System and signs up to receive appropriate events.
+        """Start the System and signs up to receive appropriate events.
 
         Parameters
         ----------
@@ -38,12 +38,12 @@ class System:
         """Stub for subclass defined behavior."""
 
     def stop(self):
-        """ Makes sure the System stops handling events when no longer in use. """
+        """Makes sure the System stops handling events when no longer in use."""
         self._running = False
         events.unregister_marked(self)
 
     def raise_event(self, event, key=None):
-        """ Simply posts the event if this System is running locally,
+        """Simply posts the event if this System is running locally,
         otherwise passes the event to this systems SystemRunner so it
         can be piped back to the main process.
 
@@ -66,10 +66,10 @@ class System:
 
 
 class SystemRunner(mp.Process):
-    """ Responsible for initializing a System in a new process and handling ipc. """
+    """Responsible for initializing a System in a new process and handling ipc."""
 
     def __init__(self, system):
-        """ Initialize means of ipc. Must grab reference of global state
+        """Initialize means of ipc. Must grab reference of global state
         to send to the new process since windows can't fork the process.
 
         Parameters
@@ -90,7 +90,7 @@ class SystemRunner(mp.Process):
         events.service_connection(self.conn, *handler_types)
 
     def main(self, ecs_globals):
-        """ Main function to run in the child process. Handles ipc.
+        """Main function to run in the child process. Handles ipc.
 
         Parameters
         ----------
@@ -114,7 +114,7 @@ class SystemRunner(mp.Process):
         inst.stop()
 
     def join(self, timeout=None):
-        """ Sends the stop code to the child and stops communications before joining. """
+        """Sends the stop code to the child and stops communications before joining."""
         self.conn.send((SystemStop(), None))
         super().join(timeout)
         events.stop_connection_service(self.conn)

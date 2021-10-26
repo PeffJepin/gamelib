@@ -5,7 +5,7 @@ import multiprocessing as mp
 from typing import Dict, Optional
 
 import numpy as np
-from src.gamelib.ecs import _EcsGlobals, get_static_global, StaticGlobals
+from src.gamelib.ecs import get_static_global, StaticGlobals
 
 
 class ComponentType(type):
@@ -16,6 +16,7 @@ class ComponentType(type):
     Notably allows a Component Type to be used as a context manager
     for synchronizing access to the underlying shared array.
     """
+
     array: Optional[np.ndarray]
     _mask: Optional[np.ndarray]
     _shm_array: Optional[mp.Array]
@@ -39,7 +40,7 @@ class ComponentType(type):
 
 
 class NumpyDescriptor:
-    """ Descriptor for the data attributes on a Component.
+    """Descriptor for the data attributes on a Component.
 
     When attribute access is invoked on an instance of a Component this
     will return/modify the entry in the components shared data array
@@ -49,6 +50,7 @@ class NumpyDescriptor:
     will return/modify all the unmasked (where a component actually exists)
     entries in the underlying shared array.
     """
+
     def __set_name__(self, owner, name):
         self._owner = owner
         self._name = name
@@ -65,7 +67,7 @@ class NumpyDescriptor:
 
 
 class Component(metaclass=ComponentType):
-    """ The base type for defining data in the ECS framework.
+    """The base type for defining data in the ECS framework.
 
     Components should be used to define the data to be represented,
     with behaviour defined within Systems.
@@ -92,6 +94,7 @@ class Component(metaclass=ComponentType):
     Attempted access to the Component before allocation or after freeing
     will result in an Exception.
     """
+
     entity: int
     _fields: Dict[str, type]
     _dtype: np.dtype
@@ -99,7 +102,7 @@ class Component(metaclass=ComponentType):
     _kwargs = None
 
     def __init__(self, *args, entity=None, **kwargs):
-        """ A Component should be initialized with either args or kwargs
+        """A Component should be initialized with either args or kwargs
         and not both.
 
         If entity is left as None than the resulting instance will not be
@@ -160,7 +163,7 @@ class Component(metaclass=ComponentType):
         self._shm_mask.get_lock().release()
 
     def bind_to_entity(self, entity):
-        """ Actually write this components data into the shared array.
+        """Actually write this components data into the shared array.
 
         Parameters
         ----------
@@ -183,7 +186,7 @@ class Component(metaclass=ComponentType):
 
     @classmethod
     def get_for_entity(cls, entity):
-        """ Return an instance of this component for the given entity.
+        """Return an instance of this component for the given entity.
 
         Parameters
         ----------
@@ -207,7 +210,7 @@ class Component(metaclass=ComponentType):
 
     @classmethod
     def destroy(cls, entity):
-        """ Masks this entities entry into the underlying shared array.
+        """Masks this entities entry into the underlying shared array.
 
         This is safe to call even if this entity doesn't exist.
 
@@ -226,7 +229,7 @@ class Component(metaclass=ComponentType):
 
     @classmethod
     def destroy_all(cls):
-        """ Masks the entire underlying array.
+        """Masks the entire underlying array.
 
         Raises
         ------
@@ -237,7 +240,7 @@ class Component(metaclass=ComponentType):
 
     @classmethod
     def enumerate(cls):
-        """ Mimics the behaviour of built in enumerate, but only returns
+        """Mimics the behaviour of built in enumerate, but only returns
         values for existing components.
 
         Returns
@@ -256,7 +259,7 @@ class Component(metaclass=ComponentType):
 
     @classmethod
     def allocate(cls):
-        """ Allocates the underling shared memory array and entity mask.
+        """Allocates the underling shared memory array and entity mask.
 
         The length of the arrays are defined by EcsGlobals.max_entities.
         `free` should be called when the Component is no longer in use.
@@ -264,20 +267,14 @@ class Component(metaclass=ComponentType):
         will most likely result in a SegFault.
         """
         length = get_static_global(StaticGlobals.MAX_ENTITIES)
-        cls._shm_array = mp.Array(
-            ctypes.c_byte, cls._dtype.itemsize * length
-        )
+        cls._shm_array = mp.Array(ctypes.c_byte, cls._dtype.itemsize * length)
         cls._shm_mask = mp.Array(ctypes.c_bool, [True] * length)
-        cls.array = np.ndarray(
-            (length,), cls._dtype, cls._shm_array.get_obj()
-        )
-        cls._mask = np.ndarray(
-            (length,), bool, cls._shm_mask.get_obj()
-        )
+        cls.array = np.ndarray((length,), cls._dtype, cls._shm_array.get_obj())
+        cls._mask = np.ndarray((length,), bool, cls._shm_mask.get_obj())
 
     @classmethod
     def free(cls):
-        """ Remove reference to the underlying shared memory.
+        """Remove reference to the underlying shared memory.
 
         This should be called once the Component is no longer being used.
         """
@@ -288,7 +285,7 @@ class Component(metaclass=ComponentType):
 
     @property
     def values(self):
-        """ Get a tuple of the attributes annotated on this Component.
+        """Get a tuple of the attributes annotated on this Component.
 
         Returns
         -------

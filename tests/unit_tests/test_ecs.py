@@ -31,10 +31,7 @@ def test_resetting_globals():
 
 
 def test_resetting_globals_with_some_initial_values():
-    ecs.reset_globals({
-        "key1": 123,
-        "key2": 456
-    })
+    ecs.reset_globals({"key1": 123, "key2": 456})
 
     assert ecs.get_static_global("key1") == 123
     assert ecs.get_static_global("key2") == 456
@@ -60,7 +57,7 @@ def test_builtin_globals():
     for k in list(ecs.StaticGlobals):
         assert ecs.get_static_global(k)
 
+
 @pytest.fixture(autouse=True)
 def reset_globals():
     ecs.reset_globals()
-
