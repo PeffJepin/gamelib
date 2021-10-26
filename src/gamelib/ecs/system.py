@@ -2,209 +2,144 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import traceback
-from collections import defaultdict
-from multiprocessing.connection import Connection
-from typing import Type, List
+from typing import Type
 
-from src.gamelib import Update, SystemStop, events, sharedmem, Config, EntityDestroyed
-from .component import ComponentCreated, BaseComponent
-from src.gamelib.events import eventhandler, Event
+from . import _EcsGlobals, export_globals, import_globals
+from .. import events
+from .. import Update, SystemStop
 
 
-class _SystemMeta(type):
-    """
-    Used as the metaclass for System.
+class System:
+    """ Responsible for manipulating Component data.
 
-    This creates a BaseComponent 'Component' in the class namespace.
-    cls.Component is unique for each subclass of System.
-    """
+    A System can be run either locally on the main process
+    or it can run with a SystemRunner which will run it in a process
+    and handle ipc.
 
-    Component: Type[BaseComponent]
-
-    def __new__(mcs, name, bases, namespace):
-        namespace["Component"] = type("SystemBaseComponent", (BaseComponent,), {})
-        return super().__new__(mcs, name, bases, namespace)
-
-    @property
-    def public_attributes(cls):
-        """
-        Gets a list of all PublicAttribute instances owned by subclasses of cls.Component
-
-        Returns
-        -------
-        atts : List[src.gamelib.component.PublicAttribute]
-        """
-        return [
-            attr
-            for comp_type in cls.Component.__subclasses__()
-            for attr in comp_type.get_public_attributes()
-        ]
-
-    @property
-    def shared_specs(cls):
-        """
-        Get a list of all the shm ArraySpecs this system implements.
-
-        Returns
-        -------
-        specs : Iterable[ArraySpec]
-        """
-        return [spec for attr in cls.public_attributes for spec in attr.shared_specs]
-
-    @property
-    def array_attributes(cls):
-        """
-        Gets a list of all ArrayAttribute instances defined on subclasses of cls.Component
-
-        Returns
-        -------
-        attrs : List[src.gamelib.component.ArrayAttribute]
-        """
-        return [
-            attr
-            for comp_type in cls.Component.__subclasses__()
-            for attr in comp_type.get_array_attributes()
-        ]
-
-
-class System(metaclass=_SystemMeta):
-    """
-    A System will be run in a multiprocessing.Process and communicates
-    with the parent process through a multiprocessing.Pipe.
-
-    All subclasses of System will have their own unique Component Type attributes.
-
-    All Components of a System should inherit from these base types creating an explicit
-    link between a System and its Components.
-
-    For example given this system:
-        class Physics(System):
-            ...
-        All components used by this system should derive from Physics.Component
+    Systems can implement behaviour within the update stub function for
+    regular updating behaviour and can also implement eventhandler
+    decorated functions to respond to events raised else where in the program.
     """
 
-    Component: Type[BaseComponent]
-    _running: bool
+    def __init__(self, runner=None):
+        """ Start the System and signs up to receive appropriate events.
 
-    def __init__(self):
-        Config.local_components.extend(self.Component.__subclasses__())
+        Parameters
+        ----------
+        runner : SystemRunner | None
+            Only applicable if running in a process. System must have
+            a reference to its runner for ipc.
+        """
         events.register_marked(self)
+        self._runner = runner
         self._running = True
 
     def update(self):
-        """
-        Stub for subclass defined behavior.
-
-        The Update event will first invoke this method, then post all events
-        pooled in the event queue, and finally send a SystemUpdateComplete back
-        to the main process.
-        """
+        """Stub for subclass defined behavior."""
 
     def stop(self):
-        for component in self.Component.__subclasses__():
-            Config.local_components.remove(component)
+        """ Makes sure the System stops handling events when no longer in use. """
         self._running = False
         events.unregister_marked(self)
 
-    @eventhandler(EntityDestroyed)
-    def _destroy_related_components(self, event: EntityDestroyed):
-        for component_type in self.Component.__subclasses__():
-            if (comp := component_type[event.id]) is not None:
-                comp.destroy()
-
-    @eventhandler(ComponentCreated)
-    def _create_component(self, event: ComponentCreated):
-        event.type(event.entity_id, *event.args)
-
-    @eventhandler(Update)
-    def _update_handler(self, event):
-        self.update()
-
-
-class ProcessSystem(System):
-    def __init__(self, conn):
-        self._conn = conn
-        self._running = False
-        self._event_queue = []
-        super().__init__()
-
-    @classmethod
-    def run_in_process(cls, **kwargs):
-        """
-        Method that should be called from the main process to actually start the system.
-
-        Config.MAX_ENTITIES should be set before calling if not default.
-        If using PublicAttributes sharedmem should be allocated first.
-
-        Returns
-        -------
-        local : Connection
-            multiprocessing.Pipe
-        process: Process
-        """
-        local, foreign = mp.Pipe()
-        process = mp.Process(
-            target=cls._run,
-            args=(foreign, Config.MAX_ENTITIES),
-            kwargs=kwargs,
-        )
-        process.start()
-        return local, process
-
-    @classmethod
-    def _run(cls, conn, max_entities):
-        """Internal process entry point. Sets some global state and clears forked state."""
-        Config.MAX_ENTITIES = max_entities
-        Config.local_components.clear()
-        events.clear_handlers()
-
-        for attr in cls.array_attributes:
-            attr.reallocate()
-
-        inst = cls(conn)
-        inst._main()
-        sharedmem.close()
-
     def raise_event(self, event, key=None):
-        """Sends an event back to the main process."""
-        self._conn.send((event, key))
+        """ Simply posts the event if this System is running locally,
+        otherwise passes the event to this systems SystemRunner so it
+        can be piped back to the main process.
 
-    def _main(self):
-        while self._running:
-            self._poll()
+        Parameters
+        ----------
+        event : Event
+        key : Hashable
+        """
+        if self._runner is None:
+            # main process can just post events
+            events.post(event, key)
+        else:
+            # systems running in a process should delegate to the runner.
+            self._runner.outgoing_events.append((event, key))
 
-    def _poll(self):
-        if not self._conn.poll(0):
-            return
-        message = self._conn.recv()
-        try:
-            (event, key) = message
-            if isinstance(event, Update) or isinstance(event, SystemStop):
-                events.post_event(event, key=key)
-            else:
-                self._event_queue.append((event, key))
-        except Exception as e:
-            msg_with_traceback = f"{e}\n\n{traceback.format_exc()}"
-            self._conn.send(type(e)(msg_with_traceback))
-
-    @eventhandler(SystemStop)
-    def _stop(self, _):
-        self.stop()
-
-    @eventhandler(Update)
+    @events.eventhandler(Update)
     def _update_handler(self, _):
-        for (event, key) in self._event_queue:
-            events.post_event(event, key=key)
-        self._event_queue = []
         self.update()
         self.raise_event(SystemUpdateComplete(type(self)))
 
 
-class SystemUpdateComplete(Event):
+class SystemRunner(mp.Process):
+    """ Responsible for initializing a System in a new process and handling ipc. """
+
+    def __init__(self, system):
+        """ Initialize means of ipc. Must grab reference of global state
+        to send to the new process since windows can't fork the process.
+
+        Parameters
+        ----------
+        system : type[System]
+            The System this runner is responsible for.
+        """
+        super().__init__(target=self.main, args=(export_globals,))
+        self._child_conn, self.conn = mp.Pipe()
+        self.outgoing_events = []
+        self._running = False
+        self._system = system
+
+    def start(self):
+        """Starts the process and signs up with the events module."""
+        super().start()
+        handler_types = events.find_eventhandlers(self._system).keys()
+        events.service_connection(self.conn, *handler_types)
+
+    def main(self, ecs_globals):
+        """ Main function to run in the child process. Handles ipc.
+
+        Parameters
+        ----------
+        ecs_globals : Any
+            values from EcsGlobals. Must be passed over to work
+            properly on windows spawned processes.
+        """
+        import_globals(ecs_globals)
+        events.clear_handlers()
+
+        inst = self._system(runner=self)
+        self._running = True
+
+        while self._running:
+            try:
+                self._poll()
+            except Exception as e:
+                msg_with_traceback = f"{e}\n\n{traceback.format_exc()}"
+                self._child_conn.send(type(e)(msg_with_traceback))
+                break
+        inst.stop()
+
+    def join(self, timeout=None):
+        """ Sends the stop code to the child and stops communications before joining. """
+        self.conn.send((SystemStop(), None))
+        super().join(timeout)
+        events.stop_connection_service(self.conn)
+
+    def _poll(self):
+        while self.outgoing_events:
+            event_key_pair = self.outgoing_events.pop(0)
+            self._child_conn.send(event_key_pair)
+
+        if not self._child_conn.poll(0):
+            return
+
+        message = self._child_conn.recv()
+        (event, key) = message
+        events.post(event, key=key)
+
+        if isinstance(event, SystemStop):
+            self._running = False
+
+
+class SystemUpdateComplete(events.Event):
     """
     Posted to the main process after a system finishes handling an Update event.
     """
 
-    __slots__ = ["system_type"]
+    __slots__ = ["system"]
 
-    system_type: Type[System]
+    system: Type[System]

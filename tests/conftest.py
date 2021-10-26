@@ -1,4 +1,3 @@
-import logging
 import pathlib
 import time
 from multiprocessing.connection import Connection
@@ -7,7 +6,7 @@ from typing import Tuple, Callable
 import pytest
 from PIL import Image
 
-from src.gamelib import events, sharedmem, Config
+from src.gamelib import events
 from src.gamelib.textures import Asset
 
 
@@ -31,6 +30,9 @@ class RecordedCallback:
     def events(self):
         """Returns all invoking events"""
         return [a[0] for a in self.args]
+
+    def register(self, event_key):
+        events.register(event_key, self)
 
     def await_called(self, num_times_called, timeout=1):
         ts = time.time()
@@ -82,53 +84,20 @@ def asset_maker(image_file_maker):
 
 @pytest.fixture
 def pipe_reader():
-    def _reader(conn: Connection, timeout=1, n=1):
+    def _reader(conn: Connection, timeout=1, n=1, index=None):
         messages = []
         for _ in range(n):
             if not conn.poll(timeout):
                 raise TimeoutError()
-            else:
-                incoming = conn.recv()
-                if isinstance(incoming, Exception):
-                    raise incoming
-                messages.append(incoming)
+            incoming = conn.recv()
+            if isinstance(incoming, Exception):
+                raise incoming
+            messages.append(incoming if index is None else incoming[index])
         return messages if n > 1 else messages[0]
 
     return _reader
 
 
-@pytest.fixture
-def pipe_await_event():
-    def _reader(conn, event_type, timeout=1):
-        ts = time.time()
-        while time.time() < ts + timeout:
-            if not conn.poll(0):
-                continue
-            message = conn.recv()
-            if isinstance(message, event_type):
-                return message
-            elif isinstance(message, tuple) and isinstance(message[0], event_type):
-                return message[0]
-        raise TimeoutError("Didn't find event_type while polling connection.")
-
-    return _reader
-
-
-@pytest.fixture(autouse=True, scope="session")
-def setup_logging():
-    logging.basicConfig(level=logging.DEBUG)
-
-
-@pytest.fixture(autouse=True, scope="function")
-def cleanup_global_shm():
-    sharedmem.unlink()
-
-
 @pytest.fixture(autouse=True, scope="function")
 def cleanup_event_handlers():
     events.clear_handlers()
-
-
-@pytest.fixture(autouse=True, scope="function")
-def cleanup_config():
-    Config.local_components.clear()

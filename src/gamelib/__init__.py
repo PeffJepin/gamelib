@@ -11,11 +11,6 @@ MouseButtons = namedtuple("MouseButtons", "LEFT, RIGHT, MIDDLE")  # Boolean valu
 _MOUSE_MAP = {"LEFT": 1, "RIGHT": 2, "MIDDLE": 3}
 
 
-class Config:
-    MAX_ENTITIES: int = 1024
-    local_components = []
-
-
 class Update(Event):
     pass
 
@@ -94,14 +89,3 @@ class MouseUp(_BaseMouseEvent):
 class MouseIsPressed(_BaseMouseEvent):
     pass
 
-
-class EntityCreated(events.Event):
-    __slots__ = ["id"]
-
-    id: int
-
-
-class EntityDestroyed(events.Event):
-    __slots__ = ["id"]
-
-    id: int

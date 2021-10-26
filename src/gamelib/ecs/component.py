@@ -1,247 +1,301 @@
 from __future__ import annotations
 
-from typing import Type, Dict
+import ctypes
+import multiprocessing as mp
+from typing import Dict, Optional
 
 import numpy as np
-from numpy import ma
+from src.gamelib.ecs import _EcsGlobals, get_static_global, StaticGlobals
 
 
-from src.gamelib import events, sharedmem, Config
+class ComponentType(type):
+    """The metaclass for Component.
+
+    Adds some helpful properties the Component Type objects.
+
+    Notably allows a Component Type to be used as a context manager
+    for synchronizing access to the underlying shared array.
+    """
+    array: Optional[np.ndarray]
+    _mask: Optional[np.ndarray]
+    _shm_array: Optional[mp.Array]
+    _shm_mask: Optional[mp.Array]
+
+    def __enter__(self):
+        self._shm_array.get_lock().acquire()
+        self._shm_mask.get_lock().acquire()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._shm_array.get_lock().release()
+        self._shm_mask.get_lock().release()
+
+    @property
+    def existing(cls):
+        return cls.array[~cls._mask]
+
+    @property
+    def entities(cls):
+        return np.where(~cls._mask)[0]
 
 
-class ArrayAttribute:
-    _owner: Type[BaseComponent]
-    _name: str
-    _array: ma.MaskedArray
+class NumpyDescriptor:
+    """ Descriptor for the data attributes on a Component.
 
-    def __init__(self, dtype):
-        """
-        A Descriptor that manages a numpy array. This should be used on a System.Component.
+    When attribute access is invoked on an instance of a Component this
+    will return/modify the entry in the components shared data array
+    at the index corresponding to the instance.entity attribute.
 
-        Parameters
-        ----------
-        dtype : Any
-            Any numpy compatible dtype
-        """
-        self._dtype = dtype
-
+    When used to access an attribute on a Component Type object this
+    will return/modify all the unmasked (where a component actually exists)
+    entries in the underlying shared array.
+    """
     def __set_name__(self, owner, name):
-        if not issubclass(owner, BaseComponent):
-            raise TypeError(
-                f"{self.__class__.__name__} is meant to be used on BaseComponent subclasses."
-            )
-        self._owner = owner
-        self._name = name
-        self.reallocate()
-
-    def __get__(self, instance, owner):
-        """
-        Returns
-        -------
-        value : ma.MaskedArray | Any
-            If invoked on an instance returns an entry from the array using entity_id as index.
-            Otherwise if invoked from the Type object it returns the entire array.
-        """
-        if instance is None:
-            return self._array
-        index = instance.entity_id
-        return self._array[index]
-
-    def __set__(self, obj, value):
-        index = obj.entity_id
-        self._array[index] = value
-
-    def reallocate(self):
-        """Reallocates the underlying array. Does not preserve data."""
-        self._array = ma.zeros((Config.MAX_ENTITIES,), self._dtype)
-        self._array[:] = ma.masked
-
-
-class PublicAttribute:
-    def __init__(self, dtype):
-        """
-        A Descriptor for a shared public attribute.
-
-        When accessed from a process which is running the parent System
-        locally, the "write array" will be accessed. Otherwise a read-only
-        view of the "read array" will be given.
-
-        THERE ARE NO LOCKING MECHANISMS IN PLACE
-
-        Once all systems have signaled that they are done updating
-        the main process will copy the write buffer into the read buffer.
-
-        Parameters
-        ----------
-        dtype : Any
-            Any numpy compatibly dtype
-        """
-        self._dtype = dtype
-
-        # Used when attempting to access..
-        # Might be read or write array depending on where access occurs.
-        self._array = None
-
-        # Used when updating buffers
-        self._read_view = None
-        self._write_view = None
-
-    def __set_name__(self, owner, name):
-        if not issubclass(owner, BaseComponent) and owner != BaseComponent:
-            raise TypeError(
-                f"{self.__class__.__name__} is meant to be used on BaseComponent subclasses."
-            )
         self._owner = owner
         self._name = name
 
-    def __get__(self, instance, owner):
-        """
-        Get a view into the shared memory. If the parent System is running on
-        this process, then the "write" buffer is used, otherwise the "read" buffer
-        is used.
+    def __get__(self, obj, obj_type=None):
+        if isinstance(obj, Component):
+            if obj.entity is None:
+                return None
+            return self._owner.array[obj.entity][self._name]
+        return obj_type.existing[self._name]
 
-        Returns
-        -------
-        value : np.ndarray | Any
-            A value from the array at index = entity_id if accessed from an instance.
-            The whole array if accessed from the component type.
+    def __set__(self, instance, value):
+        self._owner.array[instance.entity][self._name] = value
+
+
+class Component(metaclass=ComponentType):
+    """ The base type for defining data in the ECS framework.
+
+    Components should be used to define the data to be represented,
+    with behaviour defined within Systems.
+
+    Data for Components are allocated in shared memory and a view
+    into them is given as a numpy array.
+
+    An instance object of a component or the Type object can both be
+    used in the same way to lock the underlying shared array
+    and synchronize access to it across multiple processes.
+
+    Components are a lot like dataclasses, such that you can simply
+    annotate attributes with any numpy compatible data type.
+
+    Before using a Component in any way the underlying shared memory
+    must be allocated with the allocate function. All the annotated
+    attributes will be combined into a single numpy.dtype and with
+    that dtype a shared array will be allocated with length of
+    EcsGlobals.max_entities.
+
+    A call to free should be executed after the Component is not longer
+    in use to free up the underling shared array.
+
+    Attempted access to the Component before allocation or after freeing
+    will result in an Exception.
+    """
+    entity: int
+    _fields: Dict[str, type]
+    _dtype: np.dtype
+    _args = None
+    _kwargs = None
+
+    def __init__(self, *args, entity=None, **kwargs):
+        """ A Component should be initialized with either args or kwargs
+        and not both.
+
+        If entity is left as None than the resulting instance will not be
+        ready for use and will not be written into the underlying memory.
+        To finalize the creation of the Component in this case a call to
+        `bind_to_entity` must be included.
+
+        Parameters
+        ----------
+        args : Any
+            Should not be used with kwargs for initializing Component data.
+            Args will be assigned to annotated attributes in the order
+                that they were annotated.
+        entity : int | None
+            If entity is not None the component will be bound to this entity
+            upon creation.
+        kwargs : Any
+            Should not be used with args for initializing Component data.
+            Keys should correspond to annotated attribute names.
 
         Raises
         ------
-        FileNotFoundError:
-            If memory has not been allocated by the time of access.
+        TypeError:
+            If the Component hasn't been properly allocated yet.
+        IndexError:
+            If entity > EcsGlobals.max_entities.
         """
-        if not self.is_open:
-            self._open()
-        if instance is None:
-            return self._array
-        index = instance.entity_id
-        return self._array[index]
-
-    def __set__(self, obj, value):
-        """
-        Set an entry in this array to value indexed on obj.entity_id
-
-        Raises
-        ------
-        FileNotFoundError:
-            If shm has not been allocated by time of use.
-        """
-        if not self.is_open:
-            self._open()
-        index = obj.entity_id
-        self._array[index] = value
-
-    def __repr__(self):
-        return f"<PublicAttribute({self._owner.__name__}.{self._name}, open={self.is_open})>"
-
-    def copy_buffer(self):
-        """
-        Copies the write buffer into the read buffer.
-
-        Note: No synchronization primitives in place.
-        """
-        if self._read_view is None:
-            self._read_view = sharedmem.connect(self._read_spec)
-        if self._write_view is None:
-            self._write_view = sharedmem.connect(self._write_spec)
-        self._read_view[:] = self._write_view[:]
-
-    def close_view(self):
-        """
-        Close the view to be sure access is not attempted once the shm file is closed.
-        """
-        self._array = None
-        self._read_view = None
-        self._write_view = None
-
-    @property
-    def is_open(self):
-        return self._array is not None
-
-    @property
-    def shared_specs(self):
-        """
-        Get the underlying shared memory specification.
-
-        Returns
-        -------
-        specs : tuple[ArraySpec]
-        """
-        return self._read_spec, self._write_spec
-
-    @property
-    def _shm_name(self):
-        return f"{self._owner.__class__.__name__}__{self._name}"
-
-    @property
-    def _read_spec(self):
-        return sharedmem.ArraySpec(
-            self._shm_name + "_r", self._dtype, Config.MAX_ENTITIES
-        )
-
-    @property
-    def _write_spec(self):
-        return sharedmem.ArraySpec(
-            self._shm_name + "_w", self._dtype, Config.MAX_ENTITIES
-        )
-
-    def _open(self):
-        local = self._owner in Config.local_components
-        spec = self._write_spec if local else self._read_spec
-        self._array = sharedmem.connect(spec, readonly=(not local))
-
-
-class ComponentCreated(events.Event):
-    __slots__ = ["entity_id", "type", "args"]
-
-    entity_id: int
-    type: Type[BaseComponent]
-    args: tuple
-
-
-class ComponentMeta(type):
-    instances: Dict[int, BaseComponent]
-
-    def __new__(mcs, name, bases, namespace):
-        namespace["instances"] = dict()
-        return super().__new__(mcs, name, bases, namespace)
-
-    def __getitem__(self, item):
-        return self.instances.get(item, None)
-
-
-class BaseComponent(metaclass=ComponentMeta):
-    _array_attributes: dict
-    _public_attributes: dict
-
-    def __init__(self, entity_id):
-        type(self).instances[entity_id] = self
-        self.entity_id = entity_id
+        self.entity = entity
+        self._args = args
+        self._kwargs = kwargs
+        if entity is not None and (args or kwargs):
+            self.bind_to_entity(entity)
 
     def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__()
-        cls._array_attributes = {
-            k: v for k, v in vars(cls).items() if isinstance(v, ArrayAttribute)
-        }
-        cls._public_attributes = {
-            k: v for k, v in vars(cls).items() if isinstance(v, PublicAttribute)
-        }
+        cls._fields = cls.__dict__.get("__annotations__", {})
+        if not cls._fields:
+            raise AttributeError("No attributes have been annotated.")
+        cls._dtype = np.dtype([(name, type_) for name, type_ in cls._fields.items()])
 
-    def destroy(self):
-        del type(self).instances[self.entity_id]
-        for name in self._array_attributes.keys():
-            setattr(self, name, ma.masked)
+        for name in cls._fields.keys():
+            descriptor = NumpyDescriptor()
+            descriptor.__set_name__(cls, name)
+            setattr(cls, name, descriptor)
+
+        cls.allocate()
+
+    def __eq__(self, other):
+        if type(self) != type(other):
+            return False
+        return self.values == other.values
+
+    def __enter__(self):
+        self._shm_array.get_lock().acquire()
+        self._shm_mask.get_lock().acquire()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._shm_array.get_lock().release()
+        self._shm_mask.get_lock().release()
+
+    def bind_to_entity(self, entity):
+        """ Actually write this components data into the shared array.
+
+        Parameters
+        ----------
+        entity : int
+            The entity id this component is associated with.
+
+        Raises
+        ------
+        IndexError:
+            If entity > EcsGlobals.max_entities
+        """
+        self.entity = entity
+        if self._args:
+            for name, arg in zip(self._fields.keys(), self._args):
+                setattr(self, name, arg)
+        else:
+            for name, value in self._kwargs.items():
+                setattr(self, name, value)
+        self._mask[entity] = False
+
+    @classmethod
+    def get_for_entity(cls, entity):
+        """ Return an instance of this component for the given entity.
+
+        Parameters
+        ----------
+        entity : int
+
+        Returns
+        -------
+        instance : cls
+            If the requested instance doesn't exist returns None.
+
+        Raises
+        ------
+        TypeError:
+            If the memory hasn't yet been properly allocated.
+        IndexError:
+            If entity > EcsGlobals.max_entities.
+        """
+        if cls._mask[entity]:
+            return None
+        return cls(entity=entity)
+
+    @classmethod
+    def destroy(cls, entity):
+        """ Masks this entities entry into the underlying shared array.
+
+        This is safe to call even if this entity doesn't exist.
+
+        Parameters
+        ----------
+        entity : int
+
+        Raises
+        ------
+        TypeError:
+            If this Component isn't currently allocated.
+        IndexError:
+            If entity > EcsGlobals.max_entities.
+        """
+        cls._mask[entity] = True
 
     @classmethod
     def destroy_all(cls):
-        for component in cls.instances.copy().values():
-            component.destroy()
+        """ Masks the entire underlying array.
+
+        Raises
+        ------
+        TypeError:
+            If this Component isn't currently allocated.
+        """
+        cls._mask[:] = True
 
     @classmethod
-    def get_array_attributes(cls):
-        return cls._array_attributes.values()
+    def enumerate(cls):
+        """ Mimics the behaviour of built in enumerate, but only returns
+        values for existing components.
+
+        Returns
+        -------
+        entry : Generator
+            yields a tuple of (entity, component) for each existing component.
+
+        Raises
+        ------
+        TypeError:
+            If this Component isn't currently allocated.
+        """
+        indices = np.where(~cls._mask)
+        for i in np.nditer(indices):
+            yield i, cls.get_for_entity(i)
 
     @classmethod
-    def get_public_attributes(cls):
-        return cls._public_attributes.values()
+    def allocate(cls):
+        """ Allocates the underling shared memory array and entity mask.
+
+        The length of the arrays are defined by EcsGlobals.max_entities.
+        `free` should be called when the Component is no longer in use.
+        An additional call to allocate in the middle of Systems execution
+        will most likely result in a SegFault.
+        """
+        length = get_static_global(StaticGlobals.MAX_ENTITIES)
+        cls._shm_array = mp.Array(
+            ctypes.c_byte, cls._dtype.itemsize * length
+        )
+        cls._shm_mask = mp.Array(ctypes.c_bool, [True] * length)
+        cls.array = np.ndarray(
+            (length,), cls._dtype, cls._shm_array.get_obj()
+        )
+        cls._mask = np.ndarray(
+            (length,), bool, cls._shm_mask.get_obj()
+        )
+
+    @classmethod
+    def free(cls):
+        """ Remove reference to the underlying shared memory.
+
+        This should be called once the Component is no longer being used.
+        """
+        cls._shm_array = None
+        cls._shm_mask = None
+        cls._mask = None
+        cls.array = None
+
+    @property
+    def values(self):
+        """ Get a tuple of the attributes annotated on this Component.
+
+        Returns
+        -------
+        values : tuple | None
+            The order of the values is the same order that they were annotated.
+            Returns None if called before this Components been bound to an entity.
+        """
+        if not self.entity:
+            return None
+        return tuple(self.array[self.entity][name] for name in self._fields.keys())

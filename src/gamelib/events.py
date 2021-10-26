@@ -247,7 +247,7 @@ def unregister_marked(obj):
         unregister(event_key, *handlers)
 
 
-def post_event(event, key=None) -> None:
+def post(event, key=None) -> None:
     """
     Calls all callbacks registered to the type of this event. This includes pushing
     the event out through currently serviced connections.
@@ -329,7 +329,7 @@ class _ConnectionAdapter:
                     continue
                 message = self.conn.recv()
                 event, key = message
-                post_event(event, key)
+                post(event, key)
             except (BrokenPipeError, EOFError):
                 self._running = False
                 break

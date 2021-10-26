@@ -31,28 +31,28 @@ class TestEventHandling:
     def test_does_call_registered_callback(self, recorded_callback):
         events.register(Event, recorded_callback)
 
-        events.post_event(Event())
+        events.post(Event())
 
         assert recorded_callback.called
 
     def test_does_not_call_registered_callback(self, recorded_callback):
         events.register(Event, recorded_callback)
 
-        events.post_event(SomeEvent())
+        events.post(SomeEvent())
 
         assert not recorded_callback.called
 
     def test_does_call_registered_with_key(self, recorded_callback):
         events.register(Event.B, recorded_callback)
 
-        events.post_event(Event(), key="B")
+        events.post(Event(), key="B")
 
         assert recorded_callback.called
 
     def test_does_not_call_registered_with_key(self, recorded_callback):
         events.register(Event.B, recorded_callback)
 
-        events.post_event(Event(), key=1)
+        events.post(Event(), key=1)
 
         assert not recorded_callback.called
 
@@ -60,7 +60,7 @@ class TestEventHandling:
         events.register(Event, recorded_callback)
 
         event = Event()
-        events.post_event(event)
+        events.post(event)
 
         assert recorded_callback.called
         assert recorded_callback.event is event
@@ -69,7 +69,7 @@ class TestEventHandling:
         events.register(Event, recorded_callback)
 
         events.unregister(Event, recorded_callback)
-        events.post_event(Event())
+        events.post(Event())
 
         assert not recorded_callback.called
 
@@ -78,7 +78,7 @@ class TestEventHandling:
         event = Event()
 
         events.service_connection(a, Event)
-        events.post_event(event)
+        events.post(event)
 
         if not b.poll(10 / 1_000):
             raise AssertionError("Nothing in pipe.")
@@ -89,7 +89,7 @@ class TestEventHandling:
         event = SomeEvent()
 
         events.service_connection(a, Event)
-        events.post_event(event)
+        events.post(event)
 
         assert not b.poll(0)
 
@@ -124,7 +124,7 @@ class TestEventHandling:
         events.service_connection(a, Event)
 
         events.stop_connection_service(a)
-        events.post_event(Event())
+        events.post(Event())
 
         assert not b.poll(0)
 
@@ -261,7 +261,7 @@ class TestModule:
         return container
 
     def test_normal_event_should_be_called(self, handler_container):
-        events.post_event(Event())
+        events.post(Event())
 
         assert 1 == handler_container.calls[Event]
 
@@ -269,22 +269,22 @@ class TestModule:
         class OtherEvent(Event):
             pass
 
-        events.post_event(OtherEvent())
+        events.post(OtherEvent())
 
         assert 0 == handler_container.calls[Event]
 
     def test_keyed_event_should_be_called(self, handler_container):
-        events.post_event(KeyedEvent(), key="ABC")
+        events.post(KeyedEvent(), key="ABC")
 
         assert 1 == handler_container.calls[KeyedEvent]
 
     def test_keyed_event_should_not_be_called(self, handler_container):
-        events.post_event(KeyedEvent(), key="CBA")
+        events.post(KeyedEvent(), key="CBA")
 
         assert 0 == handler_container.calls[KeyedEvent]
 
     def test_key_handler_maps_with_keys(self, handler_container):
-        events.post_event(KeyDown(ModifierKeys(False, False, False)), key=Keys.J)
+        events.post(KeyDown(ModifierKeys(False, False, False)), key=Keys.J)
 
         assert 1 == handler_container.calls[KeyDown]
 

@@ -1,315 +1,226 @@
+import numpy as np
 import pytest
 
-from src.gamelib import Update, events, EntityCreated, EntityDestroyed, Config
-from src.gamelib.ecs.environment import (
-    UpdateComplete,
-    EntityFactory,
-    Environment,
-)
+from src.gamelib import Update, events
+from src.gamelib.ecs import EntityDestroyed
+from src.gamelib.ecs.environment import Environment
 from src.gamelib.events import eventhandler, Event
-from src.gamelib.ecs.system import SystemUpdateComplete, System, ProcessSystem
-from src.gamelib.ecs.component import ComponentCreated, ArrayAttribute, PublicAttribute
-from src.gamelib.textures import Asset, TextureAtlas
-from ..conftest import RecordedCallback
-
-
-class TestEntityFactory:
-    def test_posts_entity_created_event(self, listener):
-        factory = EntityFactory()
-
-        factory.create()
-
-        assert isinstance(listener.event, EntityCreated)
-
-    def test_entity_id_is_incremented_for_each_entity_created(self, listener):
-        factory = EntityFactory()
-
-        factory.create()
-        assert EntityCreated(id=0) == listener.event
-
-        factory.create()
-        assert EntityCreated(id=1) == listener.event
-
-    def test_raises_index_error_if_max_entities_are_exceeded(self):
-        factory = EntityFactory(max_entities=10)
-
-        for _ in range(10):
-            factory.create()
-
-        with pytest.raises(IndexError):
-            factory.create()
-
-    def test_posts_component_created_events(self, listener):
-        factory = EntityFactory()
-
-        factory.create((Component1, "9"), (Component1, "1"))
-
-        assert (
-            ComponentCreated(entity_id=0, type=Component1, args=("9",))
-            in listener.events
-        )
-        assert (
-            ComponentCreated(entity_id=0, type=Component1, args=("1",))
-            in listener.events
-        )
-
-    def test_entity_ids_are_recycled_when_an_entity_is_destroyed(self, listener):
-        factory = EntityFactory()
-
-        factory.create()
-        assert EntityCreated(id=0) == listener.event
-
-        events.post_event(EntityDestroyed(id=0))
-        factory.create()
-        assert EntityCreated(id=0) == listener.event
-
-    def test_recycling_avoids_overflowing_max_entities(self):
-        factory = EntityFactory(max_entities=20)
-
-        for _ in range(2):
-            # create to capacity and destroy all a few times
-            for _ in range(20):
-                factory.create()
-
-            for i in range(20):
-                events.post_event(EntityDestroyed(id=i))
-
-        for _ in range(20):
-            # create exactly to capacity
-            factory.create()
-
-        with pytest.raises(IndexError):
-            # overflow
-            factory.create()
-
-    @pytest.fixture
-    def listener(self, recorded_callback):
-        events.register(EntityCreated, recorded_callback)
-        events.register(ComponentCreated, recorded_callback)
-        return recorded_callback
+from src.gamelib.ecs.system import SystemUpdateComplete, System
+from src.gamelib.ecs.component import Component
 
 
 class TestEnvironment:
-    def test_assets_have_textures_after_load(self, loaded_env):
-        for asset_label in loaded_env.ASSET_LABELS:
-            asset = loaded_env.find_asset(asset_label)
-
-            assert asset.texture is not None
-
-    def test_assets_do_not_have_textures_after_exit(self, loaded_env):
-        loaded_env.exit()
-
-        for asset_label in loaded_env.ASSET_LABELS:
-            asset = loaded_env.find_asset(asset_label)
-
-            assert asset.texture is None
-
-    def test_does_not_handle_events_before_loading(self, env):
-        events.post_event(Event(), "ABC")
+    def test_does_not_handle_events_before_entering(self):
+        env = ExampleEnvironment()
+        events.post(Event(), "ABC")
 
         assert 0 == env.abc_event_handled
 
-    def test_handles_events_after_loading(self, loaded_env):
-        events.post_event(Event(), "ABC")
+    def test_handles_events_after_entering(self):
+        with ExampleEnvironment() as env:
+            events.post(Event(), "ABC")
 
-        assert 1 == loaded_env.abc_event_handled
+            assert 1 == env.abc_event_handled
 
-    def test_does_not_handle_events_after_exiting(self, loaded_env):
-        loaded_env.exit()
-        events.post_event(Event(), "ABC")
+    def test_does_not_handle_events_after_exiting(self):
+        env = ExampleEnvironment()
 
-        assert 0 == loaded_env.abc_event_handled
+        with env:
+            pass
+        events.post(Event(), "ABC")
 
-    def test_shared_memory_is_initialized_after_load(self, loaded_env):
-        assert all(Component1.public_attr[:] == 0)
+        assert 0 == env.abc_event_handled
 
-    def test_shared_memory_is_released_after_exit(self, loaded_env):
-        loaded_env.exit()
+    def test_local_systems_dont_handle_events_before_entering(self, recorded_callback):
+        env = ExampleEnvironment()
+        events.register(Response.LOCAL_EVENT, recorded_callback)
 
-        with pytest.raises(Exception):
-            Component1.public_attr += 1
+        events.post(Event(), key="LOCAL_EVENT")
 
-    def test_systems_begin_handling_events_after_load(
-        self, loaded_env, recorded_callback
+        assert not recorded_callback.called
+
+    def test_local_systems_begin_handling_events_after_entering(
+        self, recorded_callback
     ):
-        events.register(SystemUpdateComplete, recorded_callback)
+        events.register(Response.LOCAL_EVENT, recorded_callback)
 
-        events.post_event(Update())
-        recorded_callback.wait_for_response(n=2)
+        with ExampleEnvironment():
+            events.post(Event(), key="LOCAL_EVENT")
 
-        assert 2 == recorded_callback.called
+            assert recorded_callback.called
 
-    def test_systems_stop_handling_events_after_exit(
-        self, loaded_env, recorded_callback
+    def test_local_systems_stop_handling_events_after_exiting(self, recorded_callback):
+        events.register(Response.LOCAL_EVENT, recorded_callback)
+
+        env = ExampleEnvironment()
+        with env:
+            pass
+
+        events.post(Event(), key="LOCAL_EVENT")
+
+        assert not recorded_callback.called
+
+    def test_process_systems_dont_handle_events_before_entering(
+        self, recorded_callback
     ):
-        events.register(SystemUpdateComplete, recorded_callback)
+        env = ExampleEnvironment()
+        events.register(Response.BASE_PROCESS_TEST, recorded_callback)
 
-        loaded_env.exit()
-        events.post_event(Update())
+        events.post(Event(), key="BASE_PROCESS_TEST")
 
         with pytest.raises(TimeoutError):
-            recorded_callback.wait_for_response(timeout=0.1)
+            recorded_callback.await_called(1, timeout=0.1)
 
-    def test_systems_shut_down_after_exit(self, loaded_env):
-        assert loaded_env._running_processes
+    def test_process_systems_handle_events_after_entering(self, recorded_callback):
+        events.register(Response.BASE_PROCESS_TEST, recorded_callback)
 
-        loaded_env.exit()
+        with ExampleEnvironment():
+            events.post(Event(), key="BASE_PROCESS_TEST")
 
-        assert not loaded_env._running_processes
+            recorded_callback.await_called(1)
 
-    def test_public_attr_correct_length_in_process(
-        self, env, fake_ctx, recorded_callback
+    def test_process_systems_stop_handling_events_after_exiting(
+        self, recorded_callback
     ):
-        env._MAX_ENTITIES = 111
-        env.load(fake_ctx)
-        events.register(Response.QUERY_PUBLIC_ATTR_LENGTH, recorded_callback)
+        events.register(Response.BASE_PROCESS_TEST, recorded_callback)
+        env = ExampleEnvironment()
 
-        events.post_event(Event(), key="QUERY_PUBLIC_ATTR_LENGTH")
-        events.post_event(Update())
-        recorded_callback.wait_for_response()
+        with env:
+            pass
+        events.post(Event(), key="BASE_PROCESS_TEST")
 
-        assert 111 == recorded_callback.event.value
+        with pytest.raises(TimeoutError):
+            recorded_callback.await_called(1, timeout=0.1)
 
-    def test_array_attr_correct_length_in_process(
-        self, env, fake_ctx, recorded_callback
+    def test_components_memory_is_not_allocated_before_loading(self):
+        env = ExampleEnvironment()
+        for component in env.COMPONENTS:
+            assert component.array is None
+
+    def test_component_memory_is_allocated_after_loading(self):
+        with ExampleEnvironment() as env:
+            for component in env.COMPONENTS:
+                assert len(component.array) == env.MAX_ENTITIES
+
+    def test_component_memory_is_not_allocated_after_exiting(self):
+        env = ExampleEnvironment()
+
+        with env:
+            pass
+        for component in env.COMPONENTS:
+            assert component.array is None
+
+    def test_component_data_is_shared_across_processes(self, recorded_callback):
+        events.register(Response.INTERPROCESS_COMPONENT_DATA, recorded_callback)
+
+        with ExampleEnvironment():
+            Component1.array[:] = 123
+            events.post(Event(), key="INTERPROCESS_COMPONENT_DATA")
+
+            recorded_callback.await_called(1)
+            assert np.all(recorded_callback.event.value == Component1.array)
+
+    def test_each_system_posts_an_instance_of_system_update_complete(
+        self, recorded_callback
     ):
-        events.register(Response.QUERY_ARRAY_ATTR_LENGTH, recorded_callback)
-        env._MAX_ENTITIES = 12
-        env.load(fake_ctx)
+        events.register(SystemUpdateComplete, recorded_callback)
 
-        events.post_event(Event(), key="QUERY_ARRAY_ATTR_LENGTH")
-        events.post_event(Update())
-        recorded_callback.wait_for_response()
+        with ExampleEnvironment() as env:
+            events.post(Update())
 
-        assert 12 == recorded_callback.event.value
+            expected_number_of_calls = len(env.PROCESS_SYSTEMS) + len(env.LOCAL_SYSTEMS)
+            recorded_callback.await_called(expected_number_of_calls)
 
-    def test_posts_event_update_complete_after_processes_finish_updating(
-        self, loaded_env, recorded_callback
-    ):
-        events.register(UpdateComplete, recorded_callback)
+    def test_creating_an_entity_within_context_manager(self):
+        with ExampleEnvironment() as env:
+            component = Component1(1, 2)
+            entity = env.create_entity(component)
 
-        events.post_event(Update())
+            assert entity is not None
 
-        # this will raise timeout error on test fail
-        recorded_callback.wait_for_response()
+    def test_creating_an_entity_outside_context_manager(self):
+        env = ExampleEnvironment()
+        component = Component1(1, 1)
 
-    def test_public_attribute_buffers_update_automatically_after_update(
-        self, loaded_env, recorded_callback
-    ):
-        events.register(UpdateComplete, recorded_callback)
+        with pytest.raises(Exception):
+            env.create_entity(component)
 
-        events.post_event(Event(), key="INCREMENT_PUBLIC_ATTR")
-        events.post_event(Update())
-        recorded_callback.wait_for_response()
+    def test_destroying_an_entity_that_exists(self):
+        with ExampleEnvironment() as env:
+            component = Component1(3, 4)
+            entity = env.create_entity(component)
 
-        assert all(Component1.public_attr == 1)
+            events.post(EntityDestroyed(entity))
 
-    def test_public_attr_access_from_multiple_processes(self, loaded_env):
-        response_watcher = RecordedCallback()
-        update_watcher = RecordedCallback()
-        events.register(Response.PUBLIC_ATTR_MULTIPLE_ACCESS, response_watcher)
-        events.register(UpdateComplete, update_watcher)
+            assert Component1.get_for_entity(entity) is None
 
-        for i in range(10):
-            events.post_event(Event(), key="PUBLIC_ATTR_MULTIPLE_ACCESS")
-            events.post_event(Update())
-            update_watcher.wait_for_response()
+    def test_destroying_an_entity_that_no_longer_exists_does_not_error(self):
+        with ExampleEnvironment() as env:
+            component = Component1(3, 4)
+            entity = env.create_entity(component)
 
-            assert i + 1 == Component1.public_attr[0]  # swap has happened automatically
-            assert (
-                i == response_watcher.event.value
-            )  # swap had not happened yet within process
+            events.post(EntityDestroyed(entity))
 
-    def test_config_local_components_accurately_tracks_components_on_a_process(
-        self, loaded_env, recorded_callback
-    ):
-        events.register(Response.TEST_CONFIG_LOCAL_COMPONENTS, recorded_callback)
+    def test_entity_with_multiple_components(self):
+        with ExampleEnvironment() as env:
+            component1 = Component1(1, 2)
+            component2 = Component2(3, 4)
+            entity = env.create_entity(component1, component2)
 
-        events.post_event(Event(), key="TEST_CONFIG_LOCAL_COMPONENTS")
-        events.post_event(Update())
-        recorded_callback.await_called(2)
+            assert Component1.values is not None
+            assert Component2.values is not None
+            events.post(EntityDestroyed(entity))
 
-        assert Response([Component1]) in recorded_callback.events
-        assert Response([Component2]) in recorded_callback.events
-        assert Config.local_components == [LocalComponent]
+            assert Component1.get_for_entity(entity) is None
+            assert Component2.get_for_entity(entity) is None
 
+    def test_entities_recycle_when_destroyed(self):
+        with ExampleEnvironment() as env:
+            component = Component1(1, 2)
 
-class System1(ProcessSystem):
-    @eventhandler(Event.QUERY_PUBLIC_ATTR_LENGTH)
-    def public_attr_length_response(self, _):
-        res = Response(len(Component1.public_attr))
-        self.raise_event(res, key="QUERY_PUBLIC_ATTR_LENGTH")
+            entity1 = env.create_entity(component)
+            events.post(EntityDestroyed(entity1))
+            entity2 = env.create_entity(component)
 
-    @eventhandler(Event.QUERY_ARRAY_ATTR_LENGTH)
-    def array_attr_length_response(self, _):
-        res = Response(len(Component1.array_attr))
-        self.raise_event(res, key="QUERY_ARRAY_ATTR_LENGTH")
+            assert entity1 == entity2
 
-    @eventhandler(Event.PUBLIC_ATTR_MULTIPLE_ACCESS)
-    def multiple_access_increment(self, _):
-        Component1.public_attr[0] += 1
+    def test_errors_upon_creating_too_many_entities(self):
+        with ExampleEnvironment(max_entities=1) as env:
+            component = Component1(1, 2)
+            env.create_entity(component)
 
-    @eventhandler(Event.TEST_CONFIG_LOCAL_COMPONENTS)
-    def local_system_check(self, _):
-        self.raise_event(
-            Response(Config.local_components), key="TEST_CONFIG_LOCAL_COMPONENTS"
-        )
-
-    @eventhandler(Event.INCREMENT_PUBLIC_ATTR)
-    def public_attr_incrementer(self, _):
-        Component1.public_attr += 1
+            with pytest.raises(Exception):
+                env.create_entity(component)
 
 
 class Response(Event):
     __slots__ = ["value"]
 
 
-class Component1(System1.Component):
-    public_attr = PublicAttribute(int)
-    array_attr = ArrayAttribute(int)
+class Component1(Component):
+    attr1: int
+    attr2: float
 
 
-class System2(ProcessSystem):
-    @eventhandler(Event.PUBLIC_ATTR_MULTIPLE_ACCESS)
-    def multiple_access_increment(self, _):
-        res = Response(Component1.public_attr[0])
-        self.raise_event(res, key="PUBLIC_ATTR_MULTIPLE_ACCESS")
-
-    @eventhandler(Event.TEST_CONFIG_LOCAL_COMPONENTS)
-    def local_system_check(self, _):
-        self.raise_event(
-            Response(Config.local_components), key="TEST_CONFIG_LOCAL_COMPONENTS"
-        )
+class Component2(Component):
+    attr1: int
+    attr2: float
 
 
-class Component2(System2.Component):
-    pass
+class ProcessSystem1(System):
+    @eventhandler(Event.BASE_PROCESS_TEST)
+    def _test_base_event_handling(self, _):
+        self.raise_event(Response(""), key="BASE_PROCESS_TEST")
+
+    @eventhandler(Event.INTERPROCESS_COMPONENT_DATA)
+    def _test_components_data(self, _):
+        self.raise_event(Response(Component1.array), key="INTERPROCESS_COMPONENT_DATA")
 
 
-class LocalSystem(System):
-    pass
-
-
-class LocalComponent(LocalSystem.Component):
-    pass
-
-
-@pytest.fixture
-def assets_for_test_env(image_file_maker):
-    return [
-        Asset("asset1", image_file_maker((8, 8))),
-        Asset("asset2", image_file_maker((8, 8))),
-        Asset("asset3", image_file_maker((8, 8))),
-        TextureAtlas(
-            [
-                Asset("asset4", image_file_maker((8, 8))),
-                Asset("asset5", image_file_maker((8, 8))),
-                Asset("asset6", image_file_maker((8, 8))),
-            ],
-            allocation_step=8,
-            max_size=(64, 64),
-        ),
-    ]
+class LocalSystem1(System):
+    @eventhandler(Event.LOCAL_EVENT)
+    def _test_handling_events_locally(self, _):
+        self.raise_event(Response(""), key="LOCAL_EVENT")
 
 
 class ExampleEnvironment(Environment):
@@ -319,10 +230,10 @@ class ExampleEnvironment(Environment):
     updates_completed = 0
 
     # normal implementation
+    COMPONENTS = [Component1, Component2]
+    LOCAL_SYSTEMS = [LocalSystem1]
+    PROCESS_SYSTEMS = [ProcessSystem1]
     ASSETS = []
-    # normally assets would be defined here..
-    # I'm injecting them so I can use pytest fixtures to create fake assets
-    SYSTEMS = [LocalSystem, System1, System2]
 
     @eventhandler(Event.ABC)
     def abc_handler(self, _):
@@ -333,22 +244,6 @@ class ExampleEnvironment(Environment):
         self.updates_completed += 1
 
 
-@pytest.fixture
-def env(assets_for_test_env):
-    ExampleEnvironment.ASSETS = assets_for_test_env
-    env = ExampleEnvironment()
-    try:
-        yield env
-    finally:
-        env.exit()
-
-
-@pytest.fixture
-def loaded_env(assets_for_test_env, fake_ctx):
-    ExampleEnvironment.ASSETS = assets_for_test_env
-    env = ExampleEnvironment()
-    env.load(fake_ctx)
-    try:
-        yield env
-    finally:
-        env.exit()
+@pytest.fixture(autouse=True)
+def ensure_component_memory_cleanup():
+    Component1.free()

@@ -1,113 +1,165 @@
+import threading
+import time
+
 import numpy as np
 import pytest
 
-from src.gamelib import Config
-from src.gamelib.component import BaseComponent, ArrayAttribute, PublicAttribute
-
-
-class TestArrayAttribute:
-    def test_types_receive_instance_of_the_array(self):
-        assert self.ExampleComponent.attr.dtype == np.uint8
-        assert isinstance(self.ExampleComponent.attr[:], np.ndarray)
-
-    def test_get_on_instance_indexes_by_entity_id(self):
-        self.ExampleComponent.attr[10] = 150
-        obj = self.ExampleComponent(10)
-
-        assert 150 == obj.attr
-
-    def test_set_on_instance_indexes_by_entity_id(self):
-        obj = self.ExampleComponent(14)
-        obj.attr = 14
-
-        assert self.ExampleComponent.attr[14] == 14
-
-    def test_must_be_used_on_a_component(self):
-        with pytest.raises(RuntimeError):
-
-            class NotAComponent:
-                attr = ArrayAttribute(int)
-
-    def test_index_error_on_out_of_bounds_entity_id(self):
-        obj = self.ExampleComponent(1_000_000)
-
-        with pytest.raises(IndexError):
-            obj.attr = 100
-
-    def test_reallocation_to_a_new_size(self):
-        assert 25 != len(self.ExampleComponent.attr)
-        Config.MAX_ENTITIES = 25
-        vars(self.ExampleComponent)["attr"].reallocate()
-
-        assert 25 == len(self.ExampleComponent.attr)
-
-    def test_array_masks_components_that_dont_exist(self):
-        for i in range(10):
-            comp = self.ExampleComponent(i)
-            comp.attr = 1
-        assert all(1 == self.ExampleComponent.attr[:10])
-        assert not any(self.ExampleComponent.attr[10:])
-
-    class ExampleComponent(BaseComponent):
-        attr = ArrayAttribute(np.uint8)
-
-    @pytest.fixture(autouse=True)
-    def reallocate_attribute(self):
-        attr = vars(self.ExampleComponent)["attr"]
-        attr.reallocate()
+from src.gamelib import ecs
+from src.gamelib.ecs import StaticGlobals
+from src.gamelib.ecs.component import Component
 
 
 class TestComponent:
-    def test_type_can_get_an_iterable_of_associated_array_attributes(self):
-        expected = [
-            vars(self.ExampleComponent)["arr1"],
-            vars(self.ExampleComponent)["arr2"],
-        ]
-        assert all(
-            [
-                value in expected
-                for value in self.ExampleComponent.get_array_attributes()
-            ]
-        )
+    def test_accessing_the_underlying_array(self):
+        assert isinstance(ExampleComponent.array, np.ndarray)
+        assert max_entities() == len(ExampleComponent.array)
 
-    def test_type_can_get_an_iterable_of_associated_public_attributes(self):
-        expected = [
-            vars(self.ExampleComponent)["pub1"],
-            vars(self.ExampleComponent)["pub2"],
-        ]
-        assert all(
-            [
-                value in expected
-                for value in self.ExampleComponent.get_public_attributes()
-            ]
-        )
+    def test_late_bind_to_entity(self):
+        instance = ExampleComponent(1, 2)
+        assert instance.val1 is None
+        assert instance.val2 is None
 
-    def test_created_instances_can_be_found_by_the_type(self):
-        instance = self.ExampleComponent(0)
+        instance.bind_to_entity(0)
 
-        assert self.ExampleComponent[0] is instance
+        assert instance.val1 == 1
+        assert instance.val2 == 2
 
-    def test_destroyed_instances_cannot_be_found_by_the_type(self):
-        instance = self.ExampleComponent(0)
-        instance.destroy()
+    def test_binding_to_entity_on_init(self):
+        instance = ExampleComponent(1, 2, entity=0)
 
-        assert self.ExampleComponent[0] is None
+        assert 1 == instance.val1
+        assert 2 == instance.val2
+        assert 1 == ExampleComponent.array[0]["val1"]
+        assert 2 == ExampleComponent.array[0]["val2"]
 
-    def test_can_destroy_all_instances_from_type(self):
+    def test_changing_data_with_an_instance(self):
+        instance = ExampleComponent(1, 2, entity=0)
+        instance.val1 = 100
+
+        assert 100 == ExampleComponent.get_for_entity(0).val1
+        assert 100 == ExampleComponent.array[0]["val1"]
+
+    def test_retrieved_components_can_mutate_data(self):
+        ExampleComponent(1, 2, entity=0)
+
+        instance = ExampleComponent.get_for_entity(0)
+        instance.val1 = 100
+
+        assert 100 == ExampleComponent.get_for_entity(0).val1
+        assert 100 == ExampleComponent.array[0]["val1"]
+
+    def test_getting_a_component_by_entity(self):
+        ExampleComponent(3, 4, entity=5)
+
+        retrieved = ExampleComponent.get_for_entity(5)
+
+        assert 3 == retrieved.val1 and 4 == retrieved.val2
+
+    def test_accessing_the_data_for_a_single_attribute(self):
         for i in range(10):
-            self.ExampleComponent(i)
+            ExampleComponent(1, 2, entity=i)
 
-        self.ExampleComponent.destroy_all()
-        retrieved_instances = [self.ExampleComponent[i] for i in range(10)]
+        assert np.all(1 == ExampleComponent.val1)
+        assert np.all(2 == ExampleComponent.val2)
 
-        assert not any(retrieved_instances)
+    def test_mutating_data_across_a_single_attribute(self):
+        for i in range(10):
+            ExampleComponent(1, 2, entity=i)
 
-    class ExampleComponent(BaseComponent):
-        arr1 = ArrayAttribute(int)
-        arr2 = ArrayAttribute(float)
-        pub1 = PublicAttribute(float)
-        pub2 = PublicAttribute(float)
+        ExampleComponent.val1 += 100
 
-    @pytest.fixture(autouse=True)
-    def clear_instances(self):
-        self.ExampleComponent.destroy_all()
+        assert np.all(101 == ExampleComponent.val1)
+
+    def test_getting_a_view_of_only_existing_components(self):
+        for i in range(20):
+            ExampleComponent(100, 200, entity=i)
+
+        assert 20 == len(ExampleComponent.existing)
+
+    def test_all_components_can_be_destroyed(self):
+        for i in range(10):
+            ExampleComponent(1, 4, entity=i)
+
+        ExampleComponent.destroy_all()
+
+        assert 0 == len(ExampleComponent.existing)
+
+    def test_a_single_component_can_be_destroyed(self):
+        ExampleComponent(1, 2, entity=5)
+
+        ExampleComponent.destroy(5)
+
+        assert ExampleComponent.get_for_entity(5) is None
+
+    def test_components_can_be_enumerated(self):
+        ExampleComponent(0, 0, entity=0)
+        ExampleComponent(1, 1, entity=5)
+        ExampleComponent(5, 5, entity=7)
+
+        expected = [
+            (0, ExampleComponent.get_for_entity(0)),
+            (5, ExampleComponent.get_for_entity(5)),
+            (7, ExampleComponent.get_for_entity(7)),
+        ]
+        assert expected == list(ExampleComponent.enumerate())
+
+    def test_getting_the_current_active_entities(self):
+        for i in range(10):
+            ExampleComponent(0, 0, entity=i)
+
+        assert list(range(10)) == list(ExampleComponent.entities)
+
+    def test_locking_access_using_context_manager(self):
+        instance = ExampleComponent(0, 0, entity=0)
+        running = True
+
+        def increment(inst):
+            while running:
+                inst.val1 += 1
+
+        t = threading.Thread(target=increment, args=(instance,), daemon=True)
+        t.start()
+
+        try:
+            # thread shouldn't be able to increment
+            # a component instance can lock the entire array
+            with instance:
+                first_peek = instance.val1
+                for _ in range(100):
+                    assert first_peek == instance.val1
+
+            # thread should do some increments
+            time.sleep(0.001)
+
+            # thread should be locked out again
+            # the component type can lock the entire array
+            with ExampleComponent:
+                second_peek = instance.val1
+                assert second_peek != first_peek
+                for _ in range(100):
+                    assert second_peek == instance.val1
+        finally:
+            running = False
+
+    def test_freeing_the_shared_memory_allocation(self):
+        assert len(ExampleComponent.array) == max_entities()
+
+        ExampleComponent.free()
+
+        assert ExampleComponent.array is None
+
+
+@pytest.fixture(autouse=True)
+def ensure_cleanup():
+    ecs.reset_globals({StaticGlobals.MAX_ENTITIES: 100})
+    ExampleComponent.free()
+    ExampleComponent.allocate()
+
+
+def max_entities():
+    return ecs.get_static_global(StaticGlobals.MAX_ENTITIES)
+
+
+class ExampleComponent(Component):
+    val1: int
+    val2: float
