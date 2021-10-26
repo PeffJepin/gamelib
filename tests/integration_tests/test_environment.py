@@ -94,8 +94,10 @@ class TestEnvironment:
 
     def test_components_memory_is_not_allocated_before_loading(self):
         env = ExampleEnvironment()
-        for component in env.COMPONENTS:
-            assert component.array is None
+
+        with pytest.raises(Exception):
+            for component in env.COMPONENTS:
+                assert component.array
 
     def test_component_memory_is_allocated_after_loading(self):
         with ExampleEnvironment() as env:
@@ -107,8 +109,10 @@ class TestEnvironment:
 
         with env:
             pass
-        for component in env.COMPONENTS:
-            assert component.array is None
+
+        with pytest.raises(Exception):
+            for component in env.COMPONENTS:
+                assert component.array
 
     def test_component_data_is_shared_across_processes(self, recorded_callback):
         events.register(Response.INTERPROCESS_COMPONENT_DATA, recorded_callback)

@@ -146,7 +146,8 @@ class TestComponent:
 
         ExampleComponent.free()
 
-        assert ExampleComponent.array is None
+        with pytest.raises(Exception):
+            ExampleComponent.array
 
 
 @pytest.fixture(autouse=True)

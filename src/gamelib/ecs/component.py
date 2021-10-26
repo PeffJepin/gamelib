@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import ctypes
 import multiprocessing as mp
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 import numpy as np
-from src.gamelib.ecs import get_static_global, StaticGlobals
+from src.gamelib.ecs import get_static_global, StaticGlobals, register_shared_array, get_shared_array, \
+    remove_shared_array
 
 
 class ComponentType(type):
@@ -17,26 +18,57 @@ class ComponentType(type):
     for synchronizing access to the underlying shared array.
     """
 
-    array: Optional[np.ndarray]
-    _mask: Optional[np.ndarray]
-    _shm_array: Optional[mp.Array]
-    _shm_mask: Optional[mp.Array]
+    _array: Optional[np.ndarray] = None
+    _mask: Optional[np.ndarray] = None
+    _dtype: Any
 
-    def __enter__(self):
-        self._shm_array.get_lock().acquire()
-        self._shm_mask.get_lock().acquire()
+    def __enter__(cls):
+        shm_array = get_shared_array(cls._shared_array_key)
+        shm_mask = get_shared_array(cls._shared_mask_key)
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self._shm_array.get_lock().release()
-        self._shm_mask.get_lock().release()
+        shm_array.get_lock().acquire()
+        shm_mask.get_lock().acquire()
+
+    def __exit__(cls, exc_type, exc_val, exc_tb):
+        shm_array = get_shared_array(cls._shared_array_key)
+        shm_mask = get_shared_array(cls._shared_mask_key)
+        shm_array.get_lock().release()
+        shm_mask.get_lock().release()
+
+    @property
+    def array(cls):
+        if cls._array is None:
+            cls._connect_arrays()
+        return cls._array
+
+    @property
+    def mask(cls):
+        if cls._mask is None:
+            cls._connect_arrays()
+        return cls._mask
 
     @property
     def existing(cls):
-        return cls.array[~cls._mask]
+        return cls.array[~cls.mask]
 
     @property
     def entities(cls):
-        return np.where(~cls._mask)[0]
+        return np.where(~cls.mask)[0]
+
+    @property
+    def _shared_array_key(cls):
+        return f"{cls.__name__}_array"
+
+    @property
+    def _shared_mask_key(cls):
+        return f"{cls.__name__}_mask"
+
+    def _connect_arrays(cls):
+        length = get_static_global(StaticGlobals.MAX_ENTITIES)
+        shm_array = get_shared_array(cls._shared_array_key)
+        shm_mask = get_shared_array(cls._shared_mask_key)
+        cls._array = np.ndarray((length,), cls._dtype, shm_array.get_obj())
+        cls._mask = np.ndarray((length,), bool, shm_mask.get_obj())
 
 
 class NumpyDescriptor:
@@ -147,20 +179,18 @@ class Component(metaclass=ComponentType):
             descriptor.__set_name__(cls, name)
             setattr(cls, name, descriptor)
 
-        cls.allocate()
-
     def __eq__(self, other):
         if type(self) != type(other):
             return False
         return self.values == other.values
 
     def __enter__(self):
-        self._shm_array.get_lock().acquire()
-        self._shm_mask.get_lock().acquire()
+        self._get_shared_array().get_lock().acquire()
+        self._get_shared_mask().get_lock().acquire()
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._shm_array.get_lock().release()
-        self._shm_mask.get_lock().release()
+        self._get_shared_array().get_lock().release()
+        self._get_shared_mask().get_lock().release()
 
     def bind_to_entity(self, entity):
         """Actually write this components data into the shared array.
@@ -204,7 +234,7 @@ class Component(metaclass=ComponentType):
         IndexError:
             If entity > EcsGlobals.max_entities.
         """
-        if cls._mask[entity]:
+        if cls.mask[entity]:
             return None
         return cls(entity=entity)
 
@@ -225,7 +255,7 @@ class Component(metaclass=ComponentType):
         IndexError:
             If entity > EcsGlobals.max_entities.
         """
-        cls._mask[entity] = True
+        cls.mask[entity] = True
 
     @classmethod
     def destroy_all(cls):
@@ -236,7 +266,7 @@ class Component(metaclass=ComponentType):
         TypeError:
             If this Component isn't currently allocated.
         """
-        cls._mask[:] = True
+        cls.mask[:] = True
 
     @classmethod
     def enumerate(cls):
@@ -253,7 +283,7 @@ class Component(metaclass=ComponentType):
         TypeError:
             If this Component isn't currently allocated.
         """
-        indices = np.where(~cls._mask)
+        indices = np.where(~cls.mask)
         for i in np.nditer(indices):
             yield i, cls.get_for_entity(i)
 
@@ -267,21 +297,29 @@ class Component(metaclass=ComponentType):
         will most likely result in a SegFault.
         """
         length = get_static_global(StaticGlobals.MAX_ENTITIES)
-        cls._shm_array = mp.Array(ctypes.c_byte, cls._dtype.itemsize * length)
-        cls._shm_mask = mp.Array(ctypes.c_bool, [True] * length)
-        cls.array = np.ndarray((length,), cls._dtype, cls._shm_array.get_obj())
-        cls._mask = np.ndarray((length,), bool, cls._shm_mask.get_obj())
-
+        shm_array = mp.Array(ctypes.c_byte, cls._dtype.itemsize * length)
+        shm_mask = mp.Array(ctypes.c_bool, [True] * length)
+        register_shared_array(cls._shared_array_key, shm_array)
+        register_shared_array(cls._shared_mask_key, shm_mask)
+        
     @classmethod
     def free(cls):
         """Remove reference to the underlying shared memory.
 
         This should be called once the Component is no longer being used.
         """
-        cls._shm_array = None
-        cls._shm_mask = None
         cls._mask = None
-        cls.array = None
+        cls._array = None
+        remove_shared_array(cls._shared_array_key)
+        remove_shared_array(cls._shared_mask_key)
+
+    @classmethod
+    def _get_shared_array(cls):
+        return get_shared_array(cls._shared_array_key)
+
+    @classmethod
+    def _get_shared_mask(cls):
+        return get_shared_array(cls._shared_mask_key)
 
     @property
     def values(self):
@@ -295,4 +333,4 @@ class Component(metaclass=ComponentType):
         """
         if not self.entity:
             return None
-        return tuple(self.array[self.entity][name] for name in self._fields.keys())
+        return tuple(type(self).array[self.entity][name] for name in self._fields.keys())

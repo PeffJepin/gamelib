@@ -103,6 +103,17 @@ def register_shared_array(key, array):
     _globals.shm[key] = array
 
 
+def remove_shared_array(key):
+    """ Removes a shared array if there is record of it.
+
+    Parameters
+    ----------
+    key : Any
+    """
+    if key in _globals.shm:
+        del _globals.shm[key]
+
+
 def get_shared_array(key):
     """Get a reference to a previously registered multiprocessing.Array
 

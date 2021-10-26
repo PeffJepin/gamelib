@@ -20,6 +20,17 @@ def test_registering_a_shared_array():
     assert ecs.get_shared_array(key) == array
 
 
+def test_removing_a_shared_array():
+    key = "some key"
+    array = mp.Array("i", 16)
+
+    ecs.register_shared_array(key, array)
+    ecs.remove_shared_array(key)
+
+    with pytest.raises(KeyError):
+        ecs.get_shared_array(key)
+
+
 def test_resetting_globals():
     key = "key"
     ecs.add_static_global(key, 123)
