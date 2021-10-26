@@ -34,7 +34,7 @@ class RecordedCallback:
     def register(self, event_key):
         events.register(event_key, self)
 
-    def await_called(self, num_times_called, timeout=1):
+    def await_called(self, num_times_called, timeout=5):
         ts = time.time()
         while time.time() < ts + timeout:
             if self.called == num_times_called:
@@ -43,7 +43,7 @@ class RecordedCallback:
             f"Target times called = {num_times_called}. Current times called = {self.called}"
         )
 
-    def wait_for_response(self, timeout=1, n=1):
+    def wait_for_response(self, timeout=5, n=1):
         start = self.called
         ts = time.time()
         while time.time() < ts + timeout:

@@ -77,7 +77,7 @@ class SystemRunner(mp.Process):
         system : type[System]
             The System this runner is responsible for.
         """
-        super().__init__(target=self.main, args=(export_globals,))
+        super().__init__(target=self.main, args=(export_globals(),))
         self._child_conn, self.conn = mp.Pipe()
         self.outgoing_events = []
         self._running = False
