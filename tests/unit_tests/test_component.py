@@ -123,7 +123,7 @@ class TestComponent:
         try:
             # thread shouldn't be able to increment
             # a component instance can lock the entire array
-            with instance:
+            with instance.locks:
                 first_peek = instance.val1
                 for _ in range(100):
                     assert first_peek == instance.val1
@@ -133,7 +133,7 @@ class TestComponent:
 
             # thread should be locked out again
             # the component type can lock the entire array
-            with ExampleComponent:
+            with ExampleComponent.locks:
                 second_peek = instance.val1
                 assert second_peek != first_peek
                 for _ in range(100):

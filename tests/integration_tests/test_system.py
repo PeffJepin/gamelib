@@ -71,7 +71,7 @@ class TestSystemInProcess:
 
             events.post(Update())
             for _ in range(1_000):
-                with Component1:
+                with Component1.locks:
                     instance.val1 += 1
 
             runner.join(1)
@@ -83,7 +83,7 @@ class TestSystemInProcess:
 
             events.post(Update())
             for _ in range(1_000):
-                with instance:
+                with instance.locks:
                     instance.val1 += 1
 
             runner.join(1)
@@ -136,7 +136,7 @@ class SyncTestingSystem(System):
     def update(self):
         instance = Component1.get_for_entity(0)
         for _ in range(1_000):
-            with Component1:
+            with Component1.locks:
                 instance.val1 += 1
 
 

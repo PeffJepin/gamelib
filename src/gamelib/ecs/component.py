@@ -2,11 +2,17 @@ from __future__ import annotations
 
 import ctypes
 import multiprocessing as mp
+from contextlib import contextmanager
 from typing import Dict, Optional, Any
 
 import numpy as np
-from src.gamelib.ecs import get_static_global, StaticGlobals, register_shared_array, get_shared_array, \
-    remove_shared_array
+from src.gamelib.ecs import (
+    get_static_global,
+    StaticGlobals,
+    register_shared_array,
+    get_shared_array,
+    remove_shared_array,
+)
 
 
 class ComponentType(type):
@@ -22,16 +28,17 @@ class ComponentType(type):
     _mask: Optional[np.ndarray] = None
     _dtype: Any
 
-    def __enter__(cls):
+    @property
+    @contextmanager
+    def locks(cls):
+        """Simple context manager for locking out other processes from touching
+        this component data."""
         shm_array = get_shared_array(cls._shared_array_key)
         shm_mask = get_shared_array(cls._shared_mask_key)
 
         shm_array.get_lock().acquire()
         shm_mask.get_lock().acquire()
-
-    def __exit__(cls, exc_type, exc_val, exc_tb):
-        shm_array = get_shared_array(cls._shared_array_key)
-        shm_mask = get_shared_array(cls._shared_mask_key)
+        yield
         shm_array.get_lock().release()
         shm_mask.get_lock().release()
 
@@ -184,14 +191,6 @@ class Component(metaclass=ComponentType):
             return False
         return self.values == other.values
 
-    def __enter__(self):
-        self._get_shared_array().get_lock().acquire()
-        self._get_shared_mask().get_lock().acquire()
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self._get_shared_array().get_lock().release()
-        self._get_shared_mask().get_lock().release()
-
     def bind_to_entity(self, entity):
         """Actually write this components data into the shared array.
 
@@ -301,7 +300,7 @@ class Component(metaclass=ComponentType):
         shm_mask = mp.Array(ctypes.c_bool, [True] * length)
         register_shared_array(cls._shared_array_key, shm_array)
         register_shared_array(cls._shared_mask_key, shm_mask)
-        
+
     @classmethod
     def free(cls):
         """Remove reference to the underlying shared memory.
@@ -322,6 +321,19 @@ class Component(metaclass=ComponentType):
         return get_shared_array(cls._shared_mask_key)
 
     @property
+    def locks(self):
+        """Just shorthand for accessing the context manager that lives
+        on the type object from any particular instance.
+
+        Examples
+        --------
+        >>> with self.locks:
+        >>>     # do synchronized operations.
+        >>>     ...
+        """
+        return type(self).locks
+
+    @property
     def values(self):
         """Get a tuple of the attributes annotated on this Component.
 
@@ -333,4 +345,6 @@ class Component(metaclass=ComponentType):
         """
         if not self.entity:
             return None
-        return tuple(type(self).array[self.entity][name] for name in self._fields.keys())
+        return tuple(
+            type(self).array[self.entity][name] for name in self._fields.keys()
+        )

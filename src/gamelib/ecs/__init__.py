@@ -104,7 +104,7 @@ def register_shared_array(key, array):
 
 
 def remove_shared_array(key):
-    """ Removes a shared array if there is record of it.
+    """Removes a shared array if there is record of it.
 
     Parameters
     ----------
