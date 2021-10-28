@@ -9,7 +9,7 @@ from src.gamelib.events import eventhandler
 from . import EntityDestroyed, StaticGlobals, reset_globals
 from .component import Component
 from .system import System, SystemRunner
-from src.gamelib.textures import Asset, TextureAtlas
+from src.gamelib.textures import ImageAsset, TextureAtlas
 
 
 class UpdateComplete(events.Event):
@@ -127,11 +127,10 @@ class Environment:
     def _index_assets(self):
         self._asset_lookup = dict()
         for item in self.ASSETS:
-            if isinstance(item, Asset):
-                self._asset_lookup[item.label] = item
-            elif isinstance(item, TextureAtlas):
+            if isinstance(item, TextureAtlas):
                 for asset in item:
                     self._asset_lookup[asset.label] = asset
+            self._asset_lookup[item.label] = item
 
     def _start_systems(self):
         for system in self.LOCAL_SYSTEMS:

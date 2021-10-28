@@ -7,7 +7,7 @@ import pytest
 from PIL import Image
 
 from src.gamelib import events
-from src.gamelib.textures import Asset
+from src.gamelib.textures import ImageAsset
 
 
 class RecordedCallback:
@@ -77,7 +77,9 @@ def image_file_maker(tmpdir) -> Callable[[Tuple[int, int]], pathlib.Path]:
 def asset_maker(image_file_maker):
     def inner(w, h):
         size = (w, h)
-        return Asset(str(time.time()), image_file_maker(size))
+        asset = ImageAsset(str(time.time()), image_file_maker(size))
+        asset.load()
+        return asset
 
     return inner
 

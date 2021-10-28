@@ -1,100 +1,263 @@
 from __future__ import annotations
 
+import abc
 import pathlib
-import sys
 from abc import abstractmethod, ABC
-from typing import Tuple
+from typing import Tuple, Iterable
 
 import moderngl
+import numpy as np
+import pygame
 from PIL import Image
 
 
-class Asset:
+class Asset(abc.ABC):
+    """Represents some visual resource.
+
+    Assets must implement load, free, tobytes, and shape
     """
-    Maintains some image asset.
 
-    Responsible for loading and cleaning up an OpenGL texture object.
-    """
-
-    def __init__(self, label, path_to_src):
-        """
-        Initialize the Asset object.
-
-        Will record the image size on init but image data will need to be uploaded
-        to the GPU before this Asset will be available for rendering.
+    def __init__(self, label, px_depth=4):
+        """A subclass should initialize itself with enough
+        information to later load its data into cpu memory.
 
         Parameters
         ----------
         label : Hashable
             some identifier that could be used as a key
-        path_to_src : pathlib.Path
-            The path where the source image can be found.
         """
+        self._px_depth = px_depth
         self.label = label
-        self.path = path_to_src
         self.texture = None
-        im = Image.open(path_to_src)
-        self._size = im.size
 
-    @property
-    def size(self):
-        return self._size
+    @abstractmethod
+    def load(self):
+        """Load the asset into cpu memory."""
 
-    def upload_texture(self, ctx) -> None:
+    @abstractmethod
+    def free(self):
+        """Clean-up state from load."""
+
+    @abstractmethod
+    def tobytes(self):
+        """Return the bytes for the already loaded assets.
+
+        Returns
+        -------
+        data_for_gpu : bytes
         """
-        Convenience method to easily upload any image to GPU, though
-        in practice using a TextureAtlas may be a superior approach.
+
+    @abstractmethod
+    def shape(self):
+        """Return the px dimensions of this Asset after its been loaded.
+
+        Returns
+        -------
+        im_shape : tuple[int, int]
+        """
+
+    def upload_texture(self, ctx, _free=True):
+        """Load the data and upload it to the gpu.
 
         Parameters
         ----------
         ctx : moderngl.Context
+        _free : bool
+            Should the cpu memory be freed immediately?
+            Used by TextureAtlas to index child assets before freeing them.
 
         Raises
         ------
         ValueError
             If texture has already been uploaded.
-            Uploading a texture to multiple contexts not supported.
+            Uploading a texture to multiple contexts not implemented.
         """
         if self.texture is not None:
             raise ValueError(
                 "Expected Asset texture to be None. Existing texture must first be released."
             )
-        im = Image.open(self.path).transpose(Image.FLIP_TOP_BOTTOM)
-        gl_texture = ctx.texture(self._size, 4, im.tobytes())
-        self.texture = TextureReference(gl_texture)
+        self.load()
+        gl_texture = ctx.texture(self.shape(), self._px_depth, self.tobytes())
+        self.texture = TextureReference(self.shape(), gl_texture)
+        if _free:
+            self.free()
 
     def release_texture(self):
-        """
-        Releases the texture from GPU memory.
-
-        Note that this shouldn't be called for an Atlased texture,
-        instead the TextureAtlas should be released all at once.
-        """
+        """Releases the texture from GPU memory."""
         if not self.texture:
             return
         self.texture.gl.release()
         self.texture = None
 
     def __repr__(self):
-        return f"<Asset({self.path})>"
+        return f"<Asset(label={self.label})>"
+
+
+class TextAsset(Asset):
+    """ Using pygame.font module for now to render a bit of text then upload
+    that image to the GPU.
+
+    In the future text rendering should get a more sophisticated implementation,
+    as this will waste a ton of video memory at scale.
+    """
+    def __init__(self, label, font_size, color=(255, 255, 255)):
+        """ Initialize system default font. Label is the Asset label and the text to be rendered.
+
+        Parameters
+        ----------
+        label : str
+            Label for the asset is also the text to be displayed.
+        font_size : int
+        color : tuple
+            Opacity not implemented at the moment.
+        """
+        super().__init__(label)
+        self._font = pygame.font.Font(pygame.font.get_default_font(), font_size)
+        self._color = color
+        self._surface = None
+
+    def load(self):
+        # the array pygame returns for the surface seems to return bgr
+        # so the simplest short term fix is this.
+        color = (self._color[2], self._color[1], self._color[0])
+        self._surface = self._font.render(self.label, True, color)
+
+    def free(self):
+        self._surface = None
+
+    def shape(self):
+        return self._surface.get_size()
+
+    def tobytes(self):
+        arr = pygame.surfarray.pixels2d(self._surface)
+        return np.flip(arr.swapaxes(0, 1), 0).tobytes()
+
+
+class ImageAsset(Asset):
+    """ An ImageAsset should be pointed at an image file. The filetype should be
+    PIL compatible.
+    """
+
+    def __init__(self, label, path, px_depth=4):
+        """ Point the Asset at a file and give it a label.
+
+        Parameters
+        ----------
+        label : Any
+        path : pathlib.Path
+        px_depth : int
+        """
+        super().__init__(label, px_depth)
+        self.path = path
+        self._im = None
+
+    def load(self):
+        self._im = Image.open(self.path).transpose(Image.FLIP_TOP_BOTTOM)
+
+    def free(self):
+        self._im = None
+
+    def shape(self):
+        return self._im.size
+
+    def tobytes(self):
+        return self._im.tobytes()
+
+
+class TextureAtlas(Asset):
+    """A collection of visual assets combined into a
+    single texture and stored in graphics memory.
+    """
+
+    def __init__(self, label, assets, allocator, writer, px_depth=4):
+        """
+        Parameters
+        ----------
+        label : Any
+        assets : list[Asset]
+        allocator : AtlasAllocator
+        writer : AtlasWriter
+        px_depth : int
+            The number of texture components, default 4 for RGBA
+        """
+        super().__init__(label, px_depth)
+        self._allocator = allocator
+        self._writer = writer
+        self._asset_lookup = {asset.label: asset for asset in assets}
+        self._allocations = None
+        self._shape = None
+
+    def load(self):
+        for asset in self._asset_lookup.values():
+            asset.load()
+        self._allocations, self._shape = self._allocator.pack_assets(
+            self._asset_lookup.values()
+        )
+
+    def free(self):
+        for asset in self._asset_lookup.values():
+            asset.free()
+
+    def shape(self):
+        return self._shape
+
+    def tobytes(self):
+        return self._writer.stitch_texture(self._allocations, self._shape)
+
+    def upload_texture(self, ctx: moderngl.Context, **kwargs):
+        # texture references need to be made for all the contained assets.
+        super().upload_texture(ctx, _free=False)
+        self._create_texture_references()
+
+    def release_texture(self):
+        # all the contained assets must have references cleaned up.
+        for asset in self._asset_lookup.values():
+            asset.texture = None
+        super().release_texture()
+
+    def _create_texture_references(self):
+        total_width, total_height = self._shape
+        for asset, pos in self._allocations.items():
+            asset_width, asset_height = asset.shape()
+            nx, ny = pos[0] / total_width, pos[1] / total_height
+            nw, nh = asset_width / total_width, asset_height / total_height
+            uv = (nx, ny, nw, nh)
+            asset.texture = TextureReference(asset.shape(), self.texture.gl, uv)
+        self.free()
+
+    def __iter__(self):
+        return iter(self._asset_lookup.values())
+
+    def __getitem__(self, key) -> Asset:
+        return self._asset_lookup[key]
+
+    def __len__(self):
+        return len(self._asset_lookup)
+
+    def __repr__(self):
+        return f"<TextureAtlas(num_assets={len(self)}," \
+               f"size={None if not self.texture else self.texture.size})>"
 
 
 class TextureReference:
     """
     Reference to image data kept on the GPU.
 
-    Atlased images can easily be referenced by many of these Textures
-    all pointing to the same gl_texture_object with appropriate uv coords.
+    Images in an atlas can easily be referenced by pointing to
+    the same opengl texture object with appropriate uv coordinates.
     """
 
-    def __init__(self, gl_texture_object, uv=(0, 0, 1, 1)):
+    def __init__(self, size, gl_texture_object, uv=(0, 0, 1, 1)):
         """
         Parameters
         ----------
+        size : tuple[int, int]
+            the px dimensions of the graphic
         gl_texture_object : moderngl.Texture
         uv : tuple[float, float, float, float]
             left, bottom, width, height in 0-1 normalized space
         """
+        self.size = size
         self.gl = gl_texture_object
         self.uv = uv
         self._x, self._y, self._w, self._h = uv
@@ -116,136 +279,23 @@ class TextureReference:
         return self._y
 
 
-class TextureAtlas:
-    """
-    A collection of visual assets combined into a single texture and stored in graphics memory.
-
-    Example
-    -------
-    Creating a TextureAtlas.
-
-    >>> assets = [Asset('goblin', pathlib.Path('goblin.png')), Asset('orc', pathlib.Path('orc.png'))]
-    >>> atlas = TextureAtlas(assets)
-
-    Referencing Assets in the TextureAtlas.
-
-    >>> goblin_asset = atlas['goblin']
-
-    Assets are not automatically uploaded to GPU.
-
-    >>> goblin_asset.texture
-    None
-    >>> atlas.gl
-    None
-
-    Assets are on the GPU after upload_texture call.
-
-    >>> gl_ctx = moderngl.create_context()
-    >>> atlas.upload_texture(gl_ctx)
-    >>> goblin_asset.texture
-    <TextureReference()>
-
-    Assets are no longer on the GPU after release_texture call.
-
-    >>> atlas.release_texture()
-    >>> goblin_asset.texture
-    None
-    """
-
-    def __init__(self, assets, max_size=(2048, 2048), allocation_step=16, components=4):
-        """
-        Parameters
-        ----------
-        assets : list[Asset]
-        max_size : Tuple[int, int]
-            Constraint on final texture size.
-        allocation_step : int
-            Constraint on row height.
-        components : int
-            The number of texture components, default 4 for RGBA
-        """
-        self.gl = None
-        self._allocations = SimpleRowAllocator(max_size, allocation_step).pack_assets(
-            assets
-        )
-        self._asset_lookup = {asset.label: asset for asset in assets}
-        self._writer = PILWriter(max_size)
-        self._components = components
-        self._video_memory = None
-        self._size = None
-
-    def upload_texture(self, ctx: moderngl.Context):
-        """
-        Blits all the images into a single image and transfers the data to GPU memory.
-
-        Parameters
-        ----------
-        ctx : moderngl.Context
-            The OpenGL context this texture will be uploaded with.
-
-        """
-        atlas_image = self._writer.stitch_assets(self._allocations)
-        self.gl = ctx.texture(atlas_image.size, self._components)
-        self._create_texture_references(atlas_image.size)
-        bytes_ = atlas_image.tobytes()
-        self._video_memory = sys.getsizeof(bytes_)
-        self._size = atlas_image.size
-        self.gl.write(bytes_)
-
-    def release_texture(self):
-        """
-        Releases the texture memory on the GPU and cleans up the
-        TextureReference objects on the Assets.
-        """
-        if self.gl is None:
-            return
-        self.gl.release()
-        for asset in self._asset_lookup.values():
-            asset.texture = None
-        self._size = None
-
-    def _create_texture_references(self, atlas_size):
-        assert self.gl is not None
-        for asset, pos in self._allocations.items():
-            x, y = pos[0] / atlas_size[0], pos[1] / atlas_size[1]
-            w, h = asset.size[0] / atlas_size[0], asset.size[1] / atlas_size[1]
-            uv = (x, y, w, h)
-            asset.texture = TextureReference(self.gl, uv)
-
-    @property
-    def size(self):
-        return self._size
-
-    def __iter__(self):
-        return iter(self._asset_lookup.values())
-
-    def __getitem__(self, key) -> Asset:
-        return self._asset_lookup[key]
-
-    def __len__(self):
-        return len(self._asset_lookup)
-
-    def __repr__(self):
-        gpu_memory = round(self._video_memory / 1_000_000, 4)
-        return f"<TextureAtlas(num_assets={len(self)}, size={self._size}, {gpu_memory=} MB)>"
-
-
 class AtlasWriter(ABC):
     """Writes a collection of images into a larger single image and keeps some metadata."""
 
     @abstractmethod
-    def stitch_assets(self, allocations):
+    def stitch_texture(self, allocations, shape):
         """
         Stitch a group of image files into a single larger texture.
 
         Parameters
         ----------
         allocations : dict[Asset, tuple[int, int]]
-
+        shape : tuple[int, int]
+            the pixel dimensions allocations will fit into.
 
         Returns
         -------
-        atlas_image : Image
+        atlas_data : bytes
         """
 
 
@@ -255,90 +305,119 @@ class AtlasAllocator(ABC):
     max_size: Tuple[int, int]
 
     @abstractmethod
-    def pack_assets(self, assets):
+    def pack_assets(self, assets) -> tuple:
         """
         Pack assets into some geometry, preferably utilizing space efficiently.
 
         Parameters
         ----------
-        assets : list[Asset]
+        assets : Iterable[Asset]
             List of Assets to be packed into this atlas.
 
         Returns
         -------
         allocations : dict[Asset, tuple[int, int]]
             A Dictionary mapping assets to their px coordinates in the atlas.
+        shape : tuple[int, int]
+            the total pixel dimensions to fit these allocations.
 
         Raises
         ------
-        MemoryError
+        MemoryError:
             If max_size can't be respected.
         """
 
 
 class PILWriter(AtlasWriter):
-    def __init__(self, max_size, mode="RGBA"):
-        self.max_size = max_size
+    def __init__(self, mode="RGBA"):
         self.mode = mode
 
-    def stitch_assets(self, allocations):
-        atlas_image = Image.new(self.mode, self.max_size)
-        max_x = 0
-        max_y = 0
-
+    def stitch_texture(self, allocations, shape):
+        atlas_image = Image.new(self.mode, shape)
         for asset, pos in allocations.items():
-            current_image = Image.open(asset.path).transpose(Image.FLIP_TOP_BOTTOM)
+            current_image = Image.frombytes(
+                "RGBA",
+                asset.shape(),
+                asset.tobytes()
+            )
             atlas_image.paste(current_image, pos)
-            max_x = max(max_x, pos[0] + asset.size[0])
-            max_y = max(max_y, pos[1] + asset.size[1])
-
-        return atlas_image.crop((0, 0, max_x, max_y))
+        return atlas_image.tobytes()
 
 
 class SimpleRowAllocator(AtlasAllocator):
-    def __init__(self, max_size: Tuple[int, int], allocation_step: int):
-        self._next_row_height = 0
+    """ A very simple packing strategy.
+
+    Packs assets in rows.
+    Rows are only allowed to be allocated in parameterized steps.
+    Tries first to pack an asset into an existing rows first.
+    If there are no existing rows of the appropriate size, a new row is opened.
+    If an existing row can't fit an asset, that row is closed.
+    If the parameterized max_size cannot be respected, raises MemoryError.
+    """
+
+    def __init__(self, max_size, allocation_step):
+        """ Defines the rules for packing assets.
+
+        Parameters
+        ----------
+        max_size : tuple[int, int]
+            The pixel dimensions this allocator is confined to.
+        allocation_step : int
+            The rows will be allocated in steps by this value.
+        """
         self._max_size = max_size
         self._step = allocation_step
         self._max_w, self._max_h = max_size
+        self._reset()
+
+    def _reset(self):
+        self._current_height = 0
+        self._current_width = 0
         self._rows = dict()
 
     def pack_assets(self, assets):
-        return {asset: self.allocate(asset.size) for asset in assets}
+        result = (
+            {asset: self.allocate(asset.shape()) for asset in assets},
+            (self._current_width, self._current_height),
+        )
+        self._reset()
+        return result
 
     def allocate(self, image_size):
+        # calculate what row height this image fits into
         height = image_size[1]
         amount_over_interval = height % self._step
         if amount_over_interval:
             height += self._step - amount_over_interval
 
-        # try to allocate to existing row first
-        if row_pointer := self._rows.get(height):
-            if allocation := self._get_allocation(image_size, row_pointer, height):
+        # try to allocate to existing row first and return allocation
+        if current_location := self._rows.get(height):
+            if allocation := self._get_allocation(image_size, current_location, height):
                 return allocation
 
-        # create a new row and allocate there
-        row_pointer = self._begin_new_row(height)
-        if allocation := self._get_allocation(image_size, row_pointer, height):
+        # try to create a new row and return allocation
+        current_location = self._begin_new_row(height)
+        if allocation := self._get_allocation(image_size, current_location, height):
             return allocation
 
         raise MemoryError(f"Unable to allocate to a newly created row. {image_size=}")
 
-    def _get_allocation(self, image_size, row_pointer, height):
-        row_x, row_y = row_pointer
+    def _get_allocation(self, image_size: tuple, current_location: tuple, height: int):
+        row_x, row_y = current_location
         new_x = row_x + image_size[0]
         if new_x <= self._max_w:
+            self._current_width = max(self._current_width, new_x)
             self._rows[height] = (new_x, row_y)
             return row_x, row_y
         else:
             del self._rows[height]
 
     def _begin_new_row(self, height):
-        row_pointer = (0, self._next_row_height)
-        self._rows[height] = row_pointer
-        self._next_row_height += height
-        if self._next_row_height > self._max_h:
+        current_location = (0, self._current_height)
+        self._rows[height] = current_location
+        self._current_height += height
+        if self._current_height > self._max_h:
             raise MemoryError(
                 "Ran out of memory, can not begin new row for allocation."
             )
-        return row_pointer
+        return current_location
