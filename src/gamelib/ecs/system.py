@@ -38,7 +38,7 @@ class System:
         """Stub for subclass defined behavior."""
 
     def stop(self):
-        """Makes sure the System stops handling events when no longer in use."""
+        """Makes sure System stops handling events when no longer in use."""
         self._running = False
         events.unregister_marked(self)
 
@@ -66,7 +66,8 @@ class System:
 
 
 class SystemRunner(mp.Process):
-    """Responsible for initializing a System in a new process and handling ipc."""
+    """Responsible for initializing a System in a new
+    process and handling ipc."""
 
     def __init__(self, system):
         """Initialize means of ipc. Must grab reference of global state
@@ -114,7 +115,8 @@ class SystemRunner(mp.Process):
         inst.stop()
 
     def join(self, timeout=None):
-        """Sends the stop code to the child and stops communications before joining."""
+        """Sends the stop code to the child and stops
+        communications before joining."""
         self.conn.send((SystemStop(), None))
         super().join(timeout)
         events.stop_connection_service(self.conn)
@@ -136,9 +138,8 @@ class SystemRunner(mp.Process):
 
 
 class SystemUpdateComplete(events.Event):
-    """
-    Posted to the main process after a system finishes handling an Update event.
-    """
+    """Posted to the main process after a system finishes
+    handling an Update event."""
 
     __slots__ = ["system"]
 

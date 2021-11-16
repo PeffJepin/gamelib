@@ -179,7 +179,9 @@ class Component(metaclass=ComponentType):
         cls._fields = cls.__dict__.get("__annotations__", {})
         if not cls._fields:
             raise AttributeError("No attributes have been annotated.")
-        cls._dtype = np.dtype([(name, type_) for name, type_ in cls._fields.items()])
+        cls._dtype = np.dtype(
+            [(name, type_) for name, type_ in cls._fields.items()]
+        )
 
         for name in cls._fields.keys():
             descriptor = NumpyDescriptor()
@@ -341,7 +343,7 @@ class Component(metaclass=ComponentType):
         -------
         values : tuple | None
             The order of the values is the same order that they were annotated.
-            Returns None if called before this Components been bound to an entity.
+            Returns None if called before a Components been bound to an entity.
         """
         if not self.entity:
             return None

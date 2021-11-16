@@ -34,7 +34,9 @@ class _EventType(type):
 
         elif isinstance(cls.key_options, set):
             if name not in cls.key_options:
-                raise ValueError(f"Expected {name=} to be in {cls.key_options!r}")
+                raise ValueError(
+                    f"Expected {name=} to be in {cls.key_options!r}"
+                )
             name = name
 
         elif isinstance(cls.key_options, dict):
@@ -100,7 +102,9 @@ class Event(metaclass=_EventType):
         """
 
         if args and kwargs:
-            raise ValueError("Default Event.__init__ shouldn't mix *args and **kwargs.")
+            raise ValueError(
+                "Default Event.__init__ shouldn't mix *args and **kwargs."
+            )
         for slot, arg in zip(self.__slots__, args):
             setattr(self, slot, arg)
         for slot, arg in kwargs.items():
@@ -112,12 +116,18 @@ class Event(metaclass=_EventType):
         and all attributes defined by __slots__ are the same.
         """
         if type(self) is type(other):
-            self_slots = [(slot, getattr(self, slot)) for slot in self.__slots__]
-            other_slots = [(slot, getattr(other, slot)) for slot in other.__slots__]
+            self_slots = [
+                (slot, getattr(self, slot)) for slot in self.__slots__
+            ]
+            other_slots = [
+                (slot, getattr(other, slot)) for slot in other.__slots__
+            ]
             return self_slots == other_slots
 
     def __repr__(self):
-        body = ", ".join(f"{slot}={getattr(self, slot)}" for slot in self.__slots__)
+        body = ", ".join(
+            f"{slot}={getattr(self, slot)}" for slot in self.__slots__
+        )
         return f"<{self.__class__.__name__}({body})>"
 
 
@@ -179,7 +189,9 @@ def find_eventhandlers(obj):
     for name, attr in inspect.getmembers(obj):
         if not isinstance(attr, Callable):
             continue
-        if (event_type := getattr(attr, _HANDLER_INJECTION_ATTRIBUTE, None)) is None:
+        if (
+            event_type := getattr(attr, _HANDLER_INJECTION_ATTRIBUTE, None)
+        ) is None:
             continue
         handlers[event_type].append(attr)
     return handlers

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Type, Iterable
+from typing import List, Type
 
 from src.gamelib import (
     events,
@@ -9,7 +9,7 @@ from src.gamelib.events import eventhandler
 from . import EntityDestroyed, StaticGlobals, reset_globals
 from .component import Component
 from .system import System, SystemRunner
-from src.gamelib.textures import ImageAsset, TextureAtlas
+from src.gamelib.textures import TextureAtlas
 
 
 class UpdateComplete(events.Event):
@@ -112,8 +112,9 @@ class Environment:
         Parameters
         ----------
         components : Iterable[Component]
-            The Components associated with this entity. The entity id will
-            be assigned automatically. Entities are recycled after being destroyed.
+            The Components associated with this entity.
+            The entity id will be assigned automatically.
+            Entities are recycled after being destroyed.
         """
         entity = self._entity_pool.pop(0)
         for component in components:

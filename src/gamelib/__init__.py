@@ -2,12 +2,13 @@ from collections import namedtuple
 
 from moderngl_window.context.pygame2.keys import Keys
 
-from . import events
 from .events import Event
 
 
 ModifierKeys = namedtuple("KeyModifiers", "SHIFT, CTRL, ALT")  # Boolean values
-MouseButtons = namedtuple("MouseButtons", "LEFT, RIGHT, MIDDLE")  # Boolean values
+MouseButtons = namedtuple(
+    "MouseButtons", "LEFT, RIGHT, MIDDLE"
+)  # Boolean values
 _MOUSE_MAP = {"LEFT": 1, "RIGHT": 2, "MIDDLE": 3}
 
 

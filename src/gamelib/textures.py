@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import abc
-import pathlib
 from abc import abstractmethod, ABC
-from typing import Tuple, Iterable
+from typing import Tuple
 
 import moderngl
 import numpy as np
@@ -56,12 +55,16 @@ class Asset(abc.ABC):
         im_shape : tuple[int, int]
         """
 
-    def upload_texture(self, ctx, _free=True):
+    def upload_texture(self, ctx, wrap_x=False, wrap_y=False, _free=True):
         """Load the data and upload it to the gpu.
 
         Parameters
         ----------
         ctx : moderngl.Context
+        wrap_x : bool
+            should the texture wrap along x-axis?
+        wrap_y : bool
+            should the texture wrap along y-axis?
         _free : bool
             Should the cpu memory be freed immediately?
             Used by TextureAtlas to index child assets before freeing them.
@@ -74,10 +77,13 @@ class Asset(abc.ABC):
         """
         if self.texture is not None:
             raise ValueError(
-                "Expected Asset texture to be None. Existing texture must first be released."
+                "Expected Asset texture to be None. "
+                "Existing texture must first be released."
             )
         self.load()
         gl_texture = ctx.texture(self.shape(), self._px_depth, self.tobytes())
+        gl_texture.repeat_x = wrap_x
+        gl_texture.repeat_y = wrap_y
         self.texture = TextureReference(self.shape(), gl_texture)
         if _free:
             self.free()
@@ -94,14 +100,16 @@ class Asset(abc.ABC):
 
 
 class TextAsset(Asset):
-    """ Using pygame.font module for now to render a bit of text then upload
+    """Using pygame.font module for now to render a bit of text then upload
     that image to the GPU.
 
-    In the future text rendering should get a more sophisticated implementation,
-    as this will waste a ton of video memory at scale.
+    In the future text rendering should get a more sophisticated
+    implementation, as this will waste a ton of video memory at scale.
     """
+
     def __init__(self, label, font_size, color=(255, 255, 255)):
-        """ Initialize system default font. Label is the Asset label and the text to be rendered.
+        """Initialize system default font. Label is the Asset label
+        and the text to be rendered.
 
         Parameters
         ----------
@@ -112,7 +120,9 @@ class TextAsset(Asset):
             Opacity not implemented at the moment.
         """
         super().__init__(label)
-        self._font = pygame.font.Font(pygame.font.get_default_font(), font_size)
+        self._font = pygame.font.Font(
+            pygame.font.get_default_font(), font_size
+        )
         self._color = color
         self._surface = None
 
@@ -134,12 +144,12 @@ class TextAsset(Asset):
 
 
 class ImageAsset(Asset):
-    """ An ImageAsset should be pointed at an image file. The filetype should be
-    PIL compatible.
+    """An ImageAsset should be pointed at an image file.
+    The filetype should be PIL compatible.
     """
 
     def __init__(self, label, path, px_depth=4):
-        """ Point the Asset at a file and give it a label.
+        """Point the Asset at a file and give it a label.
 
         Parameters
         ----------
@@ -169,7 +179,7 @@ class TextureAtlas(Asset):
     single texture and stored in graphics memory.
     """
 
-    def __init__(self, label, assets, allocator, writer, px_depth=4):
+    def __init__(self, label, assets, allocator=None, writer=None, px_depth=4):
         """
         Parameters
         ----------
@@ -181,8 +191,8 @@ class TextureAtlas(Asset):
             The number of texture components, default 4 for RGBA
         """
         super().__init__(label, px_depth)
-        self._allocator = allocator
-        self._writer = writer
+        self._allocator = allocator or SimpleRowAllocator((2048, 2048), 32)
+        self._writer = writer or PILWriter()
         self._asset_lookup = {asset.label: asset for asset in assets}
         self._allocations = None
         self._shape = None
@@ -222,7 +232,9 @@ class TextureAtlas(Asset):
             nx, ny = pos[0] / total_width, pos[1] / total_height
             nw, nh = asset_width / total_width, asset_height / total_height
             uv = (nx, ny, nw, nh)
-            asset.texture = TextureReference(asset.shape(), self.texture.gl, uv)
+            asset.texture = TextureReference(
+                asset.shape(), self.texture.gl, uv
+            )
         self.free()
 
     def __iter__(self):
@@ -235,8 +247,10 @@ class TextureAtlas(Asset):
         return len(self._asset_lookup)
 
     def __repr__(self):
-        return f"<TextureAtlas(num_assets={len(self)}," \
-               f"size={None if not self.texture else self.texture.size})>"
+        return (
+            f"<TextureAtlas(num_assets={len(self)},"
+            f"size={None if not self.texture else self.texture.size})>"
+        )
 
 
 class TextureReference:
@@ -280,7 +294,8 @@ class TextureReference:
 
 
 class AtlasWriter(ABC):
-    """Writes a collection of images into a larger single image and keeps some metadata."""
+    """Writes a collection of images into a larger single
+    image and keeps some metadata."""
 
     @abstractmethod
     def stitch_texture(self, allocations, shape):
@@ -300,14 +315,15 @@ class AtlasWriter(ABC):
 
 
 class AtlasAllocator(ABC):
-    """Allocates space to paste smaller images into a single larger texture."""
+    """Allocates space to paste smaller images
+    into a single larger texture."""
 
     max_size: Tuple[int, int]
 
     @abstractmethod
     def pack_assets(self, assets) -> tuple:
-        """
-        Pack assets into some geometry, preferably utilizing space efficiently.
+        """Pack assets into some geometry, preferably
+        utilizing space efficiently.
 
         Parameters
         ----------
@@ -336,16 +352,14 @@ class PILWriter(AtlasWriter):
         atlas_image = Image.new(self.mode, shape)
         for asset, pos in allocations.items():
             current_image = Image.frombytes(
-                "RGBA",
-                asset.shape(),
-                asset.tobytes()
+                "RGBA", asset.shape(), asset.tobytes()
             )
             atlas_image.paste(current_image, pos)
         return atlas_image.tobytes()
 
 
 class SimpleRowAllocator(AtlasAllocator):
-    """ A very simple packing strategy.
+    """A very simple packing strategy.
 
     Packs assets in rows.
     Rows are only allowed to be allocated in parameterized steps.
@@ -356,7 +370,7 @@ class SimpleRowAllocator(AtlasAllocator):
     """
 
     def __init__(self, max_size, allocation_step):
-        """ Defines the rules for packing assets.
+        """Defines the rules for packing assets.
 
         Parameters
         ----------
@@ -392,17 +406,25 @@ class SimpleRowAllocator(AtlasAllocator):
 
         # try to allocate to existing row first and return allocation
         if current_location := self._rows.get(height):
-            if allocation := self._get_allocation(image_size, current_location, height):
+            if allocation := self._get_allocation(
+                image_size, current_location, height
+            ):
                 return allocation
 
         # try to create a new row and return allocation
         current_location = self._begin_new_row(height)
-        if allocation := self._get_allocation(image_size, current_location, height):
+        if allocation := self._get_allocation(
+            image_size, current_location, height
+        ):
             return allocation
 
-        raise MemoryError(f"Unable to allocate to a newly created row. {image_size=}")
+        raise MemoryError(
+            f"Unable to allocate to a newly created row. {image_size=}"
+        )
 
-    def _get_allocation(self, image_size: tuple, current_location: tuple, height: int):
+    def _get_allocation(
+        self, image_size: tuple, current_location: tuple, height: int
+    ):
         row_x, row_y = current_location
         new_x = row_x + image_size[0]
         if new_x <= self._max_w:
