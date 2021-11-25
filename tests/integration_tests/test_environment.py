@@ -1,12 +1,12 @@
 import numpy as np
 import pytest
 
-from src.gamelib import Update, events
-from src.gamelib.ecs import EntityDestroyed
-from src.gamelib.ecs.environment import Environment
-from src.gamelib.events import eventhandler, Event
-from src.gamelib.ecs.system import SystemUpdateComplete, System
-from src.gamelib.ecs.component import Component
+from gamelib import Update, events
+from gamelib.ecs import EntityDestroyed
+from gamelib.ecs.environment import Environment
+from gamelib.events import eventhandler, Event
+from gamelib.ecs.system import SystemUpdateComplete, System
+from gamelib.ecs.component import Component
 
 
 class TestEnvironment:
@@ -31,7 +31,9 @@ class TestEnvironment:
 
         assert 0 == env.abc_event_handled
 
-    def test_local_systems_dont_handle_events_before_entering(self, recorded_callback):
+    def test_local_systems_dont_handle_events_before_entering(
+        self, recorded_callback
+    ):
         env = ExampleEnvironment()
         events.register(Response.LOCAL_EVENT, recorded_callback)
 
@@ -49,7 +51,9 @@ class TestEnvironment:
 
             assert recorded_callback.called
 
-    def test_local_systems_stop_handling_events_after_exiting(self, recorded_callback):
+    def test_local_systems_stop_handling_events_after_exiting(
+        self, recorded_callback
+    ):
         events.register(Response.LOCAL_EVENT, recorded_callback)
 
         env = ExampleEnvironment()
@@ -71,7 +75,9 @@ class TestEnvironment:
         with pytest.raises(TimeoutError):
             recorded_callback.await_called(1, timeout=0.1)
 
-    def test_process_systems_handle_events_after_entering(self, recorded_callback):
+    def test_process_systems_handle_events_after_entering(
+        self, recorded_callback
+    ):
         events.register(Response.BASE_PROCESS_TEST, recorded_callback)
 
         with ExampleEnvironment():
@@ -114,8 +120,12 @@ class TestEnvironment:
             for component in env.COMPONENTS:
                 assert component.array
 
-    def test_component_data_is_shared_across_processes(self, recorded_callback):
-        events.register(Response.INTERPROCESS_COMPONENT_DATA, recorded_callback)
+    def test_component_data_is_shared_across_processes(
+        self, recorded_callback
+    ):
+        events.register(
+            Response.INTERPROCESS_COMPONENT_DATA, recorded_callback
+        )
 
         with ExampleEnvironment():
             Component1.array[:] = 123
@@ -132,7 +142,9 @@ class TestEnvironment:
         with ExampleEnvironment() as env:
             events.post(Update())
 
-            expected_number_of_calls = len(env.PROCESS_SYSTEMS) + len(env.LOCAL_SYSTEMS)
+            expected_number_of_calls = len(env.PROCESS_SYSTEMS) + len(
+                env.LOCAL_SYSTEMS
+            )
             recorded_callback.await_called(expected_number_of_calls)
 
     def test_creating_an_entity_within_context_manager(self):
@@ -218,7 +230,9 @@ class ProcessSystem1(System):
 
     @eventhandler(Event.INTERPROCESS_COMPONENT_DATA)
     def _test_components_data(self, _):
-        self.raise_event(Response(Component1.array), key="INTERPROCESS_COMPONENT_DATA")
+        self.raise_event(
+            Response(Component1.array), key="INTERPROCESS_COMPONENT_DATA"
+        )
 
 
 class LocalSystem1(System):

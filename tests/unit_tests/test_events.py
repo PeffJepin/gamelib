@@ -5,10 +5,10 @@ import time
 from collections import defaultdict
 from multiprocessing.connection import Pipe
 
-from src.gamelib import Keys
+from gamelib import Keys, events
 
-from src.gamelib import events, KeyDown, ModifierKeys
-from src.gamelib.events import (
+from gamelib import KeyDown, ModifierKeys
+from gamelib.events import (
     Event,
     eventhandler,
     _HANDLER_INJECTION_ATTRIBUTE,
@@ -93,7 +93,9 @@ class TestEventHandling:
 
         assert not b.poll(0)
 
-    def test_reads_event_sent_through_pipe_and_posts_them(self, recorded_callback):
+    def test_reads_event_sent_through_pipe_and_posts_them(
+        self, recorded_callback
+    ):
         a, b = Pipe()
 
         events.service_connection(a)
@@ -181,7 +183,9 @@ class TestHandlerDecorator:
 
         assert inst.field == 1
 
-    def test_methods_discovered_by_events_module_are_bound_to_the_given_instance(self):
+    def test_methods_discovered_by_events_module_are_bound_to_the_given_instance(
+        self,
+    ):
         inst = self.ExampleUsage()
         handlers = events.find_eventhandlers(inst)
         for handler_ in handlers[(SomeEvent, None)]:

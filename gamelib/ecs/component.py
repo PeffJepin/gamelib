@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from typing import Dict, Optional, Any
 
 import numpy as np
-from src.gamelib.ecs import (
+from gamelib.ecs import (
     get_static_global,
     StaticGlobals,
     register_shared_array,

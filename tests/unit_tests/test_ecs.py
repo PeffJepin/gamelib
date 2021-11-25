@@ -1,7 +1,7 @@
 import pytest
 import multiprocessing as mp
 
-from src.gamelib import ecs
+from gamelib import ecs
 
 
 def test_adding_a_static_global():

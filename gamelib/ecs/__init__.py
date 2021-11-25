@@ -3,7 +3,7 @@ from __future__ import annotations
 import enum
 import os
 
-from src.gamelib import events
+from gamelib import events
 
 _POSIX = os.name == "posix"
 _globals: _EcsGlobals | None = None

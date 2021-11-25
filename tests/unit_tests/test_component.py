@@ -4,9 +4,9 @@ import time
 import numpy as np
 import pytest
 
-from src.gamelib import ecs
-from src.gamelib.ecs import StaticGlobals
-from src.gamelib.ecs.component import Component
+from gamelib import ecs
+from gamelib.ecs import StaticGlobals
+from gamelib.ecs.component import Component
 
 
 class TestComponent:

@@ -1,15 +1,24 @@
 import pytest
 
-from src.gamelib.textures import ImageAsset, TextureAtlas, SimpleRowAllocator, PILWriter
+from gamelib.textures import (
+    ImageAsset,
+    TextureAtlas,
+    SimpleRowAllocator,
+    PILWriter,
+)
 
 
 class TestTextureAtlas:
-    def test_can_be_indexed_for_assets_by_label(self, mocker, image_file_maker):
+    def test_can_be_indexed_for_assets_by_label(
+        self, mocker, image_file_maker
+    ):
         assets = [
             ImageAsset("label1", image_file_maker((4, 4))),
             ImageAsset("label2", image_file_maker((8, 8))),
         ]
-        atlas = TextureAtlas("asset1", assets, allocator=mocker.Mock(), writer=mocker.Mock())
+        atlas = TextureAtlas(
+            "asset1", assets, allocator=mocker.Mock(), writer=mocker.Mock()
+        )
 
         assert atlas["label2"] is assets[1]
 
@@ -23,7 +32,9 @@ class TestTextureAtlas:
         for asset in assets:
             assert asset.texture is not None
 
-    def test_release_removes_textures_from_children(self, asset_maker, fake_ctx):
+    def test_release_removes_textures_from_children(
+        self, asset_maker, fake_ctx
+    ):
         assets = [asset_maker(4, 4) for _ in range(4)]
         allocator = SimpleRowAllocator(max_size=(12, 12), allocation_step=4)
         writer = PILWriter()
@@ -100,11 +111,13 @@ class TestSimpleRowAllocator:
         assets = [asset_maker(8, 8) for _ in range(4)]
 
         expected = (
-            {assets[0]: (0, 0),
-             assets[1]: (8, 0),
-             assets[2]: (0, 8),
-             assets[3]: (8, 8)},
-            (16, 16)
+            {
+                assets[0]: (0, 0),
+                assets[1]: (8, 0),
+                assets[2]: (0, 8),
+                assets[3]: (8, 8),
+            },
+            (16, 16),
         )
 
         assert expected == allocator.pack_assets(assets)

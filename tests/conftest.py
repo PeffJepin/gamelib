@@ -6,8 +6,8 @@ from typing import Tuple, Callable
 import pytest
 from PIL import Image
 
-from src.gamelib import events
-from src.gamelib.textures import ImageAsset
+from gamelib import events
+from gamelib.textures import ImageAsset
 
 
 class RecordedCallback:
@@ -40,7 +40,8 @@ class RecordedCallback:
             if self.called == num_times_called:
                 return
         raise TimeoutError(
-            f"Target times called = {num_times_called}. Current times called = {self.called}"
+            f"Target times called = {num_times_called}. "
+            f"Current times called = {self.called}"
         )
 
     def wait_for_response(self, timeout=5, n=1):
@@ -98,6 +99,23 @@ def pipe_reader():
         return messages if n > 1 else messages[0]
 
     return _reader
+
+
+@pytest.fixture
+def filesystem_maker(tmpdir):
+    def inner(*paths):
+        root = pathlib.Path(tmpdir)
+        paths = [
+            root / p if isinstance(p, pathlib.Path) else root / pathlib.Path(p)
+            for p in paths
+        ]
+        for path in paths:
+            for p in path.parents:
+                p.mkdir(exist_ok=True, parents=True)
+            path.touch()
+        return root
+
+    return inner
 
 
 @pytest.fixture(autouse=True, scope="function")

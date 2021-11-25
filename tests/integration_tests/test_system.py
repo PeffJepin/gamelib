@@ -2,11 +2,11 @@ from contextlib import contextmanager
 
 import pytest
 
-from src.gamelib import SystemStop, Update, events
-from src.gamelib.ecs import _EcsGlobals
-from src.gamelib.events import eventhandler, Event
-from src.gamelib.ecs.component import Component
-from src.gamelib.ecs.system import (
+from gamelib import SystemStop, Update, events
+from gamelib.ecs import _EcsGlobals
+from gamelib.events import eventhandler, Event
+from gamelib.ecs.component import Component
+from gamelib.ecs.system import (
     SystemUpdateComplete,
     System,
     SystemRunner,
@@ -29,13 +29,17 @@ class TestSystemInProcess:
             runner.join(5)
             assert runner.exitcode == 0
 
-    def test_posts_update_complete_event_after_updating(self, recorded_callback):
+    def test_posts_update_complete_event_after_updating(
+        self, recorded_callback
+    ):
         with self.system_tester(ExampleSystem):
             recorded_callback.register(SystemUpdateComplete)
             events.post(Update())
 
             recorded_callback.await_called(1)
-            assert SystemUpdateComplete(ExampleSystem) == recorded_callback.event
+            assert (
+                SystemUpdateComplete(ExampleSystem) == recorded_callback.event
+            )
 
     def test_keyed_event_between_processes(self, recorded_callback):
         with self.system_tester(ExampleSystem):
@@ -54,7 +58,9 @@ class TestSystemInProcess:
             recorded_callback.await_called(1)
             assert recorded_callback.event == Response(new_instance.values)
 
-    def test_destroying_a_component_in_the_main_process(self, recorded_callback):
+    def test_destroying_a_component_in_the_main_process(
+        self, recorded_callback
+    ):
         with self.system_tester(ExampleSystem):
             recorded_callback.register(Response)
             new_instance = Component1(1, 2, entity=0)

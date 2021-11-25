@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import List, Type
 
-from src.gamelib import (
+from gamelib import (
     events,
 )
-from src.gamelib.events import eventhandler
+from gamelib.events import eventhandler
 from . import EntityDestroyed, StaticGlobals, reset_globals
 from .component import Component
 from .system import System, SystemRunner
-from src.gamelib.textures import TextureAtlas
+from gamelib.textures import TextureAtlas
 
 
 class UpdateComplete(events.Event):

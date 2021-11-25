@@ -7,9 +7,15 @@ import numpy as np
 import pygame
 from PIL import Image
 
-from gamelib.textures import TextureAtlas, ImageAsset, SimpleRowAllocator, PILWriter, TextAsset, Asset
+from gamelib.textures import (
+    TextureAtlas,
+    ImageAsset,
+    SimpleRowAllocator,
+    PILWriter,
+    TextAsset,
+)
 
-IMGS = Path(__file__).parent / "testing_images"
+IMGS = Path(__file__).parent.parent / "testing_images"
 
 
 def render_asset_to_PIL(ctx, asset):
@@ -37,7 +43,7 @@ def render_asset_to_PIL(ctx, asset):
             uniform sampler2D test_texture;
 
             void main() {
-                frag_color = texture(test_texture, vertex_tex_coord);   
+                frag_color = texture(test_texture, vertex_tex_coord);
             }
         """,
     )
@@ -98,8 +104,8 @@ def test_text_asset():
 
 def test_texture_atlas(assets):
     """
-    Show side by side comparison of an image loaded from disk vs rendered by the gpu
-    Also show an image of the entire atlas at the end.
+    Show side by side comparison of an image loaded from disk vs rendered by
+    the gpu. Also show an image of the entire atlas at the end.
     """
     ctx = moderngl.create_standalone_context()
     allocator = SimpleRowAllocator(max_size=(512, 512), allocation_step=32)
@@ -127,10 +133,12 @@ if __name__ == "__main__":
     test_image_asset()
     test_text_asset()
 
-    image_assets = [ImageAsset(i, IMGS / fn) for i, fn in enumerate(IMGS.iterdir())]
+    image_assets = [
+        ImageAsset(i, IMGS / fn) for i, fn in enumerate(IMGS.iterdir())
+    ]
     text_assets = [
         TextAsset("Woah", 64),
         TextAsset("Hello, World", 24),
-        TextAsset("I had better be red!", 24, (255, 0, 0, 255))
+        TextAsset("I had better be red!", 24, (255, 0, 0, 255)),
     ]
     test_texture_atlas(image_assets + text_assets)
