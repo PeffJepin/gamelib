@@ -68,11 +68,13 @@ def recorded_callback() -> RecordedCallback:
 
 @pytest.fixture
 def image_file_maker(tmpdir) -> Callable[[Tuple[int, int]], pathlib.Path]:
-    def _maker(size):
-        global _tmp_dir_counter
-        path = pathlib.Path(tmpdir) / (str(_tmp_dir_counter) + ".png")
-        _tmp_dir_counter += 1
+    global _tmp_dir_counter
+    _dir = pathlib.Path(tmpdir) / str(_tmp_dir_counter)
+    _dir.mkdir()
+    _tmp_dir_counter += 1
 
+    def _maker(size):
+        path = _dir / (str(time.time()) + ".png")
         img = Image.new("RGBA", size)
         img.save(path)
         return path
