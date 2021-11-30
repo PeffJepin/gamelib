@@ -5,9 +5,10 @@ from moderngl_window.context.pygame2.keys import Keys
 import moderngl
 import pygame
 
+import gamelib.gl
 from .events import Event
-from .rendering import init_window, gl_dtypes
 from . import resources
+from . import gl
 
 ctx = None
 window = None
@@ -19,12 +20,6 @@ MouseButtons = namedtuple(
 _MOUSE_MAP = {"LEFT": 1, "RIGHT": 2, "MIDDLE": 3}
 
 
-def __getattr__(name):
-    if name in gl_dtypes:
-        return gl_dtypes[name]
-    raise AttributeError(f"gamelib has no attribute {name}")
-
-
 def init(make_window=True, **config):
     global ctx
     global window
@@ -32,10 +27,10 @@ def init(make_window=True, **config):
     pygame.init()
     resources.discover_shader_sources(pathlib.Path.cwd())
     if make_window:
-        window = init_window(**config)
+        window = gl.init_window(**config)
         ctx = window.ctx
     else:
-        ctx = moderngl.create_standalone_context()
+        ctx = gamelib.gl.init_standalone()
 
     return window or ctx
 

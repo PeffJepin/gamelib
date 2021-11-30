@@ -104,7 +104,7 @@ def pipe_reader():
 @pytest.fixture
 def filesystem_maker(tmpdir):
     def inner(*paths):
-        root = pathlib.Path(tmpdir)
+        root = pathlib.Path(tmpdir) / str(time.time())
         paths = [
             root / p if isinstance(p, pathlib.Path) else root / pathlib.Path(p)
             for p in paths

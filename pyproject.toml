@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 testpaths = [
     "tests",
 ]
-addopts = ["--no-header", "--ignore=tests/gl_context_required"]
+addopts = ["--no-header"]
 
 [tool.black]
 line-length = 79
