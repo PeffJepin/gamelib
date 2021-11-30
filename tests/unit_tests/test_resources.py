@@ -138,4 +138,3 @@ def test_find_shader(filesystem_maker):
     src = resources.find_shader("example")
     assert root / "shaders" / "example.vert" in src
     assert root / "shaders" / "example.frag" in src
-
