@@ -195,8 +195,10 @@ def find_shader(name):
     if name not in _shader_srcs:
         discover_shader_sources()
         if name not in _shader_srcs:
-            raise KeyError(f"Shader with {name=} not found in "
-                           f"{list(_shader_srcs.keys())}.")
+            raise KeyError(
+                f"Shader with {name=} not found in "
+                f"{list(_shader_srcs.keys())}."
+            )
     return _shader_srcs[name]
 
 
