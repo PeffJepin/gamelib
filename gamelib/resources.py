@@ -1,16 +1,17 @@
 import pathlib
 from collections import defaultdict
 from itertools import groupby
+from typing import List, DefaultDict, Dict
 
 
 _RESOURCE_ROOTS = (pathlib.Path.cwd(),)
 _SHADER_EXTS = (".vert", ".frag", ".tesc", ".tese", ".geom")
 _ASSET_EXTS = (".jpg", ".png")
 
-_shader_dirs: list[pathlib.Path] = []
-_shader_srcs: defaultdict[str, list] = defaultdict(list)
-_asset_dirs: list[pathlib.Path] = []
-_asset_paths: dict[str, pathlib.Path] = {}
+_shader_dirs: List[pathlib.Path] = []
+_shader_srcs: DefaultDict[str, list] = defaultdict(list)
+_asset_dirs: List[pathlib.Path] = []
+_asset_paths: Dict[str, pathlib.Path] = {}
 
 
 def clear_cache():
