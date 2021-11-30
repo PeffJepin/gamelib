@@ -15,7 +15,7 @@ from gamelib.textures import (
     TextAsset,
 )
 
-IMGS = Path(__file__).parent.parent / "testing_images"
+IMGS = Path(__file__).parent / "testing_images"
 
 
 def render_asset_to_PIL(ctx, asset):
