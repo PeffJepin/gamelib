@@ -24,9 +24,7 @@ class TestTextureAtlas:
 
     def test_upload_assigns_textures_for_children(self, asset_maker, fake_ctx):
         assets = [asset_maker(4, 4) for _ in range(4)]
-        allocator = SimpleRowAllocator(max_size=(12, 12), allocation_step=4)
-        writer = PILWriter()
-        atlas = TextureAtlas("atlas1", assets, allocator, writer)
+        atlas = TextureAtlas("atlas1", assets)
         atlas.upload_texture(fake_ctx)
 
         for asset in assets:

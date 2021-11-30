@@ -1,5 +1,8 @@
 import pathlib
+import shutil
 import time
+import itertools
+import tempfile
 from multiprocessing.connection import Connection
 from typing import Tuple, Callable
 
@@ -10,7 +13,25 @@ from gamelib import events
 from gamelib.textures import ImageAsset
 
 
-_tmp_dir_counter = 0
+_counter = itertools.count(0)
+_tmp: pathlib.Path = None
+
+
+@pytest.fixture(autouse=True, scope="session")
+def setup_temp_directory():
+    global _tmp
+    with tempfile.TemporaryDirectory() as tmp:
+        _tmp = pathlib.Path(tmp)
+        yield
+    _tmp = None
+
+
+@pytest.fixture
+def tempdir():
+    new_dir = _tmp / str(next(_counter))
+    new_dir.mkdir()
+    yield new_dir
+    shutil.rmtree(new_dir, ignore_errors=True)
 
 
 class RecordedCallback:
@@ -67,30 +88,27 @@ def recorded_callback() -> RecordedCallback:
 
 
 @pytest.fixture
-def image_file_maker(tmpdir) -> Callable[[Tuple[int, int]], pathlib.Path]:
-    global _tmp_dir_counter
-    _dir = pathlib.Path(tmpdir) / str(_tmp_dir_counter)
-    _dir.mkdir()
-    _tmp_dir_counter += 1
-
-    def _maker(size):
-        path = _dir / (str(time.time()) + ".png")
+def image_file_maker(tempdir):
+    def inner(size, name=None):
+        name = name or str(next(_counter))
+        path = tempdir / (name + ".png")
         img = Image.new("RGBA", size)
         img.save(path)
         return path
 
-    return _maker
+    yield inner
 
 
 @pytest.fixture
 def asset_maker(image_file_maker):
     def inner(w, h):
         size = (w, h)
-        asset = ImageAsset(str(time.time()), image_file_maker(size))
+        name = str(next(_counter))
+        asset = ImageAsset(name, image_file_maker(size, name=name))
         asset.load()
         return asset
 
-    return inner
+    yield inner
 
 
 @pytest.fixture
@@ -110,22 +128,20 @@ def pipe_reader():
 
 
 @pytest.fixture
-def filesystem_maker(tmpdir):
+def filesystem_maker(tempdir):
     def inner(*paths):
-        global _tmp_dir_counter
-        root = pathlib.Path(tmpdir) / str(_tmp_dir_counter)
-        _tmp_dir_counter += 1
-
+        fs_root = tempdir / str(next(_counter))
         paths = [
-            root / p if isinstance(p, pathlib.Path) else root / pathlib.Path(p)
+            fs_root / p
+            if isinstance(p, pathlib.Path)
+            else fs_root / pathlib.Path(p)
             for p in paths
         ]
         for path in paths:
             for p in path.parents:
                 p.mkdir(exist_ok=True, parents=True)
             path.touch()
-        return root
-
+        return fs_root
     yield inner
 
 
