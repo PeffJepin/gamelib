@@ -1,5 +1,5 @@
 import pathlib
-from typing import NamedTuple
+from typing import NamedTuple, List
 
 import moderngl
 import numpy as np
@@ -605,9 +605,9 @@ class ShaderMetaData(NamedTuple):
     """A collection of metadata on tokens parsed from a single
     glsl source file."""
 
-    inputs: list[TokenDesc]
-    outputs: list[TokenDesc]
-    uniforms: list[TokenDesc]
+    inputs: List[TokenDesc]
+    outputs: List[TokenDesc]
+    uniforms: List[TokenDesc]
 
 
 def parse_source(src):
