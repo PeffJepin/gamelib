@@ -10,6 +10,9 @@ from gamelib import events
 from gamelib.textures import ImageAsset
 
 
+_tmp_dir_counter = 0
+
+
 class RecordedCallback:
     def __init__(self):
         self.called = 0
@@ -66,7 +69,10 @@ def recorded_callback() -> RecordedCallback:
 @pytest.fixture
 def image_file_maker(tmpdir) -> Callable[[Tuple[int, int]], pathlib.Path]:
     def _maker(size):
-        path = pathlib.Path(tmpdir) / (str(time.time()) + ".png")
+        global _tmp_dir_counter
+        path = pathlib.Path(tmpdir) / (str(_tmp_dir_counter) + ".png")
+        _tmp_dir_counter += 1
+
         img = Image.new("RGBA", size)
         img.save(path)
         return path
@@ -104,7 +110,10 @@ def pipe_reader():
 @pytest.fixture
 def filesystem_maker(tmpdir):
     def inner(*paths):
-        root = pathlib.Path(tmpdir) / str(time.time())
+        global _tmp_dir_counter
+        root = pathlib.Path(tmpdir) / str(_tmp_dir_counter)
+        _tmp_dir_counter += 1
+
         paths = [
             root / p if isinstance(p, pathlib.Path) else root / pathlib.Path(p)
             for p in paths
@@ -115,7 +124,7 @@ def filesystem_maker(tmpdir):
             path.touch()
         return root
 
-    return inner
+    yield inner
 
 
 @pytest.fixture(autouse=True, scope="function")
