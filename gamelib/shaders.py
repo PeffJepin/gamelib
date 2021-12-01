@@ -1,7 +1,6 @@
 import pathlib
 from typing import NamedTuple, List
 
-import moderngl
 import numpy as np
 
 from . import gl
@@ -388,7 +387,7 @@ class ShaderProgram:
         uniforms = uniforms or {}
         self._mode = mode
         self._varyings = varyings
-        self._index_buffer=index_buffer
+        self._index_buffer = index_buffer
         self._foreign_auto_buffers = {}
         self._created_auto_buffers = {}
 
@@ -585,7 +584,7 @@ class ShaderProgram:
                 self.gl,
                 self._buffer_format_tuples,
                 index_buffer=ibo,
-                index_element_size=element_size
+                index_element_size=element_size,
             )
             return vao
         except AttributeError:

@@ -2,11 +2,28 @@ import moderngl
 import moderngl_window
 import numpy as np
 
-from moderngl.error import Error as GLError
+# noinspection PyUnresolvedReferences
+from moderngl.error import Error
+
+# noinspection PyUnresolvedReferences
+from moderngl import (
+    TRIANGLES,
+    TRIANGLE_FAN,
+    TRIANGLE_STRIP,
+    TRIANGLES_ADJACENCY,
+    TRIANGLE_STRIP_ADJACENCY,
+    POINTS,
+    LINES,
+    LINE_STRIP,
+    LINE_STRIP_ADJACENCY,
+    LINE_LOOP,
+    LINES_ADJACENCY,
+    PATCHES,
+)
 from moderngl_window import settings
 
-window: moderngl_window.BaseWindow
-context: moderngl.Context
+window: moderngl_window.BaseWindow = None
+context: moderngl.Context = None
 
 _int = int
 _float = float
@@ -17,6 +34,7 @@ uint = np.dtype("u4")
 float = np.dtype("f4")
 double = np.dtype("f8")
 bool = np.dtype("bool")
+byte = np.dtype("byte")
 bvec2 = np.dtype((bool, 2))
 bvec3 = np.dtype((bool, 3))
 bvec4 = np.dtype((bool, 4))
@@ -53,13 +71,29 @@ dmat4x3 = np.dtype((double, (3, 4)))
 dmat4 = np.dtype((double, (4, 4)))
 
 
-def coerce_array(array, dtype):
-    if isinstance(dtype, str):
+def coerce_array(array, gl_type):
+    """Tries to coerce the given array into the dtype and shape of
+    the given glsl type.
+
+    Parameters
+    ----------
+    array : np.ndarray
+    gl_type : str | np.dtype
+
+    Returns
+    -------
+    np.ndarray
+    """
+
+    if isinstance(gl_type, str):
         try:
-            dtype = eval(dtype)
+            dtype = eval(gl_type)
             assert isinstance(dtype, np.dtype)
-        except (AssertionError, NameError):
-            dtype = np.dtype(dtype)
+        except (NameError, AssertionError):
+            dtype = np.dtype(gl_type)
+    else:
+        dtype = gl_type
+    assert isinstance(dtype, np.dtype)
 
     if array.dtype != dtype:
         if dtype.subdtype is not None:
@@ -67,6 +101,7 @@ def coerce_array(array, dtype):
             array = array.astype(base_dtype).reshape((-1, *shape))
         else:
             array = array.astype(dtype)
+
     return array
 
 

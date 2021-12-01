@@ -2,16 +2,13 @@ from collections import namedtuple
 import pathlib
 
 from moderngl_window.context.pygame2.keys import Keys
-import moderngl
 import pygame
 
-import gamelib.gl
 from .events import Event
+from .gl import window
+from .gl import context
 from . import resources
-from . import gl
 
-ctx = None
-window = None
 
 ModifierKeys = namedtuple("KeyModifiers", "SHIFT, CTRL, ALT")  # Boolean values
 MouseButtons = namedtuple(
@@ -21,31 +18,21 @@ _MOUSE_MAP = {"LEFT": 1, "RIGHT": 2, "MIDDLE": 3}
 
 
 def init(make_window=True, **config):
-    global ctx
-    global window
-
     pygame.init()
-    resources.discover_shader_sources(pathlib.Path.cwd())
+    resources.discover_directories(pathlib.Path.cwd())
     if make_window:
-        window = gl.init_window(**config)
-        ctx = window.ctx
+        gl.init_window(**config)
     else:
-        ctx = gamelib.gl.init_standalone()
+        gl.init_standalone()
 
-    return window or ctx
+    return window or context
 
 
 def exit():
-    global ctx
-    global window
-
     if window:
         window.close()
-    if ctx:
-        ctx.release()
-
-    window = None
-    ctx = None
+    if context:
+        context.release()
 
 
 class Update(Event):

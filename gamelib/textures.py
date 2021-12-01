@@ -4,7 +4,6 @@ import abc
 from abc import abstractmethod, ABC
 from typing import Tuple
 
-import moderngl
 import numpy as np
 import pygame
 from PIL import Image
@@ -214,7 +213,7 @@ class TextureAtlas(Asset):
     def tobytes(self):
         return self._writer.stitch_texture(self._allocations, self._shape)
 
-    def upload_texture(self, ctx: moderngl.Context, **kwargs):
+    def upload_texture(self, ctx, **kwargs):
         # texture references need to be made for all the contained assets.
         super().upload_texture(ctx, _free=False)
         self._create_texture_references()

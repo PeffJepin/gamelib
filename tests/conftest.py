@@ -142,6 +142,7 @@ def filesystem_maker(tempdir):
                 p.mkdir(exist_ok=True, parents=True)
             path.touch()
         return fs_root
+
     yield inner
 
 
