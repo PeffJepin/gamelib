@@ -7,152 +7,7 @@ from . import gl
 from . import resources
 
 
-class IndexBuffer:
-    """A simple wrapper around moderngl.Buffer that handles creating
-    a repeating ordered sequence of indices for use as an index array
-    buffer.
-    """
-
-    def __init__(self, order, entities=(), num_entities=0):
-        """Initialize the buffer. Either entities or num_entities should
-        be used, not both.
-
-        Parameters
-        ----------
-        order : iterable[int]
-            The index order that should be repeated for each entity.
-            For instance, if you were rending a bunch of individual quads
-            with vertices ordered like so:
-                1-2
-                |/|
-                0-3
-            Then order might be given as (0, 1, 2, 0, 2, 3)
-
-        entities : iterable[int]
-            Given the example above, if entities=(0, 1, 3)
-            then the index buffer should look contain the following:
-                (0, 1, 2, 0, 2, 3)
-                (4, 5, 6, 4, 6, 7)
-                (12, 13, 14, 12, 14, 15)
-
-        num_entities : int
-            Shorthand for a range of entities.. The following are equivalent:
-                num_entities = n
-                entities = range(n)
-
-        Raises
-        ------
-        ValueError:
-            When both entities and num_entities are given.
-        """
-
-        if entities and num_entities:
-            raise ValueError(
-                "Expected to receive either `num_entities` or "
-                "`entities` as parameters. Instead got both."
-            )
-        self._num_entities = num_entities
-        self._entities = entities
-        self._base = np.array(order, "u4")
-        self._buffer = None
-        self.dirty = False
-        self.element_size = 4
-
-    @property
-    def entities(self):
-        """Returns the current value for entities.
-
-        Returns
-        -------
-        iterable[int]
-        """
-        return self._entities
-
-    @entities.setter
-    def entities(self, value):
-        """Sets the current value for entities, clears any existing value
-        for num_entities and invalidates an existing buffer so that one can
-        be made with the new values.
-
-        Parameters
-        ----------
-        value : iterable[int]
-        """
-
-        self._entities = value
-        self._num_entities = 0
-        self._invalidate_buffer()
-
-    @property
-    def num_entities(self):
-        """Returns the current value for num_entities.
-
-        Returns
-        -------
-        int
-        """
-        return self._num_entities
-
-    @num_entities.setter
-    def num_entities(self, value):
-        """Sets the current value for num entities and clears any existing
-        value being used for entities. Invalidates the current buffer if
-        one exists so that the new values can be used.
-
-        Parameters
-        ----------
-        value : int
-        """
-        self._num_entities = value
-        self._entities = ()
-        self._invalidate_buffer()
-
-    @property
-    def gl(self):
-        """Returns the underling moderngl.Buffer object. Will create one
-        from the current state if it doesn't already exist.
-
-        Returns
-        -------
-        moderngl.Buffer
-        """
-        if self._buffer is not None:
-            return self._buffer
-        self._create_buffer()
-        return self._buffer
-
-    @property
-    def indices(self):
-        """Returns the current indices. Mostly for debugging.
-
-        Returns
-        -------
-        np.ndarray
-        """
-        return np.frombuffer(self.gl.read(), "u4")
-
-    def _create_buffer(self):
-        if self.num_entities:
-            index_offsets = np.array(
-                np.arange(self.num_entities) * (max(self._base) + 1)
-            )
-            instances = self.num_entities
-        else:
-            index_offsets = np.array(self.entities) * (max(self._base) + 1)
-            instances = len(self.entities)
-
-        index_offsets = np.repeat(index_offsets, len(self._base))
-        indices = np.tile(self._base, instances) + index_offsets
-        self._buffer = gl.context.buffer(indices.astype("u4").tobytes())
-
-    def _invalidate_buffer(self):
-        if self._buffer is not None:
-            self._buffer.release()
-        self._buffer = None
-        self.dirty = True
-
-
-class VertexBuffer:
+class AutoBuffer:
     """A wrapper around moderngl.Buffer
 
     Offers up the moderngl interface while adding direct support
@@ -161,50 +16,118 @@ class VertexBuffer:
 
     def __init__(
         self,
-        source,
+        source=None,
         dtype=None,
+        max_elements=-1,
         *,
-        reserve=0,
         lock=None,
         ctx=None,
     ):
-        """Initialize the buffer.
+        """Initialize the buffer. If a `source` ndarray isn't given, then
+        `dtype` and `max_elements` must instead be given in order to specify
+        the structure of the buffer.
 
         Parameters
         ----------
-        source : np.ndarray | moderngl.Buffer
-        dtype :  np.dtype | str
-            numpy compatible dtype. This will override array dtype if given.
-        reserve : int
-            number of bytes to reserve
+        source : np.ndarray, optional
+            The buffer will be updated from this source before being used
+            for rendering/transforms.
+        dtype :  np.dtype | str, optional
+            Should probably be a dtype defined in the `gl.py` module, though
+            can work with and numpy compatible dtype string.
+        max_elements : int
+            Used to determine buffer reserve size. The buffer has space for
+            this many instances of the buffers dtype.
         lock : Lock | None
-            Really can be any context manager. Used when writing if provided.
+            Really can be any context manager. Used when accessing the
+            internal array if provided.
         ctx : moderngl.Context | None
             A reference to the context should be provided when if there
             is no global value to pull from.
         """
 
+        if source is None:
+            assert max_elements > 0 and dtype
+
+        self._num_elements = 0
+        self._max_elements = max_elements
         self._ctx = ctx or gl.context
         self._lock = lock
-        self._gl_dtype = dtype or source.dtype
         self._array = source
-        data = gl.coerce_array(source, self._gl_dtype).tobytes()
-        self.gl = self._ctx.buffer(data, dynamic=True, reserve=reserve)
+
+        if isinstance(dtype, str):
+            try:
+                dtype = getattr(gl, dtype)
+            except AttributeError:
+                # fallback to interpreting as np.dtype
+                dtype = np.dtype(dtype)
+        self._gl_dtype = dtype or source.dtype
+
+        if self._max_elements > 0:
+            reserve = self._gl_dtype.itemsize * self._max_elements
+        else:
+
+            reserve = gl.coerce_array(source, self._gl_dtype).nbytes
+        self.gl = self._ctx.buffer(dynamic=True, reserve=reserve)
+        self.update()
+
+    def __len__(self):
+        """The length of the buffer is determined by what was last written
+        into it. Not to be confused with `size`.
+
+        Returns
+        -------
+        int
+        """
+
+        return self._num_elements
+
+    def __repr__(self):
+        return (
+            f"<{self.__class__.__name__}(len={len(self)}, "
+            f"size={self.size} dtype={self._gl_dtype!r})>"
+        )
+
+    @property
+    def element_size(self):
+        """Size in bytes of a single element belonging to this buffer."""
+
+        return self._gl_dtype.itemsize
+
+    @property
+    def size(self):
+        """The full size of the buffer, regardless of how much was written
+        into it."""
+
+        return self.gl.size
+
+    def use_array(self, array):
+        """Use the given array as the new source for this AutoBuffer.
+
+        Parameters
+        ----------
+        array : np.ndarray
+        """
+
+        self._array = array
+        self.update()
 
     def update(self):
-        """Using a source np.ndarray from __init__, update the buffer."""
+        """Update the contents of the OpenGL buffer with the source array."""
+
+        if self._array is None:
+            return
         self.write(self._array)
 
     def write(self, data):
-        """Write provided data into the buffer.
-
-        If using data is an ndarray, then it will be converted to
-        the correct datatype if it isn't already.
+        """Write provided data into the buffer. If data is provided as an
+        ndarray, the array will be coerced into the correct datatype / shape.
 
         Parameters
         ----------
         data : np.ndarray | bytes
         """
+
         if isinstance(data, np.ndarray):
             self._write_array(data)
         elif isinstance(data, bytes):
@@ -215,44 +138,116 @@ class VertexBuffer:
 
         Parameters
         ----------
-        bytes : bool
-            Optional flag to return bytes instead of ndarray.
+        bytes : bool, optional
+            Flag to return bytes instead of ndarray.
 
         Returns
         -------
-        data : bytes | np.ndarray
+        bytes | np.ndarray
+            Depending on `bytes` flag. The array will have the same datatype
+            given to this buffer.
 
         Raises
         ------
         ValueError:
-            If the buffer isn't sourced with an ndarray either bytes or
+            If the buffer isn't sourced with an ndarray either bytes flag or
             dtype params must be used in order to read back the data.
         """
 
+        nbytes = self._gl_dtype.itemsize * self._num_elements
         if bytes:
-            return self.gl.read()
+            return self.gl.read(size=nbytes)
         if self._gl_dtype is None:
             raise ValueError(
                 "This buffer wasn't last written with a detectable dtype "
                 "either specify one or use option `bytes=True`"
             )
-        return np.frombuffer(self.gl.read(), self._gl_dtype)
+        return np.frombuffer(self.gl.read(size=nbytes), self._gl_dtype)
 
     def _write_array(self, array):
         if self._lock:
             with self._lock:
                 array = gl.coerce_array(array, self._gl_dtype)
-                self.gl.write(array.tobytes())
+                self._write_bytes(array.tobytes())
         else:
             array = gl.coerce_array(array, self._gl_dtype)
-            self.gl.write(array.tobytes())
+            self._write_bytes(array.tobytes())
 
     def _write_bytes(self, data):
-        if self._lock:
-            with self._lock:
-                self.gl.write(data)
-        else:
-            self.gl.write(data)
+        if len(data) > self.size:
+            raise MemoryError(f"{len(data)} bytes too large for {self!r}.")
+        self.gl.write(data)
+        self._num_elements = len(data) // self._gl_dtype.itemsize
+
+
+class OrderedIndexBuffer(AutoBuffer):
+    """Simple extension to AutoBuffer that manages a repeating order of
+    indices.
+    """
+
+    def __init__(self, order, num_entities=0, max_entities=1000, **kwargs):
+        """Initialize the buffer.
+
+        Parameters
+        ----------
+        order : iterable[int]
+            The index order that should be repeated for each entity.
+            For instance, if you were rendering a bunch of individual quads
+            with vertices ordered like so:
+                1-2
+                |/|
+                0-3
+            Then order might be given as:
+                (0, 1, 2, 0, 2, 3)
+
+        num_entities : int
+            How many repetitions the buffer should currently represent.
+        """
+
+        self._num_entities = 0
+        self.indices_per_entity = len(order)
+        order = np.array(order, "u4")
+        index_offsets = np.array(np.arange(max_entities) * (max(order) + 1))
+        index_offsets = np.repeat(index_offsets, len(order))
+        indices = np.tile(order, max_entities) + index_offsets
+        super().__init__(
+            indices,
+            "u4",
+            max_elements=max_entities * self.indices_per_entity,
+            **kwargs,
+        )
+        self.num_entities = num_entities
+
+    @property
+    def num_entities(self):
+        """Returns the current value for num_entities.
+
+        Returns
+        -------
+        int
+        """
+
+        return self._num_entities
+
+    @num_entities.setter
+    def num_entities(self, value):
+        """Sets the number of entities (number of repetitions of the initial
+        ordering) and writes the new indices to the buffer.
+
+        Parameters
+        ----------
+        value : int
+        """
+
+        if self._num_entities == value:
+            return
+        self._num_entities = value
+        stop = self.indices_per_entity * self._num_entities
+        self.write(self._array[:stop])
+
+    def update(self):
+        # This buffer is updated only when you change `num_entities`
+        pass
 
 
 class _AutoUniform:
@@ -285,7 +280,7 @@ class ShaderProgram:
     This object will handle assigning buffers to vertex attribute, uniforms,
     etc. This aims to be quick and easy to get working. If the GPU is
     the bottleneck for your program, you'd probably be better off using
-    the moderngl api directly for maximum performance.
+    the moderngl API directly for maximum performance.
     """
 
     def __init__(
@@ -298,6 +293,7 @@ class ShaderProgram:
         uniforms=None,
         buffers=None,
         index_buffer=None,
+        max_entities=-1,
         **shader_sources,
     ):
         """Initialize a shader from source.
@@ -326,21 +322,22 @@ class ShaderProgram:
             uniform an be auto-updated. See the moderngl docs for more info
             on formatting single use python values.
 
-        buffers : dict[str, np.ndarray | VertexBuffer]
+        buffers : dict[str, np.ndarray | AutoBuffer]
             Like uniforms, the keys should map to names of vertex attributes
             in the vertex shader. The values should be ndarray which will be
             used to source the OpenGL buffers before using the program.
             VertexBuffers could be used directly, otherwise one will be made
             internally.
 
-        index_buffer : IndexBuffer, optional
-            Used to create and OpenGL index buffer object for rendering.
+        index_buffer : OrderedIndexBuffer, optional
+            Used to create an OpenGL index buffer object for rendering.
 
-        **shader_sources : ** str | pathlib.Path
+        **shader_sources : str | pathlib.Path
             Keys must be one of:
                 "vertex_shader", "tess_control_shader",
-                "tess_evaluation_shader", "geometry_shader", "fragment_shader"
-            Values can either be the actual source code as a standard string
+                "tess_evaluation_shader", "geometry_shader",
+                "fragment_shader"
+            Values can either be the actual source code as a python string
             or should be a path pointing to an appropriate file.
 
         Examples
@@ -379,18 +376,23 @@ class ShaderProgram:
 
         Notes
         -----
+        The moderngl api can be accessed through the `gl` attribute.
+
         https://moderngl.readthedocs.io/en/latest/reference/program.html
         """
 
+        # set some initial values
         ctx = ctx or gl.context
         buffers = buffers or {}
         uniforms = uniforms or {}
         self._mode = mode
+        self._vao = None
+        self._max_elements = max_entities
         self._varyings = varyings
-        self._index_buffer = index_buffer
         self._foreign_auto_buffers = {}
         self._created_auto_buffers = {}
 
+        # load source, either by given name or kwargs
         if name:
             shader_sources = _load_shader_sources_by_name(name)
         else:
@@ -402,6 +404,7 @@ class ShaderProgram:
                     shader_sources[shader_type] = _read_shader_source(src)
         self.gl = ctx.program(**shader_sources, varyings=varyings)
 
+        # parse shader source code and cache metadata
         self._meta = {
             name: parse_source(src) for name, src in shader_sources.items()
         }
@@ -412,13 +415,25 @@ class ShaderProgram:
         for meta in self._meta.values():
             self._uniforms.update({u.name: u for u in meta.uniforms})
 
+        # set index buffer
+        if isinstance(index_buffer, np.ndarray):
+            self._index_buffer = AutoBuffer(index_buffer, gl.uint)
+        elif isinstance(index_buffer, OrderedIndexBuffer):
+            self._max_elements *= index_buffer.indices_per_entity
+            self._index_buffer = index_buffer
+        else:
+            self._index_buffer = index_buffer
+
+        # process vertex buffers
         self._buffer_format_tuples = []
         for name, buf in buffers.items():
             self._format_buffer(name, buf)
         self._auto_uniforms = {}
         for name, uni in uniforms.items():
             self._format_uniform(name, uni)
-        self._vao = self._make_vao()
+
+        # make vertex array for rendering
+        self._make_vao()
 
     @property
     def vertex_attributes(self):
@@ -427,7 +442,7 @@ class ShaderProgram:
 
         Returns
         -------
-        attrs : dict[str, gl.TokenDesc]
+        dict[str, gl.TokenDesc]
         """
         return self._vertex_attrs
 
@@ -438,23 +453,48 @@ class ShaderProgram:
 
         Returns
         -------
-        uniforms : dict[str, gl.TokenDesc]
+        dict[str, gl.TokenDesc]
         """
         return self._uniforms
 
+    @property
+    def _autobuffers(self):
+        return {**self._created_auto_buffers, **self._foreign_auto_buffers}
+
+    @property
+    def num_elements(self):
+        """The number of elements that are detected to be in the current
+        buffers.
+
+        Returns
+        -------
+        int
+        """
+
+        if self._index_buffer:
+            return len(self._index_buffer)
+        else:
+            lengths = [len(vbo) for vbo in self._autobuffers.values()]
+            return min(lengths)
+
     def use_buffers(self, **buffers):
-        """Use given values for buffer sources. Will remove existing values
-        and if the existing OpenGL buffer was created by this object it will
-        be released.
+        """Assign given arrays to be AutoBuffer sources. Creates new buffers
+        if they don't already exist but tries first to update existing
+        buffers to use the new source.
 
         Parameters
         ----------
-        **buffers : **np.ndarray
+        buffers : np.ndarray
+            Keywords should correspond to vertex attribute names.
         """
-        for name, buffer in buffers.items():
-            self._remove_buffer(name)
-            self._format_buffer(name, buffer)
+
+        for name, array in buffers.items():
+            self._replace_buffer(name, array)
         self._vao = self._make_vao()
+
+    def write_buffers(self, **buffers):
+        for name, array in buffers.items():
+            self._autobuffers[name].write(array)
 
     def use_uniforms(self, **uniforms):
         """Use given values for uniform sources. Will replace existing
@@ -467,52 +507,53 @@ class ShaderProgram:
         for name, uniform in uniforms.items():
             self._format_uniform(name, uniform)
 
-    def render(self, vertices=-1):
+    def render(self, vertices=None):
         """Writes data into buffers from given ndarray sources and issues
         render command.
 
         Parameters
         ----------
-        vertices : int
-            How many vertices to render, -1 will autodetect from the buffers.
+        vertices : int, optional
+            How many vertices to render. If not given the value will be
+            detected based on linked buffers.
         """
-        self._auto_update()
-        self._vao.render(vertices=vertices)
 
-    def transform(self, vertices=-1):
+        self._auto_update()
+        self._vao.render(vertices=vertices or self.num_elements)
+
+    def transform(self, vertices=None):
         """Use this program for transform feedback.
 
         Parameters
         ----------
-        vertices : int
-            How many vertices to process. -1 will autodetect from buffers.
+        vertices : int, optional
+            How many vertices to process. If not given the value will be
+            detected based on what's written into the linked buffers.
 
         Returns
         -------
-        transformed : np.ndarray
+        np.ndarray
             The transform feedback buffer will be read into a np.ndarray
             If there is only one varying attribute being transformed, the
             array will be a standard, unstructured array with the dtype
             of the captured attribute. Otherwise this will return a structured
             ndarray. See tests for concrete examples.
         """
+
         self._auto_update()
-        vertex_meta = self._meta["vertex_shader"]
         out_dtype = np.dtype(
             [
                 (o.name, o.dtype)
-                for o in vertex_meta.outputs
+                for o in self._meta["vertex_shader"].outputs
                 if o.name in self._varyings
             ]
         )
 
-        if vertices != -1:
+        if vertices:
             reserve = out_dtype.itemsize * vertices
         else:
-            buf, fmt, name = self._buffer_format_tuples[0]
-            buf_dtype = self.vertex_attributes[name].dtype
-            nverts = buf.size // buf_dtype.itemsize
-            reserve = nverts * out_dtype.itemsize
+            vertices = self.num_elements
+            reserve = vertices * out_dtype.itemsize
 
         result_buffer = self.gl.ctx.buffer(reserve=reserve)
         self._vao.transform(result_buffer, vertices=vertices)
@@ -522,29 +563,40 @@ class ShaderProgram:
         return array
 
     def _auto_update(self):
-        for name, buf in self._foreign_auto_buffers.items():
-            buf.update()
-        for name, buf in self._created_auto_buffers.items():
+        """Update AutoBuffers and _AutoUniforms."""
+
+        for name, buf in self._autobuffers.items():
             buf.update()
         for uni in self._auto_uniforms.values():
             uni.update(self.gl)
-        if self._index_buffer and self._index_buffer.dirty:
-            self._vao = self._make_vao()
 
     def _format_buffer(self, name, buf):
+        """Given a name and data source, create a new AutoBuffer or register
+        a new one given as a parameter."""
+
+        dtype = self.vertex_attributes[name].dtype
         if isinstance(buf, np.ndarray):
-            dtype = self.vertex_attributes[name].dtype
-            auto = VertexBuffer(buf, dtype, ctx=self.gl.ctx)
+            auto = AutoBuffer(
+                buf, dtype, max_elements=self._max_elements, ctx=self.gl.ctx
+            )
             self._created_auto_buffers[name] = auto
             vbo = auto.gl
-        elif isinstance(buf, VertexBuffer):
+
+        elif isinstance(buf, AutoBuffer):
+            if not buf.size >= self._max_elements * dtype.itemsize:
+                raise MemoryError(
+                    f"{buf!r} is too large for this program "
+                    f"with max_entities={self._max_elements}."
+                )
             self._foreign_auto_buffers[name] = buf
             vbo = buf.gl
+
         else:
             raise ValueError(
                 "Expected buffer source to be either ndarray"
                 f"or VertexBuffer. Instead got {type(buf)}"
             )
+
         moderngl_attr = self.gl[name]
         strtype = moderngl_attr.shape
         if strtype == "I":
@@ -559,6 +611,9 @@ class ShaderProgram:
         self._buffer_format_tuples.append((vbo, strfmt, name))
 
     def _format_uniform(self, name, value):
+        """Process a uniform input value to either be written as the value
+        of the uniform or used as an _AutoUniform source."""
+
         if isinstance(value, np.ndarray):
             dtype = self.uniforms[name].dtype
             self._auto_uniforms[name] = _AutoUniform(value, dtype, name)
@@ -566,6 +621,8 @@ class ShaderProgram:
             self.gl[name] = value
 
     def _remove_buffer(self, name):
+        """Clean-up a buffer that is no longer needed."""
+
         for i, desc in enumerate(self._buffer_format_tuples.copy()):
             if desc[2] == name:
                 self._buffer_format_tuples.pop(i)
@@ -574,22 +631,38 @@ class ShaderProgram:
         else:
             self._foreign_auto_buffers.pop(name, None)
 
-    def _make_vao(self):
+    def _replace_buffer(self, name, array):
+        """Try to replace an existing buffer before making a new one."""
+
         try:
-            if self._vao is not None:
-                self._vao.release()
-            ibo = self._index_buffer.gl if self._index_buffer else None
-            element_size = self._index_buffer.element_size if ibo else 4
-            vao = self.gl.ctx.vertex_array(
-                self.gl,
-                self._buffer_format_tuples,
-                index_buffer=ibo,
-                index_element_size=element_size,
-            )
-            return vao
-        except AttributeError:
-            self._vao = None
-            return self._make_vao()
+            auto = self._created_auto_buffers.get(name, None)
+            auto = auto or self._foreign_auto_buffers[name]
+            auto.use_array(array)
+        except (MemoryError, KeyError):
+            self._remove_buffer(name)
+            self._format_buffer(name, array)
+
+    def _make_vao(self):
+        """Create the moderngl.VertexArray object used to render."""
+
+        if self._vao is not None:
+            self._vao.release()
+
+        if self._index_buffer is not None:
+            ibo = self._index_buffer.gl
+            element_size = self._index_buffer.element_size
+        else:
+            ibo = None
+            element_size = 4
+
+        vao = self.gl.ctx.vertex_array(
+            self.gl,
+            self._buffer_format_tuples,
+            index_buffer=ibo,
+            index_element_size=element_size,
+        )
+        self._vao = vao
+        return vao
 
 
 class TokenDesc(NamedTuple):
@@ -610,6 +683,17 @@ class ShaderMetaData(NamedTuple):
 
 
 def parse_source(src):
+    """Parse glsl source code for relevant metadata.
+
+    Parameters
+    ----------
+    src : str
+        glsl source code
+
+    Returns
+    -------
+    ShaderMetaData
+    """
     inspections = {"in": [], "out": [], "uniform": []}
     for line in src.split("\n"):
         tokens = line.strip().split(" ")

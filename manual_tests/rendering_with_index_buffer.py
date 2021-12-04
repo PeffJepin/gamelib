@@ -1,3 +1,6 @@
+from random import random
+import time
+
 import numpy as np
 
 import gamelib
@@ -6,19 +9,28 @@ from gamelib import shaders
 
 def main():
     window = gamelib.init()
-    index_buffer = shaders.IndexBuffer((0, 1, 2, 0, 2, 3), entities=(0, 1, 3))
-    pos_buffer = np.array([
-        (-0.9, -0.9), (-0.9, -0.1), (-0.1, -0.1), (-0.1, -0.9),
-        (-0.9, 0.1), (-0.9, 0.9), (-0.1, 0.9), (-0.1, 0.1),
-        (0.1, 0.1), (0.1, 0.9), (0.9, 0.9), (0.9, 0.1),
-        (0.1, -0.9), (0.1, -0.1), (0.9, -0.1), (0.9, -0.9)
-    ])
-    col_buffer = np.array([
-        (1, 0, 1), (0, 1, 0), (0, 1, 1), (1, 1, 0),
-        (1, 1, 1), (1, 1, 0), (0, 0, 1), (0, 1, 0),
-        (0, 1, 0), (0, 1, 1), (1, 0, 0), (1, 1, 1),
-        (0.1, 0, 0), (0, 1, 0), (1, 1, 1), (1, 0, 0),
-    ])
+
+    # setup data with some randomly colored quads
+    positions = []
+    colors = []
+    for x in range(10):
+        for y in range(10):
+            bottom_left = (-1 + 0.2 * x, -1 + 0.2 * y)
+            positions.append(bottom_left)
+            positions.append((bottom_left[0], bottom_left[1] + 0.2))
+            positions.append((bottom_left[0] + 0.2, bottom_left[1] + 0.2))
+            positions.append((bottom_left[0] + 0.2, bottom_left[1]))
+
+            for _ in range(4):
+                colors.append((random(), random(), random()))
+
+    # buffers
+    index_buffer = shaders.OrderedIndexBuffer(
+        (0, 1, 2, 0, 2, 3), num_entities=1, max_entities=100
+    )
+    pos_buffer = np.array(positions)
+    col_buffer = np.array(colors)
+    # program
     shader = shaders.ShaderProgram(
         vertex_shader="""
             #version 330
@@ -47,9 +59,20 @@ def main():
             }
         """,
         index_buffer=index_buffer,
-        buffers={"v_pos": pos_buffer, "v_col": col_buffer}
+        buffers={"v_pos": pos_buffer, "v_col": col_buffer},
+        max_entities=100
     )
+
+    prev_time = time.time()
     while not window.is_closing:
+
+        if time.time() - prev_time > 0.05:
+            if index_buffer.num_entities == 100:
+                index_buffer.num_entities = 1
+            else:
+                index_buffer.num_entities += 1
+            prev_time = time.time()
+
         window.clear()
         shader.render()
         window.swap_buffers()

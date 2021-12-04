@@ -5,9 +5,8 @@ from moderngl_window.context.pygame2.keys import Keys
 import pygame
 
 from .events import Event
-from .gl import window
-from .gl import context
 from . import resources
+from . import gl
 
 
 ModifierKeys = namedtuple("KeyModifiers", "SHIFT, CTRL, ALT")  # Boolean values
@@ -25,14 +24,14 @@ def init(make_window=True, **config):
     else:
         gl.init_standalone()
 
-    return window or context
+    return gl.window or gl.context
 
 
 def exit():
-    if window:
-        window.close()
-    if context:
-        context.release()
+    if gl.window:
+        gl.window.close()
+    if gl.context:
+        gl.context.release()
 
 
 class Update(Event):
