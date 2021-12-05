@@ -56,43 +56,45 @@ class TestInputSchema:
         schema(event)
         assert [cb.called for cb in callbacks] == [1, 0, 0]
 
-    def test_with_input_action(self):
+    @pytest.mark.parametrize(
+        "action, expected_index",
+        ((Action.PRESS, 1), (Action.RELEASE, 2), (None, 0)),
+    )
+    def test_with_input_action(self, action, expected_index):
         callbacks = [RecordedCallback() for _ in range(3)]
+        event = Event(Type.A, action)
+        expected = [0, 0, 0]
         schema = InputSchema(
             ("a", callbacks[0]),
             ("a", "down", callbacks[1]),
             ("a", "up", callbacks[2]),
         )
 
-        event = Event(Type.A, Action.PRESS)
         schema(event)
-        assert [cb.called for cb in callbacks] == [0, 1, 0]
+        expected[expected_index] = 1
+        assert [cb.called for cb in callbacks] == expected
 
-        event = Event(Type.A, Action.RELEASE)
-        schema(event)
-        assert [cb.called for cb in callbacks] == [0, 1, 1]
-
-    def test_with_modifiers(self):
+    @pytest.mark.parametrize(
+        "mods, expected_index",
+        (
+            ((Mod.SHIFT,), 0),
+            ((Mod.SHIFT, Mod.CTRL), 1),
+            ((Mod.SHIFT, Mod.ALT), 0),
+            ((Mod.SHIFT, Mod.CTRL, Mod.ALT), 1),
+        ),
+    )
+    def test_with_modifiers(self, mods, expected_index):
         callbacks = [RecordedCallback() for _ in range(2)]
+        event = Event(Type.A, modifiers=mods)
+        expected = [0, 0]
         schema = InputSchema(
             ("a", "shift", callbacks[0]),
             ("a", ("shift", "ctrl"), callbacks[1]),
         )
 
-        modifiers = (Mod.SHIFT,)
-        event = Event(Type.A, modifiers=modifiers)
         schema(event)
-        assert [cb.called for cb in callbacks] == [1, 0]
-
-        modifiers = (Mod.SHIFT, Mod.CTRL)
-        event = Event(Type.A, modifiers=modifiers)
-        schema(event)
-        assert [cb.called for cb in callbacks] == [1, 1]
-
-        modifiers = (Mod.SHIFT, Mod.CTRL, Mod.ALT)
-        event = Event(Type.A, modifiers=modifiers)
-        schema(event)
-        assert [cb.called for cb in callbacks] == [1, 2]
+        expected[expected_index] = 1
+        assert [cb.called for cb in callbacks] == expected
 
     @pytest.mark.parametrize(
         "event, callback_index",
