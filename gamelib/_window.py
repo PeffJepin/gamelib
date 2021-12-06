@@ -8,7 +8,7 @@ from gamelib import events
 def make_window(headless=False, **config):
     if "class" not in config:
         config["class"] = "moderngl_window.context.pygame2.Window"
-    elif headless:
+    if headless:
         config["class"] = "moderngl_window.context.headless.Window"
     for k, v in config.items():
         settings.WINDOW[k] = v
