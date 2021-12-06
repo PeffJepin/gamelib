@@ -1,5 +1,3 @@
-import moderngl
-import moderngl_window
 import numpy as np
 
 # noinspection PyUnresolvedReferences
@@ -20,10 +18,6 @@ from moderngl import (
     LINES_ADJACENCY,
     PATCHES,
 )
-from moderngl_window import settings
-
-window: moderngl_window.BaseWindow = None
-context: moderngl.Context = None
 
 _int = int
 _float = float
@@ -103,43 +97,3 @@ def coerce_array(array, gl_type):
             array = array.astype(dtype)
 
     return array
-
-
-def init_window(**config):
-    """Creates the window and stores a reference to it.
-
-    Parameters
-    ----------
-    **config : Any
-        see moderngl-window reference for options.
-
-    Returns
-    -------
-    window : moderngl_window.BaseWindow
-
-    Notes
-    -----
-    https://moderngl-window.readthedocs.io/en/latest/guide/window_guide.html
-    """
-    global window
-    global context
-
-    if "class" not in config:
-        settings.WINDOW["class"] = "moderngl_window.context.pygame2.Window"
-    for k, v in config.items():
-        settings.WINDOW[k] = v
-    window = moderngl_window.create_window_from_settings()
-    context = window.ctx
-    return window
-
-
-def init_standalone():
-    """Initialize and store global reference to a headless OpenGL context.
-
-    Returns
-    -------
-    ctx : moderngl.Context
-    """
-    global context
-    context = moderngl.create_standalone_context()
-    return context

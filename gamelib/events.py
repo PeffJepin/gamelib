@@ -12,12 +12,17 @@ _adapters = dict()
 _adapters_by_event_key = defaultdict(list)
 
 
-def clear_handlers():
-    _event_handlers.clear()
-    _adapters_by_event_key.clear()
-    for adapter in _adapters.values():
-        adapter.stop()
-    _adapters.clear()
+def clear_handlers(*event_types):
+    if not event_types:
+        _event_handlers.clear()
+        _adapters_by_event_key.clear()
+        for adapter in _adapters.values():
+            adapter.stop()
+        _adapters.clear()
+    else:
+        for event in event_types:
+            _event_handlers[(event, None)].clear()
+            _adapters_by_event_key[(event, None)].clear()
 
 
 class _EventType(type):

@@ -13,6 +13,7 @@ from gamelib.events import (
     eventhandler,
     _HANDLER_INJECTION_ATTRIBUTE,
 )
+from tests.conftest import RecordedCallback
 
 
 class KeyedEvent(Event):
@@ -72,6 +73,19 @@ class TestEventHandling:
         events.post(Event())
 
         assert not recorded_callback.called
+
+    def test_clearing_a_type_of_event(self):
+        cb1, cb2, cb3 = [RecordedCallback() for _ in range(3)]
+        events.register(SomeEvent, cb1)
+        events.register(SomeEvent, cb2)
+        events.register(SomeOtherEvent, cb3)
+
+        events.clear_handlers(SomeEvent)
+
+        events.post(SomeEvent())
+        events.post(SomeOtherEvent())
+        assert not cb1.called and not cb2.called
+        assert cb3.called
 
     def test_feeds_event_and_key_into_serviced_pipe(self):
         a, b = Pipe()

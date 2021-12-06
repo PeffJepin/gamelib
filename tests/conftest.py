@@ -4,7 +4,6 @@ import time
 import itertools
 import tempfile
 from multiprocessing.connection import Connection
-from typing import Tuple, Callable
 
 import pytest
 from PIL import Image

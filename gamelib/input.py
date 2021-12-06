@@ -1,7 +1,7 @@
 from enum import Enum
-from typing import Any
+from typing import Any, NamedTuple
 
-from gamelib import Event
+from gamelib import events
 
 
 class StringMappingEnum(Enum):
@@ -119,6 +119,8 @@ class InputType(StringMappingEnum):
     MOUSE2 = ("mouse2", "mouse_2", "mouse_right")
     MOUSE3 = ("mouse3", "mouse_3", "mouse_middle")
     SCROLL = ("scroll", "mouse_scroll")
+    MOTION = ("mouse_motion", "mouse_movement", "motion")
+    DRAG = ("mouse_drag", "drag")
 
 
 class InputMod(StringMappingEnum):
@@ -162,6 +164,9 @@ class _InputHandlerTree:
             callback = mod_lookup[perm]
             if callback is not None:
                 return callback
+        if action is not None:
+            # fallback to no action specified
+            return self.get_callback(mods, action=None)
         return None
 
     @staticmethod
@@ -199,8 +204,28 @@ class _InputHandlerTree:
 class InputSchema:
     def __init__(self, *designations):
         self._callback_trees = dict()
+        self._process_schema(*designations)
+        self._events = [
+            MouseScrollEvent,
+            MouseButtonEvent,
+            KeyEvent,
+            MouseMotionEvent,
+            MouseDragEvent,
+        ]
+        self.enable()
 
-        for desc in designations:
+    def enable(self, master=False):
+        if master:
+            events.clear_handlers(*self._events)
+        for event in self._events:
+            events.register(event, self)
+
+    def disable(self):
+        for event in self._events:
+            events.unregister(event, self)
+
+    def _process_schema(self, *schema):
+        for desc in schema:
             input_type, *optional, callback = desc
 
             if isinstance(input_type, str):
@@ -241,8 +266,92 @@ class InputSchema:
             callback(event)
 
 
-class InputEvent(Event):
+class Modifiers(NamedTuple):
+    SHIFT: bool
+    CTRL: bool
+    ALT: bool
+
+
+class Buttons(NamedTuple):
+    LEFT: bool
+    RIGHT: bool
+    MIDDLE: bool
+
+
+class _InputEvent(events.Event):
     __slots__ = ["type", "action", "modifiers"]
 
-    def __init__(self, type, action=None, modifiers=None):
-        super().__init__(type, action, modifiers or ())
+    type: InputType
+    action: InputAction
+    modifiers: Modifiers
+
+    def __init__(
+        self,
+        type,
+        action=None,
+        modifiers=Modifiers(False, False, False),
+        **kwargs,
+    ):
+        super().__init__(
+            type=type, action=action, modifiers=modifiers, **kwargs
+        )
+
+
+class KeyEvent(_InputEvent):
+    # just for clarity
+    pass
+
+
+class MouseButtonEvent(_InputEvent):
+    __slots__ = ["x", "y"]
+
+    x: int
+    y: int
+
+    def __init__(self, x, y, *, button, **kwargs):
+        super().__init__(type=button, x=x, y=y, **kwargs)
+
+
+class MouseMotionEvent(_InputEvent):
+    __slots__ = ["x", "y", "dx", "dy"]
+
+    x: int
+    y: int
+    dx: int
+    dy: int
+
+    def __init__(self, x, y, dx, dy, **kwargs):
+        super().__init__(
+            x=x, y=y, dx=dx, dy=dy, type=InputType.MOTION, **kwargs
+        )
+
+
+class MouseDragEvent(_InputEvent):
+    __slots__ = ["x", "y", "dx", "dy", "buttons"]
+
+    x: int
+    y: int
+    dx: int
+    dy: int
+    buttons: Buttons
+
+    def __init__(self, x, y, dx, dy, buttons, **kwargs):
+        super().__init__(
+            x=x,
+            y=y,
+            dx=dx,
+            dy=dy,
+            buttons=buttons,
+            type=InputType.DRAG,
+            **kwargs,
+        )
+
+
+class MouseScrollEvent(_InputEvent):
+    __slots__ = ["dx", "dy"]
+
+    dx: int
+    dy: int
+
+    def __init__(self, dx, dy, **kwargs):
+        super().__init__(dx=dx, dy=dy, type=InputType.SCROLL, **kwargs)

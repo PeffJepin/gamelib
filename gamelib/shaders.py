@@ -1,6 +1,7 @@
 import pathlib
 from typing import NamedTuple, List
 
+import gamelib
 import numpy as np
 
 from . import gl
@@ -51,7 +52,7 @@ class AutoBuffer:
 
         self._num_elements = 0
         self._max_elements = max_elements
-        self._ctx = ctx or gl.context
+        self._ctx = ctx or gamelib.context
         self._lock = lock
         self._array = source
 
@@ -382,7 +383,7 @@ class ShaderProgram:
         """
 
         # set some initial values
-        ctx = ctx or gl.context
+        ctx = ctx or gamelib.context
         buffers = buffers or {}
         uniforms = uniforms or {}
         self._mode = mode

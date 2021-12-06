@@ -10,7 +10,7 @@ from gamelib import shaders
 
 @pytest.fixture(autouse=True, scope="module")
 def init_ctx():
-    yield gamelib.init(make_window=False)
+    yield gamelib.init(headless=True).ctx
     gamelib.exit()
 
 
