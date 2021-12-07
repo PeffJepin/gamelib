@@ -17,72 +17,51 @@ def make_window(headless=False, **config):
 
     # map moderngl_window to input enums
     button_type_lookup = {
-        window.mouse.left: input.InputType.MOUSE1,
-        window.mouse.right: input.InputType.MOUSE2,
-        window.mouse.middle: input.InputType.MOUSE3,
+        window.mouse.left: input.MouseButton.LEFT,
+        window.mouse.right: input.MouseButton.RIGHT,
+        window.mouse.middle: input.MouseButton.MIDDLE,
     }
     input_type_lookup = {
         window_provider_value: input_type_enum
         for name, window_provider_value in vars(window.keys).items()
-        if (input_type_enum := getattr(input.InputType, name, None))
+        if (input_type_enum := getattr(input.Keyboard, name, None))
     }
-
-    def _get_modifiers():
-        m = window.modifiers
-        return input.Modifiers(m.shift, m.ctrl, m.alt)
 
     def _get_buttons():
         m = window.mouse_states
         return input.Buttons(m.left, m.right, m.middle)
 
     def _broadcast_key_event(key, action, modifiers):
-        type = input_type_lookup.get(key)
-        if not type:
-            return
-        if action == window.keys.ACTION_PRESS:
-            action = input.InputAction.PRESS
-        else:
-            action = input.InputAction.RELEASE
+        key = input_type_lookup.get(key)
         modifiers = input.Modifiers(
             modifiers.shift, modifiers.ctrl, modifiers.alt
         )
-        event = input.KeyEvent(type, action, modifiers)
+        if not key:
+            return
+        if action == window.keys.ACTION_PRESS:
+            event = input.KeyDown(key, modifiers)
+        else:
+            event = input.KeyUp(key, modifiers)
         events.post(event)
 
     def _broadcast_mouse_press_event(x, y, button):
-        event = input.MouseButtonEvent(
-            x,
-            y,
-            button=button_type_lookup[button],
-            action=input.InputAction.PRESS,
-            modifiers=_get_modifiers(),
-        )
+        event = input.MouseDown(x, y, button_type_lookup[button])
         events.post(event)
 
     def _broadcast_mouse_release_event(x, y, button):
-        event = input.MouseButtonEvent(
-            x,
-            y,
-            button=button_type_lookup[button],
-            action=input.InputAction.RELEASE,
-            modifiers=_get_modifiers(),
-        )
+        event = input.MouseUp(x, y, button_type_lookup[button])
         events.post(event)
 
     def _broadcast_mouse_motion_event(x, y, dx, dy):
-        event = input.MouseMotionEvent(
-            x, y, dx, dy, modifiers=_get_modifiers()
-        )
+        event = input.MouseMotion(x, y, dx, dy)
         events.post(event)
 
     def _broadcast_mouse_drag_event(x, y, dx, dy):
-        event = input.MouseDragEvent(
-            x, y, dx, dy, buttons=_get_buttons(), modifiers=_get_modifiers()
-        )
+        event = input.MouseDrag(x, y, dx, dy, buttons=_get_buttons())
         events.post(event)
 
     def _broadcast_mouse_wheel_event(dx, dy):
-        event = input.MouseScrollEvent(dx, dy)
+        event = input.MouseScroll(dx, dy)
         events.post(event)
 
     window.key_event_func = _broadcast_key_event

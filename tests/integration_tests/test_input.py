@@ -3,13 +3,15 @@ import pytest
 from gamelib import events
 from gamelib.input import (
     InputSchema,
-    InputType,
+    Keyboard,
     Buttons,
-    KeyEvent,
-    MouseDragEvent,
-    MouseScrollEvent,
-    MouseMotionEvent,
-    MouseButtonEvent,
+    MouseDrag,
+    MouseScroll,
+    MouseMotion,
+    Modifiers,
+    MouseButton,
+    KeyDown,
+    MouseDown,
 )
 
 from tests.conftest import RecordedCallback
@@ -22,11 +24,11 @@ def cleanup():
 
 @pytest.fixture(
     params=(
-        ("c", KeyEvent(InputType.C)),
-        ("mouse1", MouseButtonEvent(0, 0, button=InputType.MOUSE1)),
-        ("scroll", MouseScrollEvent(0, 0)),
-        ("motion", MouseMotionEvent(0, 0, 0, 0)),
-        ("drag", MouseDragEvent(0, 0, 0, 0, Buttons(False, False, False))),
+        ("c", KeyDown(Keyboard.C, Modifiers())),
+        ("mouse1", MouseDown(0, 0, MouseButton.LEFT)),
+        ("scroll", MouseScroll(0, 0)),
+        ("motion", MouseMotion(0, 0, 0, 0)),
+        ("drag", MouseDrag(0, 0, 0, 0, Buttons(LEFT=True))),
     )
 )
 def schema_str_and_event(request):

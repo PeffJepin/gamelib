@@ -213,7 +213,7 @@ def register(event_key, *callbacks) -> None:
         A KeyedEvent will be described by a tuple of it's Type and some key value.
     *callbacks : callable[type[Event], None]
     """
-    if isinstance(event_key, type(Event)):
+    if not isinstance(event_key, tuple):
         event_key = (event_key, None)
     _event_handlers[event_key].extend(callbacks)
 
@@ -227,7 +227,7 @@ def unregister(event_key, *callbacks) -> None:
     event_key : type[Event] | tuple[type[Event], Any]
     *callbacks : callable[type[Event], None]
     """
-    if isinstance(event_key, type(Event)):
+    if not isinstance(event_key, tuple):
         event_key = (event_key, None)
     for callback in callbacks:
         try:

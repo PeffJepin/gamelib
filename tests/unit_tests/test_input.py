@@ -1,49 +1,56 @@
 import pytest
 
 from gamelib.input import (
-    InputType as Type,
-    InputMod as Mod,
-    InputAction as Action,
-    KeyEvent,
+    Keyboard,
+    Modifier,
+    Action,
+    KeyDown,
+    KeyUp,
     InputSchema,
-    MouseButtonEvent,
-    MouseMotionEvent,
-    MouseDragEvent,
+    MouseDown,
+    MouseUp,
+    MouseMotion,
+    MouseDrag,
     Buttons,
-    MouseScrollEvent,
+    MouseScroll,
+    Modifiers,
+    MouseButton,
+    KeyIsPressed,
+    MouseIsPressed,
 )
 
 from tests.conftest import RecordedCallback
 
 
 @pytest.mark.parametrize(
-    "string, enum, expected",
+    "string, expected",
     (
-        ("esc", Type, Type.ESCAPE),
-        ("ESC", Type, Type.ESCAPE),
-        ("Esc", Type, Type.ESCAPE),
-        ("Escape", Type, Type.ESCAPE),
-        ("\n", Type, Type.ENTER),
-        (".", Type, Type.PERIOD),
-        ("f1", Type, Type.F1),
-        ("0", Type, Type.NUMBER_0),
-        ("n_0", Type, Type.NUMPAD_0),
-        ("numpad_0", Type, Type.NUMPAD_0),
-        ("A", Type, Type.A),
-        ("a", Type, Type.A),
-        ("key_a", Type, Type.A),
-        ("mouse1", Type, Type.MOUSE1),
-        ("mouse_left", Type, Type.MOUSE1),
-        ("shift", Mod, Mod.SHIFT),
-        ("ctrl", Mod, Mod.CTRL),
-        ("CTRL", Mod, Mod.CTRL),
-        ("control", Mod, Mod.CTRL),
-        ("press", Action, Action.PRESS),
-        ("on_press", Action, Action.PRESS),
-        ("down", Action, Action.PRESS),
+        ("esc", Keyboard.ESCAPE),
+        ("ESC", Keyboard.ESCAPE),
+        ("Esc", Keyboard.ESCAPE),
+        ("Escape", Keyboard.ESCAPE),
+        ("\n", Keyboard.ENTER),
+        (".", Keyboard.PERIOD),
+        ("f1", Keyboard.F1),
+        ("0", Keyboard.NUMBER_0),
+        ("n_0", Keyboard.NUMPAD_0),
+        ("numpad_0", Keyboard.NUMPAD_0),
+        ("A", Keyboard.A),
+        ("a", Keyboard.A),
+        ("key_a", Keyboard.A),
+        ("mouse1", MouseButton.LEFT),
+        ("mouse_left", MouseButton.LEFT),
+        ("shift", Modifier.SHIFT),
+        ("ctrl", Modifier.CTRL),
+        ("CTRL", Modifier.CTRL),
+        ("control", Modifier.CTRL),
+        ("press", Action.PRESS),
+        ("on_press", Action.PRESS),
+        ("down", Action.PRESS),
     ),
 )
-def test_mapping_strings_to_enum(string, enum, expected):
+def test_mapping_strings_to_enum(string, expected):
+    enum = expected.__class__
     assert enum.map_string(string) == expected
     assert expected == string
 
@@ -57,74 +64,68 @@ class TestKeyEvent:
             ("c", callbacks[2]),
         )
 
-        event = KeyEvent(Type.A)
+        event = KeyDown(Keyboard.A, Modifiers())
         schema(event)
         assert [cb.called for cb in callbacks] == [1, 0, 0]
 
     @pytest.mark.parametrize(
-        "action, expected_index",
-        ((Action.PRESS, 1), (Action.RELEASE, 2), (None, 0)),
+        "event, expected_index",
+        (
+            (KeyDown(Keyboard.A, Modifiers()), 0),
+            (KeyUp(Keyboard.A, Modifiers()), 1),
+        ),
     )
-    def test_with_input_action(self, action, expected_index):
-        callbacks = [RecordedCallback() for _ in range(3)]
-        event = KeyEvent(Type.A, action)
-        expected = [0, 0, 0]
+    def test_with_input_action(self, event, expected_index):
+        callbacks = [RecordedCallback() for _ in range(2)]
         schema = InputSchema(
-            ("a", callbacks[0]),
-            ("a", "down", callbacks[1]),
-            ("a", "up", callbacks[2]),
+            ("a", "down", callbacks[0]),
+            ("a", "up", callbacks[1]),
         )
 
         schema(event)
+        expected = [0, 0]
         expected[expected_index] = 1
         assert [cb.called for cb in callbacks] == expected
 
     @pytest.mark.parametrize(
         "mods, expected_index",
         (
-            ((Mod.SHIFT,), 0),
-            ((Mod.SHIFT, Mod.CTRL), 1),
-            ((Mod.SHIFT, Mod.ALT), 0),
-            ((Mod.SHIFT, Mod.CTRL, Mod.ALT), 1),
+            (Modifiers(), 0),
+            (Modifiers(SHIFT=True), 1),
+            (Modifiers(SHIFT=True, CTRL=True), 2),
+            (Modifiers(SHIFT=True, ALT=True), 3),
+            (Modifiers(SHIFT=True, ALT=True, CTRL=True), 4),
         ),
     )
     def test_with_modifiers(self, mods, expected_index):
-        callbacks = [RecordedCallback() for _ in range(2)]
-        event = KeyEvent(Type.A, modifiers=mods)
-        expected = [0, 0]
+        callbacks = [RecordedCallback() for _ in range(5)]
         schema = InputSchema(
-            ("a", "shift", callbacks[0]),
-            ("a", ("shift", "ctrl"), callbacks[1]),
+            ("a", callbacks[0]),
+            ("a", "shift", callbacks[1]),
+            ("a", "shift", "ctrl", callbacks[2]),
+            ("a", "shift", "alt", callbacks[3]),
+            ("a", "shift", "alt", "ctrl", callbacks[4]),
         )
+        event = KeyDown(Keyboard.A, mods)
 
         schema(event)
+        expected = [0] * 5
         expected[expected_index] = 1
         assert [cb.called for cb in callbacks] == expected
 
     @pytest.mark.parametrize(
         "event, callback_index",
         (
-            (KeyEvent(Type.A, Action.PRESS, (Mod.SHIFT, Mod.CTRL)), 0),
-            (
-                KeyEvent(Type.A, Action.PRESS, (Mod.SHIFT, Mod.CTRL, Mod.ALT)),
-                1,
-            ),
-            (KeyEvent(Type.A, Action.PRESS, (Mod.ALT, Mod.CTRL)), 2),
-            (KeyEvent(Type.A), 3),
-            (KeyEvent(Type.A, Action.RELEASE, (Mod.ALT,)), 4),
-            (
-                KeyEvent(
-                    Type.A, Action.RELEASE, (Mod.SHIFT, Mod.CTRL, Mod.ALT)
-                ),
-                5,
-            ),
-            (KeyEvent(Type.A, Action.RELEASE, (Mod.SHIFT, Mod.CTRL)), 6),
-            (KeyEvent(Type.B, Action.PRESS, (Mod.CTRL,)), 7),
-            (
-                KeyEvent(Type.B, Action.PRESS, (Mod.CTRL, Mod.SHIFT, Mod.ALT)),
-                8,
-            ),
-            (KeyEvent(Type.B, Action.PRESS, (Mod.ALT, Mod.CTRL)), 9),
+            (KeyDown(Keyboard.A, Modifiers()), 0),
+            (KeyDown(Keyboard.A, Modifiers(SHIFT=True, ALT=True)), 1),
+            (KeyDown(Keyboard.A, Modifiers(ALT=True)), 2),
+            (KeyIsPressed(Keyboard.A, Modifiers()), 3),
+            (KeyUp(Keyboard.A, Modifiers()), 4),
+            (KeyUp(Keyboard.A, Modifiers(SHIFT=True, ALT=True, CTRL=True)), 5),
+            (KeyUp(Keyboard.A, Modifiers(CTRL=True)), 6),
+            (KeyDown(Keyboard.B, Modifiers()), 7),
+            (KeyDown(Keyboard.B, Modifiers(SHIFT=True, ALT=True)), 8),
+            (KeyDown(Keyboard.B, Modifiers(ALT=True)), 9),
         ),
     )
     def test_all_options_integrated(self, event, callback_index):
@@ -133,7 +134,7 @@ class TestKeyEvent:
             ("a", "down", callbacks[0]),
             ("a", "down", ("shift", "alt"), callbacks[1]),
             ("a", "down", "alt", callbacks[2]),
-            ("a", callbacks[3]),
+            ("a", "is_pressed", callbacks[3]),
             ("a", "up", callbacks[4]),
             ("a", "up", ("shift", "ctrl", "alt"), callbacks[5]),
             ("a", "up", "ctrl", callbacks[6]),
@@ -151,11 +152,11 @@ class TestKeyEvent:
 @pytest.mark.parametrize(
     "event, expected_index",
     (
-        (MouseButtonEvent(0, 0, button=Type.MOUSE1, action=Action.RELEASE), 0),
-        (MouseButtonEvent(0, 0, button=Type.MOUSE1, action=Action.PRESS), 1),
-        (MouseButtonEvent(0, 0, button=Type.MOUSE2, action=Action.PRESS), 2),
-        (MouseButtonEvent(0, 0, button=Type.MOUSE2, action=Action.RELEASE), 3),
-        (MouseButtonEvent(0, 0, button=Type.MOUSE3, action=Action.RELEASE), 4),
+        (MouseUp(0, 0, MouseButton.LEFT), 0),
+        (MouseDown(0, 0, MouseButton.LEFT), 1),
+        (MouseDown(0, 0, MouseButton.RIGHT), 2),
+        (MouseUp(0, 0, MouseButton.RIGHT), 3),
+        (MouseIsPressed(0, 0, MouseButton.MIDDLE), 4),
     ),
 )
 def test_mouse_button_event(event, expected_index):
@@ -165,7 +166,7 @@ def test_mouse_button_event(event, expected_index):
         ("mouse1", "down", callbacks[1]),
         ("mouse2", "down", callbacks[2]),
         ("mouse2", "up", callbacks[3]),
-        ("mouse3", callbacks[4]),
+        ("mouse3", "is_pressed", callbacks[4]),
     )
 
     expected = [0] * 5
@@ -179,14 +180,14 @@ def test_mouse_motion_event(recorded_callback):
         ("motion", recorded_callback),
     )
 
-    event = MouseMotionEvent(0, 0, 1, 1)
+    event = MouseMotion(0, 0, 1, 1)
     schema(event)
     assert recorded_callback.called
 
 
 def test_mouse_drag_event(recorded_callback):
     schema = InputSchema(("drag", recorded_callback))
-    event = MouseDragEvent(0, 0, 0, 0, Buttons(True, False, False))
+    event = MouseDrag(0, 0, 0, 0, Buttons(True, False, False))
 
     schema(event)
     assert recorded_callback.called
@@ -194,7 +195,7 @@ def test_mouse_drag_event(recorded_callback):
 
 def test_mouse_wheel_event(recorded_callback):
     schema = InputSchema(("scroll", recorded_callback))
-    event = MouseScrollEvent(0, 0)
+    event = MouseScroll(0, 0)
 
     schema(event)
     assert recorded_callback.called

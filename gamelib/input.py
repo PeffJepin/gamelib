@@ -1,15 +1,20 @@
+from collections import defaultdict
 from enum import Enum
-from typing import Any, NamedTuple
+from dataclasses import dataclass
+from typing import NamedTuple
 
 from gamelib import events
 
 
-class StringMappingEnum(Enum):
+class _StringMappingEnum(Enum):
     @classmethod
     def map_string(cls, string):
         for member in cls:
             if string.lower() in member.value:
                 return member
+
+    def __repr__(self):
+        return f"<{self.__class__.__name__}.{self.name}>"
 
     def __eq__(self, other):
         if isinstance(other, str):
@@ -23,7 +28,7 @@ class StringMappingEnum(Enum):
         return hash(self.name)
 
 
-class InputType(StringMappingEnum):
+class Keyboard(_StringMappingEnum):
     """Defines which string values map to which keyboard inputs."""
 
     ESCAPE = ("escape", "esc")
@@ -115,106 +120,117 @@ class InputType(StringMappingEnum):
     Y = ("y", "key_y")
     Z = ("z", "key_z")
 
-    MOUSE1 = ("mouse1", "mouse_1", "mouse_left")
-    MOUSE2 = ("mouse2", "mouse_2", "mouse_right")
-    MOUSE3 = ("mouse3", "mouse_3", "mouse_middle")
-    SCROLL = ("scroll", "mouse_scroll")
+
+class MouseButton(_StringMappingEnum):
+    LEFT = ("mouse1", "mouse_1", "mouse_left")
+    RIGHT = ("mouse2", "mouse_2", "mouse_right")
+    MIDDLE = ("mouse3", "mouse_3", "mouse_middle")
+
+
+class Mouse(_StringMappingEnum):
     MOTION = ("mouse_motion", "mouse_movement", "motion")
     DRAG = ("mouse_drag", "drag")
+    SCROLL = ("scroll", "mouse_scroll", "wheel")
 
 
-class InputMod(StringMappingEnum):
+class Modifier(_StringMappingEnum):
     SHIFT = ("shift", "mod1")
     CTRL = ("control", "ctrl", "mod2")
     ALT = ("alt", "mod3")
 
 
-class InputAction(StringMappingEnum):
+class Action(_StringMappingEnum):
     PRESS = ("press", "down", "on_press", "on_down")
     RELEASE = ("release", "up", "on_release", "on_up")
     IS_PRESSED = ("pressed", "ispressed", "isdown", "is_pressed", "is_down")
 
 
-class _InputHandlerTree:
-    def __init__(self):
-        mod_lookup = {
-            # SHIFT, CTRL, ALT
-            (True, True, True): None,
-            (True, True, False): None,
-            (True, False, True): None,
-            (False, True, True): None,
-            (False, False, True): None,
-            (False, True, False): None,
-            (True, False, False): None,
-            (False, False, False): None,
-        }
-        self._registry = {
-            InputAction.PRESS: mod_lookup.copy(),
-            InputAction.RELEASE: mod_lookup.copy(),
-            InputAction.IS_PRESSED: mod_lookup.copy(),
-            None: mod_lookup.copy(),
-        }
+class Modifiers(NamedTuple):
+    SHIFT: bool = False
+    CTRL: bool = False
+    ALT: bool = False
 
-    def register(self, callback, modifiers=(), action=None):
-        self._registry[action][self._mods_to_key(modifiers)] = callback
 
-    def get_callback(self, mods=(), action=None) -> Any:
-        mod_lookup = self._registry[action]
-        for perm in self._mod_key_permutations(mods):
-            callback = mod_lookup[perm]
-            if callback is not None:
-                return callback
-        if action is not None:
-            # fallback to no action specified
-            return self.get_callback(mods, action=None)
-        return None
+class Buttons(NamedTuple):
+    LEFT: bool = False
+    RIGHT: bool = False
+    MIDDLE: bool = False
 
-    @staticmethod
-    def _mods_to_key(mods):
-        return (
-            InputMod.SHIFT in mods,
-            InputMod.CTRL in mods,
-            InputMod.ALT in mods,
-        )
 
-    @classmethod
-    def _mod_key_permutations(cls, mods):
-        key = cls._mods_to_key(mods)
+@dataclass
+class _InputEvent:
+    pass
 
-        # first look for exact match
-        yield key
 
-        # try flipping one mod off
-        for i in range(3):
-            if key[i]:
-                yield *key[:i], False, *key[i + 1 :]
+@dataclass
+class KeyDown(_InputEvent):
+    key: Keyboard
+    modifiers: Modifiers
 
-        # try flipping two mods off
-        if key[0] and key[1]:
-            yield False, False, key[2]
-        if key[0] and key[2]:
-            yield False, key[1], False
-        if key[1] and key[2]:
-            yield key[0], False, False
 
-        # fallback to no mods
-        yield False, False, False
+@dataclass
+class KeyUp(_InputEvent):
+    key: Keyboard
+    modifiers: Modifiers
+
+
+@dataclass
+class KeyIsPressed(_InputEvent):
+    key: Keyboard
+    modifiers: Modifiers
+
+
+@dataclass
+class MouseDown(_InputEvent):
+    x: int
+    y: int
+    button: MouseButton
+
+
+@dataclass
+class MouseUp(_InputEvent):
+    x: int
+    y: int
+    button: MouseButton
+
+
+@dataclass
+class MouseIsPressed(_InputEvent):
+    x: int
+    y: int
+    button: MouseButton
+
+
+@dataclass
+class MouseMotion(_InputEvent):
+    x: int
+    y: int
+    dx: int
+    dy: int
+
+
+@dataclass
+class MouseDrag(_InputEvent):
+    x: int
+    y: int
+    dx: int
+    dy: int
+    buttons: Buttons
+
+
+@dataclass
+class MouseScroll(_InputEvent):
+    dx: int
+    dy: int
 
 
 class InputSchema:
-    def __init__(self, *designations):
-        self._callback_trees = dict()
-        self._process_schema(*designations)
-        self._events = [
-            MouseScrollEvent,
-            MouseButtonEvent,
-            KeyEvent,
-            MouseMotionEvent,
-            MouseDragEvent,
-        ]
+    def __init__(self, *schema):
+        self._callback_tree = _InputHandlerLookup()
+        self._process_schema(*schema)
         self.enable()
 
-    def enable(self, master=False):
+    def enable(self, *, master=False):
         if master:
             events.clear_handlers(*self._events)
         for event in self._events:
@@ -224,134 +240,112 @@ class InputSchema:
         for event in self._events:
             events.unregister(event, self)
 
+    @property
+    def _events(self):
+        return _InputEvent.__subclasses__()
+
     def _process_schema(self, *schema):
         for desc in schema:
             input_type, *optional, callback = desc
 
             if isinstance(input_type, str):
-                input_type = InputType.map_string(input_type)
+                enum = Keyboard.map_string(input_type)
+                enum = enum or MouseButton.map_string(input_type)
+                enum = enum or Mouse.map_string(input_type)
+                input_type = enum
 
             mods = []
             action = None
             for arg in optional:
                 # str might be mod or action
                 if isinstance(arg, str):
-                    if mod := InputMod.map_string(arg):
-                        mods.append(mod)
+                    parse_action = Action.map_string(arg)
+                    if parse_action:
+                        action = parse_action
                     else:
-                        action = InputAction.map_string(arg)
+                        mods.append(arg)
 
                 # list/tuple are mods
                 elif isinstance(arg, list) or isinstance(arg, tuple):
                     for mod in arg:
-                        if isinstance(mod, str):
-                            mods.append(InputMod.map_string(mod))
-                        else:
-                            mods.append(mod)
+                        mods.append(mod)
 
-            if input_type not in self._callback_trees:
-                self._callback_trees[input_type] = _InputHandlerTree()
-            callback_tree = self._callback_trees[input_type]
-            callback_tree.register(callback, modifiers=mods, action=action)
+                elif isinstance(arg, Modifier):
+                    mods.append(arg)
+
+                elif isinstance(arg, Action):
+                    action = arg
+
+            mods = Modifiers(
+                Modifier.SHIFT in mods,
+                Modifier.CTRL in mods,
+                Modifier.ALT in mods,
+            )
+            self._callback_tree.register(
+                callback, input_type, modifiers=mods, action=action
+            )
 
     def __call__(self, event):
-        callback_tree = self._callback_trees.get(event.type)
-        if not callback_tree:
+        callback = self._callback_tree.get_callback(event)
+        if not callback:
             return
-        callback = callback_tree.get_callback(
-            mods=event.modifiers,
-            action=event.action,
-        )
-        if callback:
-            callback(event)
+        callback(event)
 
 
-class Modifiers(NamedTuple):
-    SHIFT: bool
-    CTRL: bool
-    ALT: bool
+class _InputHandlerLookup:
+    def __init__(self):
+        self._lookup = {
+            KeyDown: defaultdict(dict),
+            KeyUp: defaultdict(dict),
+            KeyIsPressed: defaultdict(dict),
+            MouseDown: dict(),
+            MouseUp: dict(),
+            MouseIsPressed: dict(),
+            MouseDrag: None,
+            MouseScroll: None,
+            MouseMotion: None,
+        }
 
-
-class Buttons(NamedTuple):
-    LEFT: bool
-    RIGHT: bool
-    MIDDLE: bool
-
-
-class _InputEvent(events.Event):
-    __slots__ = ["type", "action", "modifiers"]
-
-    type: InputType
-    action: InputAction
-    modifiers: Modifiers
-
-    def __init__(
-        self,
-        type,
-        action=None,
-        modifiers=Modifiers(False, False, False),
-        **kwargs,
+    def register(
+        self, callback, input_enum, modifiers=Modifiers(), action=None
     ):
-        super().__init__(
-            type=type, action=action, modifiers=modifiers, **kwargs
-        )
+        if input_enum in Keyboard:
+            if action is None:
+                action = Action.PRESS
+            if action == Action.PRESS:
+                self._lookup[KeyDown][input_enum][modifiers] = callback
+            elif action == Action.RELEASE:
+                self._lookup[KeyUp][input_enum][modifiers] = callback
+            elif action == Action.IS_PRESSED:
+                self._lookup[KeyIsPressed][input_enum][modifiers] = callback
 
+        elif input_enum in MouseButton:
+            if action is None:
+                action = Action.PRESS
+            if action == Action.PRESS:
+                self._lookup[MouseDown][input_enum] = callback
+            elif action == Action.RELEASE:
+                self._lookup[MouseUp][input_enum] = callback
+            elif action == Action.IS_PRESSED:
+                self._lookup[MouseIsPressed][input_enum] = callback
 
-class KeyEvent(_InputEvent):
-    # just for clarity
-    pass
+        else:
+            if input_enum == Mouse.MOTION:
+                self._lookup[MouseMotion] = callback
+            elif input_enum == Mouse.DRAG:
+                self._lookup[MouseDrag] = callback
+            elif input_enum == Mouse.SCROLL:
+                self._lookup[MouseScroll] = callback
 
+    def get_callback(self, event):
+        event_type = type(event)
+        if not self._lookup.get(event_type):
+            return
 
-class MouseButtonEvent(_InputEvent):
-    __slots__ = ["x", "y"]
-
-    x: int
-    y: int
-
-    def __init__(self, x, y, *, button, **kwargs):
-        super().__init__(type=button, x=x, y=y, **kwargs)
-
-
-class MouseMotionEvent(_InputEvent):
-    __slots__ = ["x", "y", "dx", "dy"]
-
-    x: int
-    y: int
-    dx: int
-    dy: int
-
-    def __init__(self, x, y, dx, dy, **kwargs):
-        super().__init__(
-            x=x, y=y, dx=dx, dy=dy, type=InputType.MOTION, **kwargs
-        )
-
-
-class MouseDragEvent(_InputEvent):
-    __slots__ = ["x", "y", "dx", "dy", "buttons"]
-
-    x: int
-    y: int
-    dx: int
-    dy: int
-    buttons: Buttons
-
-    def __init__(self, x, y, dx, dy, buttons, **kwargs):
-        super().__init__(
-            x=x,
-            y=y,
-            dx=dx,
-            dy=dy,
-            buttons=buttons,
-            type=InputType.DRAG,
-            **kwargs,
-        )
-
-
-class MouseScrollEvent(_InputEvent):
-    __slots__ = ["dx", "dy"]
-
-    dx: int
-    dy: int
-
-    def __init__(self, dx, dy, **kwargs):
-        super().__init__(dx=dx, dy=dy, type=InputType.SCROLL, **kwargs)
+        enum = getattr(event, "key", None) or getattr(event, "button", None)
+        if enum:
+            modifiers = getattr(event, "modifiers", None)
+            if modifiers is not None:
+                return self._lookup[event_type][enum].get(modifiers)
+            return self._lookup[event_type].get(enum)
+        return self._lookup[event_type]
