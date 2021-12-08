@@ -1,3 +1,37 @@
+"""This module in it's current form is basically an extension to the events.py
+module. The aim is to provide a quick, easy way to get user input integrated
+into an application.
+
+The only component needed to get user input integrated is InputSchema. The
+input events can be selected with python strings, or if more verbose
+declarations are desired the Enum classes Keyboard, Mouse, and MouseButton can
+be used.
+
+Example
+-------
+A barebones example - see documentation below for further detail.
+
+>>> def attack(event):
+...     # perform attack
+...     ...
+...
+>>> def jump():
+...     # taking event as parameter is optional
+...     ...
+...
+>>> schema = InputSchema(
+...     ("mouse1", "press", attack),
+...     ("space", "press", jump),
+... )
+>>> # schema is now active and will handle input events posted by the window.
+...
+>>> schema.disable()
+>>> # schema will no longer handle events
+...
+>>> schema.enable(master=True)
+>>> # multiple schemas can be active at once
+>>> # master option means this will be the only schema processing input
+"""
 from collections import defaultdict
 from enum import Enum
 from dataclasses import dataclass
@@ -6,7 +40,173 @@ from typing import NamedTuple
 from gamelib import events
 
 
+class InputSchema:
+    """InputSchema serves as both an adapter to the events module for
+    user input, and defines the format in which user input mappings are
+    declared.
+
+    The window is responsible for collecting the user input and posting
+    events, so this wont work with gamelib.init(headless=True).
+
+    Multiple InputSchema objects can be active at once, as such a single
+    input event can be consumed by multiple InputSchema instances, though
+    each instance can only hold one callback for a particular event.
+    """
+
+    def __init__(self, *schema):
+        """Map different types of user input to callback functions.
+        The schema will immediately begin handling input events that get
+        posted by the window.
+
+        Parameters
+        ----------
+        schema: tuple
+            The general format for an input handler looks like:
+                (input_type, *optional, callback)
+
+            input_type should map to either Keyboard, MouseButton or Mouse.
+            *optional args should define action/modifiers where applicable.
+            callback is the function that will handle the event described.
+
+        Example
+        -------
+        >>> def handler(event):
+        ...     # taking event as parameter is optional
+        ...     ...
+        ...
+        >>> input_schema = InputSchema(
+        ...     # MouseDown event. Modifiers not applicable
+        ...     ("mouse1", "press", handler),
+        ...
+        ...     # MouseUp event. Modifiers not applicable.
+        ...     ("mouse2", "release", handler),
+        ...
+        ...     # MouseMotion event. Actions and modifiers not applicable.
+        ...     ("motion", handler),
+        ...
+        ...     # MouseDrag event. Actions and modifiers not applicable.
+        ...     ("drag", handler),
+        ...
+        ...     # When applicable, action default = Action.PRESS
+        ...     ("a", handler),
+        ...     ("mouse3", handler),
+        ...
+        ...     # Modifiers can be grouped into an iterable for clarity
+        ...     ("a", "release", ("shift", "ctrl"), handler),
+        ...
+        ...     # Or modifiers can just be given as *args. Order irrelevant.
+        ...     ("a", "release", "shift", "ctrl", handler),
+        ...
+        ...     # KeyIsPressed event
+        ...     ("space", "is_pressed", handler),
+        ...
+        ...     # Descriptions can be made more verbose with module Enums.
+        ...     (Keyboard.B, Action.PRESS, Modifier.ALT, handler),
+        ...     (MouseButton.LEFT, Action.RELEASE, handler),
+        ...     (Mouse.MOTION, handler),
+        ... )
+        """
+
+        self._callback_tree = _InputHandlerLookup()
+        self._process_schema(*schema)
+        self.enable()
+
+    def enable(self, *, master=False):
+        """Subscribes this Schema to handle input events posted to the
+        events module.
+
+        Parameters
+        ----------
+        master : bool, optional
+            If True, then this will clear all other input handlers
+            subscribed to handle input events, such that this instance
+            will be the only event handler.
+
+            This may be inadvisable if you're handling any _InputEvent
+            types directly through the events.py machinery, as this will
+            remove those handlers as well.
+        """
+
+        if master:
+            events.clear_handlers(*self._events)
+        for event in self._events:
+            events.register(event, self)
+
+    def disable(self):
+        """Stop this instance from handling input events."""
+
+        for event in self._events:
+            events.unregister(event, self)
+
+    @property
+    def _events(self):
+        return _InputEvent.__subclasses__()
+
+    def _process_schema(self, *schema):
+        """Processes the schema passed to __init__."""
+
+        for desc in schema:
+            input_type, *optional, callback = desc
+
+            if isinstance(input_type, str):
+                input_type = (
+                    Keyboard.map_string(input_type)
+                    or MouseButton.map_string(input_type)
+                    or Mouse.map_string(input_type)
+                )
+
+            mods = []
+            action = None
+            for arg in optional:
+                # str might be mod or action
+                if isinstance(arg, str):
+                    parse_action = Action.map_string(arg)
+                    if parse_action:
+                        action = parse_action
+                    else:
+                        mods.append(arg)
+
+                # list/tuple are mods
+                elif isinstance(arg, list) or isinstance(arg, tuple):
+                    for mod in arg:
+                        mods.append(mod)
+
+                elif isinstance(arg, Modifier):
+                    mods.append(arg)
+
+                elif isinstance(arg, Action):
+                    action = arg
+
+            mods = Modifiers(
+                Modifier.SHIFT in mods,
+                Modifier.CTRL in mods,
+                Modifier.ALT in mods,
+            )
+            self._callback_tree.register(
+                callback, input_type, modifiers=mods, action=action
+            )
+
+    def __call__(self, event):
+        """The event module will call this object as if it were an event
+        handler itself.
+
+        Instead lookup the appropriate handler and forward the event there.
+        """
+
+        callback = self._callback_tree.get_callback(event)
+        if not callback:
+            return
+
+        try:
+            callback(event)
+        except TypeError:
+            callback()
+
+
 class _StringMappingEnum(Enum):
+    """Internal class for managing the mapping of many possible strings to
+    and Enum field."""
+
     @classmethod
     def map_string(cls, string):
         for member in cls:
@@ -122,36 +322,49 @@ class Keyboard(_StringMappingEnum):
 
 
 class MouseButton(_StringMappingEnum):
+    """Defines string mappings for Mouse clicking events."""
+
     LEFT = ("mouse1", "mouse_1", "mouse_left")
     RIGHT = ("mouse2", "mouse_2", "mouse_right")
     MIDDLE = ("mouse3", "mouse_3", "mouse_middle")
 
 
 class Mouse(_StringMappingEnum):
+    """Defines string mappings for non clicking events."""
+
     MOTION = ("mouse_motion", "mouse_movement", "motion")
     DRAG = ("mouse_drag", "drag")
     SCROLL = ("scroll", "mouse_scroll", "wheel")
 
 
 class Modifier(_StringMappingEnum):
+    """Defines string mappings for modifier keys."""
+
     SHIFT = ("shift", "mod1")
     CTRL = ("control", "ctrl", "mod2")
     ALT = ("alt", "mod3")
 
 
 class Action(_StringMappingEnum):
+    """Defines string mappings for different input action types."""
+
     PRESS = ("press", "down", "on_press", "on_down")
     RELEASE = ("release", "up", "on_release", "on_up")
     IS_PRESSED = ("pressed", "ispressed", "isdown", "is_pressed", "is_down")
 
 
 class Modifiers(NamedTuple):
+    """Tuple passed around with input events that care about Modifier keys."""
+
     SHIFT: bool = False
     CTRL: bool = False
     ALT: bool = False
 
 
 class Buttons(NamedTuple):
+    """Tuple passed around with input events that care about MouseButton
+    state."""
+
     LEFT: bool = False
     RIGHT: bool = False
     MIDDLE: bool = False
@@ -159,29 +372,38 @@ class Buttons(NamedTuple):
 
 @dataclass
 class _InputEvent:
+    """Base class for convenience."""
     pass
 
 
 @dataclass
 class KeyDown(_InputEvent):
+    """Posted from window provider."""
+
     key: Keyboard
     modifiers: Modifiers
 
 
 @dataclass
 class KeyUp(_InputEvent):
+    """Posted from window provider."""
+
     key: Keyboard
     modifiers: Modifiers
 
 
 @dataclass
 class KeyIsPressed(_InputEvent):
+    """Key state is extracted once per frame for this event."""
+
     key: Keyboard
     modifiers: Modifiers
 
 
 @dataclass
 class MouseDown(_InputEvent):
+    """Posted from window provider."""
+
     x: int
     y: int
     button: MouseButton
@@ -189,6 +411,8 @@ class MouseDown(_InputEvent):
 
 @dataclass
 class MouseUp(_InputEvent):
+    """Posted from window provider."""
+
     x: int
     y: int
     button: MouseButton
@@ -196,6 +420,8 @@ class MouseUp(_InputEvent):
 
 @dataclass
 class MouseIsPressed(_InputEvent):
+    """Key state is extracted once per frame for this event."""
+
     x: int
     y: int
     button: MouseButton
@@ -203,6 +429,8 @@ class MouseIsPressed(_InputEvent):
 
 @dataclass
 class MouseMotion(_InputEvent):
+    """Posted from window provider."""
+
     x: int
     y: int
     dx: int
@@ -211,6 +439,8 @@ class MouseMotion(_InputEvent):
 
 @dataclass
 class MouseDrag(_InputEvent):
+    """Posted from window provider."""
+
     x: int
     y: int
     dx: int
@@ -220,79 +450,18 @@ class MouseDrag(_InputEvent):
 
 @dataclass
 class MouseScroll(_InputEvent):
+    """Posted from window provider. dx not always applicable."""
+
     dx: int
     dy: int
 
 
-class InputSchema:
-    def __init__(self, *schema):
-        self._callback_tree = _InputHandlerLookup()
-        self._process_schema(*schema)
-        self.enable()
-
-    def enable(self, *, master=False):
-        if master:
-            events.clear_handlers(*self._events)
-        for event in self._events:
-            events.register(event, self)
-
-    def disable(self):
-        for event in self._events:
-            events.unregister(event, self)
-
-    @property
-    def _events(self):
-        return _InputEvent.__subclasses__()
-
-    def _process_schema(self, *schema):
-        for desc in schema:
-            input_type, *optional, callback = desc
-
-            if isinstance(input_type, str):
-                enum = Keyboard.map_string(input_type)
-                enum = enum or MouseButton.map_string(input_type)
-                enum = enum or Mouse.map_string(input_type)
-                input_type = enum
-
-            mods = []
-            action = None
-            for arg in optional:
-                # str might be mod or action
-                if isinstance(arg, str):
-                    parse_action = Action.map_string(arg)
-                    if parse_action:
-                        action = parse_action
-                    else:
-                        mods.append(arg)
-
-                # list/tuple are mods
-                elif isinstance(arg, list) or isinstance(arg, tuple):
-                    for mod in arg:
-                        mods.append(mod)
-
-                elif isinstance(arg, Modifier):
-                    mods.append(arg)
-
-                elif isinstance(arg, Action):
-                    action = arg
-
-            mods = Modifiers(
-                Modifier.SHIFT in mods,
-                Modifier.CTRL in mods,
-                Modifier.ALT in mods,
-            )
-            self._callback_tree.register(
-                callback, input_type, modifiers=mods, action=action
-            )
-
-    def __call__(self, event):
-        callback = self._callback_tree.get_callback(event)
-        if not callback:
-            return
-        callback(event)
-
-
 class _InputHandlerLookup:
+    """Internal class that organizes the handlers for an InputSchema. Some
+    events have nested lookups since their lookup depends on Action,
+    Modifiers or both. May want to consider hashing the nested lookups in
+    the future."""
+
     def __init__(self):
         self._lookup = {
             KeyDown: defaultdict(dict),
@@ -338,6 +507,14 @@ class _InputHandlerLookup:
                 self._lookup[MouseScroll] = callback
 
     def get_callback(self, event):
+        """"Try to get registered callback for this event.
+
+        Returns
+        -------
+        Callable | None:
+            depending on if a handler has been registered for this event.
+        """
+
         event_type = type(event)
         if not self._lookup.get(event_type):
             return
