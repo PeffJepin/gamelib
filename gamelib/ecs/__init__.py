@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import enum
 import os
+from typing import NamedTuple
 
-from gamelib import events
 
 _POSIX = os.name == "posix"
 _globals: _EcsGlobals | None = None
@@ -148,7 +148,5 @@ class StaticGlobals(enum.Enum):
 reset_globals()
 
 
-class EntityDestroyed(events.Event):
-    __slots__ = ["id"]
-
+class EntityDestroyed(NamedTuple):
     id: int

@@ -1,10 +1,11 @@
 from contextlib import contextmanager
+from typing import NamedTuple, Any
 
 import pytest
 
 from gamelib import SystemStop, Update, events
 from gamelib.ecs import _EcsGlobals
-from gamelib.events import eventhandler, Event
+from gamelib.events import handler
 from gamelib.ecs.component import Component
 from gamelib.ecs.system import (
     SystemUpdateComplete,
@@ -41,19 +42,12 @@ class TestSystemInProcess:
                 SystemUpdateComplete(ExampleSystem) == recorded_callback.event
             )
 
-    def test_keyed_event_between_processes(self, recorded_callback):
-        with self.system_tester(ExampleSystem):
-            recorded_callback.register(Event.TEST_KEYED)
-            events.post(Event(), key="TEST_KEYED")
-
-            recorded_callback.await_called(1)
-
     def test_creating_a_component_in_main_process(self, recorded_callback):
         with self.system_tester(ExampleSystem):
             recorded_callback.register(Response)
             new_instance = Component1(1, 2, entity=0)
 
-            events.post(Event(), key="CREATE_COMPONENT_TEST")
+            events.post(Command("CREATE_COMPONENT_TEST"))
 
             recorded_callback.await_called(1)
             assert recorded_callback.event == Response(new_instance.values)
@@ -66,7 +60,7 @@ class TestSystemInProcess:
             new_instance = Component1(1, 2, entity=0)
             Component1.destroy(0)
 
-            events.post(Event(), key="DESTROY_COMPONENT_TEST")
+            events.post(Command("DESTROY_COMPONENT_TEST"))
 
             recorded_callback.await_called(1)
             assert recorded_callback.event == Response(None)
@@ -106,8 +100,12 @@ class TestSystemInProcess:
             runner.kill()
 
 
-class Response(Event):
-    __slots__ = ["value"]
+class Command(NamedTuple):
+    msg: str
+
+
+class Response(NamedTuple):
+    val: Any
 
 
 class Component1(Component):
@@ -118,17 +116,18 @@ class Component1(Component):
 class ExampleSystem(System):
     COMPONENTS = (Component1,)
 
-    @eventhandler(Event.KEYED_TEST)
-    def _test_interprocess_keyed_event(self, _):
-        self.raise_event(Event(), key="KEYED_RESPONSE")
+    @handler(Command)
+    def _test_command_delegator(self, cmd):
+        if cmd.msg == "CREATE_COMPONENT_TEST":
+            self._component_created_response()
+        elif cmd.msg == "DESTROY_COMPONENT_TEST":
+            self._component_destroyed_response()
 
-    @eventhandler(Event.CREATE_COMPONENT_TEST)
-    def _component_created_response(self, _):
+    def _component_created_response(self):
         response = Response(Component1.get_for_entity(0).values)
         self.raise_event(response)
 
-    @eventhandler(Event.DESTROY_COMPONENT_TEST)
-    def _component_destroyed_response(self, _):
+    def _component_destroyed_response(self):
         response = Response(Component1.get_for_entity(0))
         self.raise_event(response)
 

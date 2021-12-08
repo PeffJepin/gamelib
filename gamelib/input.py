@@ -130,13 +130,13 @@ class InputSchema:
         if master:
             events.clear_handlers(*self._events)
         for event in self._events:
-            events.register(event, self)
+            events.subscribe(event, self)
 
     def disable(self):
         """Stop this instance from handling input events."""
 
         for event in self._events:
-            events.unregister(event, self)
+            events.unsubscribe(event, self)
 
     @property
     def _events(self):
@@ -373,6 +373,7 @@ class Buttons(NamedTuple):
 @dataclass
 class _InputEvent:
     """Base class for convenience."""
+
     pass
 
 
@@ -507,7 +508,7 @@ class _InputHandlerLookup:
                 self._lookup[MouseScroll] = callback
 
     def get_callback(self, event):
-        """"Try to get registered callback for this event.
+        """ "Try to get registered callback for this event.
 
         Returns
         -------

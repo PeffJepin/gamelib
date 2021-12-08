@@ -1,76 +1,140 @@
+from collections import defaultdict
+from typing import NamedTuple, Any
+
 import numpy as np
 import pytest
 
 from gamelib import Update, events
 from gamelib.ecs import EntityDestroyed
 from gamelib.ecs.environment import Environment
-from gamelib.events import eventhandler, Event
 from gamelib.ecs.system import SystemUpdateComplete, System
 from gamelib.ecs.component import Component
+
+
+class Command(NamedTuple):
+    msg: str = "default"
+
+
+class Response(NamedTuple):
+    val: Any = "default"
+
+
+class Component1(Component):
+    attr1: int
+    attr2: float
+
+
+class Component2(Component):
+    attr1: int
+    attr2: float
+
+
+class _TestSystem(System):
+    # system that consumes command events and returns:
+    # ("ClassName", eval(Command.msg))
+
+    # record is a counter of event types handled
+    record = defaultdict(int)
+
+    @events.handler(Command)
+    def _command(self, cmd):
+        self.record[Command] += 1
+
+        try:
+            val = eval(cmd.msg)
+        except NameError:
+            val = cmd.msg
+
+        res = Response((self.__class__.__name__, val))
+        self.raise_event(res)
+
+
+class LocalSystem(_TestSystem):
+    pass
+
+
+class ProcessSystem(_TestSystem):
+    pass
+
+
+@pytest.fixture(autouse=True, scope="function")
+def cleanup():
+    Component1.free()
+    ExampleEnvironment.record.clear()
+    LocalSystem.record.clear()
+
+
+class ExampleEnvironment(Environment):
+    # injected for testing
+    ASSET_LABELS = [f"asset{i + 1}" for i in range(6)]
+    record = defaultdict(int)
+
+    # normal implementation
+    COMPONENTS = [Component1, Component2]
+    LOCAL_SYSTEMS = [LocalSystem]
+    PROCESS_SYSTEMS = [ProcessSystem]
+    ASSETS = []
+
+    @events.handler(Command)
+    def command_handler(self, cmd):
+        self.record[Command] += 1
+
+    @events.handler(SystemUpdateComplete)
+    def update_complete_counter(self, _):
+        self.record[SystemUpdateComplete] += 1
 
 
 class TestEnvironment:
     def test_does_not_handle_events_before_entering(self):
         env = ExampleEnvironment()
-        events.post(Event(), "ABC")
+        events.post(Command())
 
-        assert 0 == env.abc_event_handled
+        assert env.record[Command] == 0
 
     def test_handles_events_after_entering(self):
         with ExampleEnvironment() as env:
-            events.post(Event(), "ABC")
+            events.post(Command())
 
-            assert 1 == env.abc_event_handled
+            assert env.record[Command] == 1
 
     def test_does_not_handle_events_after_exiting(self):
         env = ExampleEnvironment()
 
         with env:
             pass
-        events.post(Event(), "ABC")
+        events.post(Command())
 
-        assert 0 == env.abc_event_handled
+        assert env.record[Command] == 0
 
-    def test_local_systems_dont_handle_events_before_entering(
-        self, recorded_callback
-    ):
+    def test_local_systems_dont_handle_events_before_entering(self):
         env = ExampleEnvironment()
-        events.register(Response.LOCAL_EVENT, recorded_callback)
 
-        events.post(Event(), key="LOCAL_EVENT")
+        events.post(Command())
 
-        assert not recorded_callback.called
+        assert LocalSystem.record[Command] == 0
 
-    def test_local_systems_begin_handling_events_after_entering(
-        self, recorded_callback
-    ):
-        events.register(Response.LOCAL_EVENT, recorded_callback)
-
+    def test_local_systems_begin_handling_events_after_entering(self):
         with ExampleEnvironment():
-            events.post(Event(), key="LOCAL_EVENT")
+            events.post(Command())
 
-            assert recorded_callback.called
+        assert LocalSystem.record[Command] == 1
 
-    def test_local_systems_stop_handling_events_after_exiting(
-        self, recorded_callback
-    ):
-        events.register(Response.LOCAL_EVENT, recorded_callback)
-
+    def test_local_systems_stop_handling_events_after_exiting(self):
         env = ExampleEnvironment()
         with env:
             pass
 
-        events.post(Event(), key="LOCAL_EVENT")
+        events.post(Command())
 
-        assert not recorded_callback.called
+        assert LocalSystem.record[Command] == 0
 
     def test_process_systems_dont_handle_events_before_entering(
         self, recorded_callback
     ):
         env = ExampleEnvironment()
-        events.register(Response.BASE_PROCESS_TEST, recorded_callback)
+        events.subscribe(Response, recorded_callback)
 
-        events.post(Event(), key="BASE_PROCESS_TEST")
+        events.post(Command())
 
         with pytest.raises(TimeoutError):
             recorded_callback.await_called(1, timeout=0.1)
@@ -78,22 +142,23 @@ class TestEnvironment:
     def test_process_systems_handle_events_after_entering(
         self, recorded_callback
     ):
-        events.register(Response.BASE_PROCESS_TEST, recorded_callback)
+        events.subscribe(Response, recorded_callback)
 
         with ExampleEnvironment():
-            events.post(Event(), key="BASE_PROCESS_TEST")
+            events.post(Command("hello"))
 
-            recorded_callback.await_called(1)
+        recorded_callback.await_silence()
+        assert Response(("ProcessSystem", "hello")) in recorded_callback.events
 
     def test_process_systems_stop_handling_events_after_exiting(
         self, recorded_callback
     ):
-        events.register(Response.BASE_PROCESS_TEST, recorded_callback)
+        events.subscribe(Response, recorded_callback)
         env = ExampleEnvironment()
 
         with env:
             pass
-        events.post(Event(), key="BASE_PROCESS_TEST")
+        events.post(Command())
 
         with pytest.raises(TimeoutError):
             recorded_callback.await_called(1, timeout=0.1)
@@ -123,21 +188,23 @@ class TestEnvironment:
     def test_component_data_is_shared_across_processes(
         self, recorded_callback
     ):
-        events.register(
-            Response.INTERPROCESS_COMPONENT_DATA, recorded_callback
-        )
+        events.subscribe(Response, recorded_callback)
 
         with ExampleEnvironment():
             Component1.array[:] = 123
-            events.post(Event(), key="INTERPROCESS_COMPONENT_DATA")
+            events.post(Command("Component1.array"))
 
-            recorded_callback.await_called(1)
-            assert np.all(recorded_callback.event.value == Component1.array)
+            recorded_callback.await_silence()
+            for res in recorded_callback.events:
+                process_name, value = res.val
+                assert np.all(value == Component1.array)
+                return
+            raise AssertionError("No response from process.")
 
     def test_each_system_posts_an_instance_of_system_update_complete(
         self, recorded_callback
     ):
-        events.register(SystemUpdateComplete, recorded_callback)
+        events.subscribe(SystemUpdateComplete, recorded_callback)
 
         with ExampleEnvironment() as env:
             events.post(Update())
@@ -207,61 +274,3 @@ class TestEnvironment:
 
             with pytest.raises(Exception):
                 env.create_entity(component)
-
-
-class Response(Event):
-    __slots__ = ["value"]
-
-
-class Component1(Component):
-    attr1: int
-    attr2: float
-
-
-class Component2(Component):
-    attr1: int
-    attr2: float
-
-
-class ProcessSystem1(System):
-    @eventhandler(Event.BASE_PROCESS_TEST)
-    def _test_base_event_handling(self, _):
-        self.raise_event(Response(""), key="BASE_PROCESS_TEST")
-
-    @eventhandler(Event.INTERPROCESS_COMPONENT_DATA)
-    def _test_components_data(self, _):
-        self.raise_event(
-            Response(Component1.array), key="INTERPROCESS_COMPONENT_DATA"
-        )
-
-
-class LocalSystem1(System):
-    @eventhandler(Event.LOCAL_EVENT)
-    def _test_handling_events_locally(self, _):
-        self.raise_event(Response(""), key="LOCAL_EVENT")
-
-
-class ExampleEnvironment(Environment):
-    # injected for testing
-    ASSET_LABELS = [f"asset{i + 1}" for i in range(6)]
-    abc_event_handled = 0
-    updates_completed = 0
-
-    # normal implementation
-    COMPONENTS = [Component1, Component2]
-    LOCAL_SYSTEMS = [LocalSystem1]
-    PROCESS_SYSTEMS = [ProcessSystem1]
-    ASSETS = []
-
-    @eventhandler(Event.ABC)
-    def abc_handler(self, _):
-        self.abc_event_handled += 1
-
-    @eventhandler(SystemUpdateComplete)
-    def update_complete_counter(self, _):
-        self.updates_completed += 1
-
-
-@pytest.fixture(autouse=True)
-def ensure_component_memory_cleanup():
-    Component1.free()

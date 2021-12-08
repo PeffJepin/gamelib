@@ -1,18 +1,18 @@
 from __future__ import annotations
 
-from typing import List, Type
+from typing import List, Type, NamedTuple
 
 from gamelib import (
     events,
 )
-from gamelib.events import eventhandler
+from gamelib.events import handler
 from . import EntityDestroyed, StaticGlobals, reset_globals
 from .component import Component
 from .system import System, SystemRunner
 from gamelib.textures import TextureAtlas
 
 
-class UpdateComplete(events.Event):
+class UpdateComplete(NamedTuple):
     pass
 
 
@@ -91,7 +91,7 @@ class Environment:
         """
         reset_globals({StaticGlobals.MAX_ENTITIES: self.MAX_ENTITIES})
         self._entity_pool = list(range(self.MAX_ENTITIES))
-        events.register_marked(self)
+        events.subscribe_obj(self)
         for component in self.COMPONENTS:
             component.allocate()
         self._start_systems()
@@ -100,7 +100,7 @@ class Environment:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Teardown what was setup in __enter__."""
-        events.unregister_marked(self)
+        events.unsubscribe_obj(self)
         self._shutdown_systems()
         for component in self.COMPONENTS:
             component.free()
@@ -149,7 +149,7 @@ class Environment:
         self._system_runners.clear()
         self._local_systems.clear()
 
-    @eventhandler(EntityDestroyed)
+    @handler(EntityDestroyed)
     def _recycle_entity(self, event: EntityDestroyed):
         entity = event.id
         for component in self.COMPONENTS:

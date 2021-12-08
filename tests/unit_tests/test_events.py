@@ -2,323 +2,210 @@ from __future__ import annotations
 
 import pytest
 import time
-from collections import defaultdict
+import dataclasses
+from typing import NamedTuple
 from multiprocessing.connection import Pipe
 
-from gamelib import Keys, events
+from gamelib import events
 
-from gamelib import KeyDown, ModifierKeys
-from gamelib.events import (
-    Event,
-    eventhandler,
-    _HANDLER_INJECTION_ATTRIBUTE,
-)
 from tests.conftest import RecordedCallback
 
 
-class KeyedEvent(Event):
+@pytest.fixture(autouse=True, scope="function")
+def reset_module():
+    events.clear_handlers()
+
+
+class Event:
+    def __init__(self, message="test"):
+        self.message = message
+
+    def __eq__(self, other):
+        return self.message == other.message
+
+
+@dataclasses.dataclass
+class DataEvent:
+    message: str = "test"
+
+
+class TupleEvent(NamedTuple):
+    message: str = "test"
+
+
+class SomeOtherEvent:
     pass
 
 
-class SomeEvent(Event):
-    pass
-
-
-class SomeOtherEvent(Event):
-    pass
+@pytest.fixture(params=(Event(), DataEvent(), TupleEvent()))
+def event(request):
+    yield request.param
 
 
 class TestEventHandling:
-    def test_does_call_registered_callback(self, recorded_callback):
-        events.register(Event, recorded_callback)
+    def test_should_callback(self, recorded_callback, event):
+        events.subscribe(type(event), recorded_callback)
 
-        events.post(Event())
-
-        assert recorded_callback.called
-
-    def test_does_not_call_registered_callback(self, recorded_callback):
-        events.register(Event, recorded_callback)
-
-        events.post(SomeEvent())
-
-        assert not recorded_callback.called
-
-    def test_does_call_registered_with_key(self, recorded_callback):
-        events.register(Event.B, recorded_callback)
-
-        events.post(Event(), key="B")
+        events.post(event)
 
         assert recorded_callback.called
 
-    def test_does_not_call_registered_with_key(self, recorded_callback):
-        events.register(Event.B, recorded_callback)
+    def test_should_not_callback(self, recorded_callback, event):
+        events.subscribe(type(event), recorded_callback)
 
-        events.post(Event(), key=1)
+        events.post(SomeOtherEvent())
 
         assert not recorded_callback.called
 
-    def test_callback_receives_event_as_arg(self, recorded_callback):
-        events.register(Event, recorded_callback)
+    def test_callback_receives_event_as_arg(self, recorded_callback, event):
+        events.subscribe(type(event), recorded_callback)
 
-        event = Event()
         events.post(event)
 
         assert recorded_callback.called
         assert recorded_callback.event is event
 
-    def test_not_called_after_being_unregistered(self, recorded_callback):
-        events.register(Event, recorded_callback)
+    def test_not_called_after_being_unsubscribed(
+        self, recorded_callback, event
+    ):
+        events.subscribe(type(event), recorded_callback)
 
-        events.unregister(Event, recorded_callback)
-        events.post(Event())
+        events.unsubscribe(type(event), recorded_callback)
+        events.post(event)
 
         assert not recorded_callback.called
 
     def test_clearing_a_type_of_event(self):
         cb1, cb2, cb3 = [RecordedCallback() for _ in range(3)]
-        events.register(SomeEvent, cb1)
-        events.register(SomeEvent, cb2)
-        events.register(SomeOtherEvent, cb3)
+        events.subscribe(Event, cb1)
+        events.subscribe(DataEvent, cb2)
+        events.subscribe(TupleEvent, cb3)
 
-        events.clear_handlers(SomeEvent)
+        events.clear_handlers(Event, DataEvent)
+        events.post(Event())
+        events.post(DataEvent())
+        events.post(TupleEvent())
 
-        events.post(SomeEvent())
-        events.post(SomeOtherEvent())
         assert not cb1.called and not cb2.called
         assert cb3.called
 
-    def test_feeds_event_and_key_into_serviced_pipe(self):
+    def test_feeds_serviced_event_into_pipe(self, event):
         a, b = Pipe()
-        event = Event()
 
-        events.service_connection(a, Event)
+        events.service_connection(a, type(event))
         events.post(event)
 
-        if not b.poll(10 / 1_000):
+        if not b.poll(0.01):
             raise AssertionError("Nothing in pipe.")
-        assert (event, None) == b.recv()
+        assert event == b.recv()
 
-    def test_does_not_feed_event_into_serviced_pipe(self):
+    def test_does_not_feed_unserviced_event(self):
         a, b = Pipe()
-        event = SomeEvent()
+        event = SomeOtherEvent()
 
         events.service_connection(a, Event)
         events.post(event)
 
-        assert not b.poll(0)
+        assert not b.poll(0.01)
 
-    def test_reads_event_sent_through_pipe_and_posts_them(
-        self, recorded_callback
+    def test_posts_event_received_at_serviced_connection(
+        self, recorded_callback, event
     ):
         a, b = Pipe()
 
         events.service_connection(a)
-        events.register(Event, recorded_callback)
+        events.subscribe(type(event), recorded_callback)
 
-        b.send((Event(), None))
+        b.send(event)
         for _ in range(100):
             if recorded_callback.called:
                 return  # success
-            time.sleep(1 / 100)
+            time.sleep(0.01)
         assert False  # no callback
 
-    def test_posts_events_sent_through_pipe_with_key(self, recorded_callback):
+    def test_pipe_does_not_get_event_after_service_stops(self, event):
         a, b = Pipe()
-
-        events.service_connection(a)
-        events.register(Event.ABC, recorded_callback)
-
-        b.send((Event(), "ABC"))
-        for _ in range(100):
-            if recorded_callback.called:
-                return  # success
-            time.sleep(1 / 100)
-        assert False  # no callback
-
-    def test_pipe_does_not_get_event_after_service_stops(self):
-        a, b = Pipe()
-        events.service_connection(a, Event)
+        events.service_connection(a, type(event))
 
         events.stop_connection_service(a)
-        events.post(Event())
+        events.post(event)
 
-        assert not b.poll(0)
-
-
-class TestHandlerDecorator:
-    class ExampleUsage:
-        field: int = 0
-
-        @eventhandler(SomeEvent)
-        def field_incrementer(self, event):
-            self.field += 1
-
-        @eventhandler(SomeEvent)
-        def some_dummy_method(self, event):
-            pass
-
-        @eventhandler(SomeOtherEvent)
-        def another_dummy_method(self, event):
-            pass
-
-        @eventhandler(SomeOtherEvent.A)
-        def keyed_handler(self, event):
-            pass
-
-    @pytest.mark.parametrize(
-        "fn, expected_key",
-        (
-            (ExampleUsage.field_incrementer, (SomeEvent, None)),
-            (ExampleUsage.some_dummy_method, (SomeEvent, None)),
-            (ExampleUsage.another_dummy_method, (SomeOtherEvent, None)),
-            (ExampleUsage.keyed_handler, (SomeOtherEvent, "A")),
-        ),
-    )
-    def test_handler_marks_methods_on_type_object(self, fn, expected_key):
-        assert expected_key == getattr(fn, _HANDLER_INJECTION_ATTRIBUTE)
-
-    def test_all_marked_handlers_can_be_found_on_an_instance(self):
-        instance = self.ExampleUsage()
-        fns = [
-            instance.field_incrementer,
-            instance.some_dummy_method,
-            instance.another_dummy_method,
-            instance.keyed_handler,
-        ]
-        discovered = []
-        for handlers in events.find_eventhandlers(instance).values():
-            discovered.extend(handlers)
-        for fn in fns:
-            assert fn in discovered
-
-    def test_methods_marked_as_handlers_can_be_called_normally(self):
-        inst = self.ExampleUsage()
-        inst.field_incrementer(SomeEvent())
-
-        assert inst.field == 1
-
-    def test_methods_discovered_by_events_module_are_bound_to_the_given_instance(
-        self,
-    ):
-        inst = self.ExampleUsage()
-        handlers = events.find_eventhandlers(inst)
-        for handler_ in handlers[(SomeEvent, None)]:
-            handler_(SomeEvent())
-
-        assert inst.field == 1
-
-
-class TestEvent:
-    def test_attr_lookup_on_type_returns_a_key_value(self):
-        assert Event.A == (Event, "A")
-
-    def test_keys_can_be_limited_by_a_set_of_strings(self):
-        class LimitedEvent(Event):
-            key_options = {"A", "B", "C"}
-
-        assert LimitedEvent.A == (LimitedEvent, "A")
-        with pytest.raises(ValueError):
-            error = LimitedEvent.D
-
-    def test_keys_can_be_mapped_to_other_values_with_a_class(self):
-        class KeyMap:
-            A = 1
-            B = 2
-            C = 3
-
-        class MappedEvent(Event):
-            key_options = KeyMap
-
-        assert MappedEvent.A == (MappedEvent, 1)
-        with pytest.raises(AttributeError):
-            error = MappedEvent.D
-
-    def test_keys_can_be_mapped_to_other_values_with_a_dict(self):
-        map_ = {
-            "A": 1,
-            "B": 2,
-            "C": 3,
-        }
-
-        class MappedEvent(Event):
-            key_options = map_
-
-        assert MappedEvent.B == (MappedEvent, 2)
-        with pytest.raises(KeyError):
-            error = MappedEvent.D
-
-    def test_default_init_with_args(self):
-        class MyEvent(Event):
-            __slots__ = ["field1", "field2"]
-
-        event = MyEvent(1, 2)
-
-        assert 1 == event.field1 and 2 == event.field2
-
-    def test_default_init_with_kwargs(self):
-        class MyEvent(Event):
-            __slots__ = ["field1", "field2"]
-
-        event = MyEvent(field2=1, field1=2)
-
-        assert 2 == event.field1 and 1 == event.field2
-
-    def test_default_init_with_both_args_and_kwargs_raises_value_error(self):
-        class MyEvent(Event):
-            __slots__ = ["field1", "field2"]
-
-        with pytest.raises(ValueError):
-            MyEvent(1, field2=2)
-
-
-class TestModule:
-    @pytest.fixture
-    def handler_container(self):
-        container = HandlerContainer()
-        events.register_marked(container)
-        return container
-
-    def test_normal_event_should_be_called(self, handler_container):
-        events.post(Event())
-
-        assert 1 == handler_container.calls[Event]
-
-    def test_normal_event_should_not_be_called(self, handler_container):
-        class OtherEvent(Event):
-            pass
-
-        events.post(OtherEvent())
-
-        assert 0 == handler_container.calls[Event]
-
-    def test_keyed_event_should_be_called(self, handler_container):
-        events.post(KeyedEvent(), key="ABC")
-
-        assert 1 == handler_container.calls[KeyedEvent]
-
-    def test_keyed_event_should_not_be_called(self, handler_container):
-        events.post(KeyedEvent(), key="CBA")
-
-        assert 0 == handler_container.calls[KeyedEvent]
-
-    def test_key_handler_maps_with_keys(self, handler_container):
-        events.post(KeyDown(ModifierKeys(False, False, False)), key=Keys.J)
-
-        assert 1 == handler_container.calls[KeyDown]
+        assert not b.poll(0.001)
 
 
 class HandlerContainer:
     def __init__(self):
-        self.calls = defaultdict(int)
+        self.record = {
+            Event: 0,
+            DataEvent: 0,
+            TupleEvent: 0,
+            SomeOtherEvent: 0,
+        }
 
-    @eventhandler(Event)
-    def some_event_handler(self, _):
-        self.calls[Event] += 1
+    def _record_event(self, event):
+        self.record[type(event)] += 1
 
-    @eventhandler(KeyedEvent.ABC)
-    def keyed_event_handler(self, _):
-        self.calls[KeyedEvent] += 1
+    @events.handler(Event)
+    def event_handler(self, event):
+        self._record_event(event)
 
-    @eventhandler(KeyDown.J)
-    def j_down_handler(self, _):
-        self.calls[KeyDown] += 1
+    @events.handler(DataEvent)
+    def data_event_handler(self, event):
+        self._record_event(event)
+
+    @events.handler(TupleEvent)
+    def tuple_event_handler(self, event):
+        self._record_event(event)
+
+    @events.handler(SomeOtherEvent)
+    def some_other_handler(self, event):
+        self._record_event(event)
+
+
+class TestHandlerDecorator:
+    def test_should_not_delegate_to_handlers(self, event):
+        container = HandlerContainer()
+
+        events.post(event)
+
+        assert container.record[type(event)] == 0
+
+    def test_should_delegate_to_handlers(self, event):
+        container = HandlerContainer()
+        events.subscribe_obj(container)
+
+        events.post(event)
+
+        assert container.record[type(event)] == 1
+
+    def test_should_stop_after_unsubscribing(self, event):
+        container = HandlerContainer()
+        events.subscribe_obj(container)
+
+        events.unsubscribe_obj(container)
+        events.post(event)
+
+        assert container.record[type(event)] == 0
+
+    def test_multiple_instances(self, event):
+        c1 = HandlerContainer()
+        c2 = HandlerContainer()
+        type_ = type(event)
+
+        events.subscribe_obj(c1)
+        events.post(event)
+        assert c1.record[type_] == 1 and c2.record[type_] == 0
+
+        events.subscribe_obj(c2)
+        events.post(event)
+        assert c1.record[type_] == 2 and c2.record[type_] == 1
+
+        events.unsubscribe_obj(c1)
+        events.post(event)
+        assert c1.record[type_] == 2 and c2.record[type_] == 2
+
+    def test_methods_marked_as_handlers_can_be_called_normally(self):
+        container = HandlerContainer()
+        container.event_handler(Event())
+
+        assert container.record[Event] == 1

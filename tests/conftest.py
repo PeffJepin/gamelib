@@ -55,7 +55,7 @@ class RecordedCallback:
         return [a[0] for a in self.args]
 
     def register(self, event_key):
-        events.register(event_key, self)
+        events.subscribe(event_key, self)
 
     def await_called(self, num_times_called, timeout=5):
         ts = time.time()
@@ -66,6 +66,15 @@ class RecordedCallback:
             f"Target times called = {num_times_called}. "
             f"Current times called = {self.called}"
         )
+
+    def await_silence(self, timeout=0.1, _max_timeout=5):
+        ts = time.time()
+        while time.time() < ts + _max_timeout:
+            try:
+                self.wait_for_response(timeout=timeout)
+            except TimeoutError:
+                return
+        raise TimeoutError(f"Still getting callbacks after {_max_timeout=}s")
 
     def wait_for_response(self, timeout=5, n=1):
         start = self.called

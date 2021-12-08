@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import multiprocessing as mp
 import traceback
-from typing import Type
+from typing import Type, NamedTuple
 
 from . import export_globals, import_globals
 from .. import events
@@ -30,7 +30,7 @@ class System:
             Only applicable if running in a process. System must have
             a reference to its runner for ipc.
         """
-        events.register_marked(self)
+        events.subscribe_obj(self)
         self._runner = runner
         self._running = True
 
@@ -40,9 +40,9 @@ class System:
     def stop(self):
         """Makes sure System stops handling events when no longer in use."""
         self._running = False
-        events.unregister_marked(self)
+        events.unsubscribe_obj(self)
 
-    def raise_event(self, event, key=None):
+    def raise_event(self, event):
         """Simply posts the event if this System is running locally,
         otherwise passes the event to this systems SystemRunner so it
         can be piped back to the main process.
@@ -50,16 +50,15 @@ class System:
         Parameters
         ----------
         event : Event
-        key : Hashable
         """
         if self._runner is None:
             # main process can just post events
-            events.post(event, key)
+            events.post(event)
         else:
             # systems running in a process should delegate to the runner.
-            self._runner.outgoing_events.append((event, key))
+            self._runner.outgoing_events.append(event)
 
-    @events.eventhandler(Update)
+    @events.handler(Update)
     def _update_handler(self, _):
         self.update()
         self.raise_event(SystemUpdateComplete(type(self)))
@@ -87,7 +86,7 @@ class SystemRunner(mp.Process):
     def start(self):
         """Starts the process and signs up with the events module."""
         super().start()
-        handler_types = events.find_eventhandlers(self._system).keys()
+        handler_types = events.find_marked_handlers(self._system).keys()
         events.service_connection(self.conn, *handler_types)
 
     def main(self, ecs_globals):
@@ -117,30 +116,26 @@ class SystemRunner(mp.Process):
     def join(self, timeout=None):
         """Sends the stop code to the child and stops
         communications before joining."""
-        self.conn.send((SystemStop(), None))
+        self.conn.send(SystemStop())
         super().join(timeout)
         events.stop_connection_service(self.conn)
 
     def _poll(self):
         while self.outgoing_events:
-            event_key_pair = self.outgoing_events.pop(0)
-            self._child_conn.send(event_key_pair)
+            self._child_conn.send(self.outgoing_events.pop(0))
 
         if not self._child_conn.poll(0):
             return
 
-        message = self._child_conn.recv()
-        (event, key) = message
-        events.post(event, key=key)
+        event = self._child_conn.recv()
+        events.post(event)
 
         if isinstance(event, SystemStop):
             self._running = False
 
 
-class SystemUpdateComplete(events.Event):
+class SystemUpdateComplete(NamedTuple):
     """Posted to the main process after a system finishes
     handling an Update event."""
-
-    __slots__ = ["system"]
 
     system: Type[System]
