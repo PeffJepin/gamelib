@@ -68,20 +68,20 @@ class TestSchedule:
     def test_scheduled_callbacks(self):
         cbs = [RecordedCallback() for _ in range(5)]
         schedule = Schedule(
-            (0.01, cbs[0]),
-            (0.001, cbs[1]),
-            (0.05, cbs[2]),
-            (0.005, cbs[3]),
-            (0.09, cbs[4]),
+            (0.001, cbs[0]),
+            (0.002, cbs[1]),
+            (0.003, cbs[2]),
+            (0.004, cbs[3]),
+            (0.005, cbs[4]),
         )
 
         do_for(0.1, schedule.update)
 
-        expected = [10, 100, 2, 20, 1]
+        expected = [100, 50, 33, 25, 20]
         actual = [cb.called for cb in cbs]
         diffs = [abs(v1 - v2) for v1, v2 in zip(expected, actual)]
         print(diffs)
-        assert all(d < 2 for d in diffs)
+        assert all(d < 4 for d in diffs)
 
     def test_remove_from_schedule(self, recorded_callback):
         schedule = Schedule((0.001, recorded_callback))
@@ -97,7 +97,7 @@ class TestSchedule:
 
         do_for(0.01, schedule.update)
 
-        assert 9 <= recorded_callback.called <= 11
+        assert 7 <= recorded_callback.called <= 12
 
     def test_schedule_once(self, recorded_callback):
         schedule = Schedule()
