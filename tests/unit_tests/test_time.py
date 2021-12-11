@@ -16,6 +16,7 @@ def do_for(t, func):
         func()
 
 
+@pytest.mark.ignore_github
 class TestTimer:
     def test_tick_sets_next_time(self):
         timer = Timer()
@@ -64,6 +65,7 @@ class TestTimer:
         assert_almost_equal(time.time() + 1/Timer.default_rate, timer2.next)
 
 
+@pytest.mark.ignore_github
 class TestSchedule:
     def test_scheduled_callbacks(self):
         cbs = [RecordedCallback() for _ in range(5)]

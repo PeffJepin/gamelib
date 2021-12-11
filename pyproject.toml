@@ -7,6 +7,7 @@ testpaths = [
     "tests",
 ]
 addopts = ["--no-header"]
+markers = ["ignore_github"]
 
 [tool.black]
 line-length = 79
