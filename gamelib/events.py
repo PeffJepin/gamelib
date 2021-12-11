@@ -270,6 +270,8 @@ class _ConnectionAdapter:
         self._running = False
 
     def _poll(self):
+        """Mainloop for a polling thread."""
+
         self._running = True
         while self._running:
             try:
@@ -288,10 +290,16 @@ class _ConnectionAdapter:
                     raise e
 
     def start(self):
+        """Start the thread"""
+
         self.thread.start()
 
     def stop(self):
+        """Stop the thread"""
+
         self._running = False
 
     def __call__(self, event):
+        """Handles event by passing through the pipe."""
+
         self.conn.send(event)

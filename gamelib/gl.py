@@ -1,3 +1,8 @@
+"""This module is largely just a namespace for OpenGL constants.
+
+The dtype variables map to numpy structured dtypes representing the OpenGL
+data model.
+"""
 import numpy as np
 
 # noinspection PyUnresolvedReferences

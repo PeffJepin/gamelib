@@ -1,3 +1,14 @@
+"""The _window module is the interface with moderngl_window dependency.
+This is responsible for polling for user input and translating the window
+events into gamelib events and provides the OpenGL context.
+
+Notes
+-----
+Link to the docs for the moderngl_window package.
+
+https://moderngl-window.readthedocs.io/en/latest/
+"""
+
 import moderngl
 import logging
 import moderngl_window as mglw
@@ -15,9 +26,10 @@ _frames_offset = 0
 _button_type_lookup = dict()
 _input_type_lookup = dict()
 _poll_for_input = ""
+_mouse_position = [0, 0]
 
 # pooling so swap_buffers doesn't post events directly
-_queued_input = []  
+_queued_input = []
 # moderngl_window BaseWindow doesn't have an event polling function,
 # instead the events are polled when the buffers are swapped. I'd rather
 # not have the two coupled together, but since different windows have
@@ -36,17 +48,45 @@ _polling_function_lookup = {
 }
 
 
-def init(headless=False, **config):
+def create(headless=False, **config):
+    """Initialize the window and construct mappings between the window
+    providers constants and the gamelib constants.
+
+    Parameters
+    ----------
+    headless : bool, optional
+        Create a context with no window.
+    **config : Any
+        "gl_version": (3, 3),
+        "class": "moderngl_window.context.pygame2.Window",
+        "size": (1280, 720),
+        "aspect_ratio": 16 / 9,
+        "fullscreen": False,
+        "resizable": True,
+        "title": "ModernGL Window",
+        "vsync": True,
+        "cursor": True,
+        "samples": 0
+
+    Notes
+    -----
+    A link to more detailed documentation.
+
+    https://moderngl-window.readthedocs.io/en/latest/reference/settings.conf.settings.html
+    """
+
     global _window
     global _frames_offset
     if _window is not None:
         _frames_offset = _window.frames
         return
 
+    # decide which window class to use
     if "class" not in config:
         config["class"] = "moderngl_window.context.pygame2.Window"
     if headless:
         config["class"] = "moderngl_window.context.headless.Window"
+
     if config["class"] == "moderngl_window.context.glfw.Window":
         # polling for events needs glfw in namespace for eval
         # see _polling_function_lookup
@@ -77,31 +117,65 @@ def init(headless=False, **config):
         for name, window_provider_value in vars(_window.keys).items()
         if (input_type_enum := getattr(input.Keyboard, name, None))
     }
-
     _hook_window_events()
 
 
 def swap_buffers():
+    """Swap framebuffer."""
+
     _window.swap_buffers()
 
 
-def clear(*args, **kwargs):
-    _window.clear(*args, **kwargs)
+def clear(red=0.0, blue=0.0, green=0.0, alpha=0.0, depth=1.0, viewport=None):
+    """Clears the framebuffer. The float values should be on a range
+    from 0 - 1.
+
+    Parameters
+    ----------
+    red : float
+    blue : float
+    green : float
+    alpha : float
+    depth : float
+    viewport : tuple
+    """
+    _window.clear(red, green, blue, alpha, depth, viewport)
 
 
-def frame():
+def frames():
+    """The current number of frames this window has rendered.
+    This is reset by subsequent calls to create.
+
+    Returns
+    -------
+    int
+    """
+
     return _window.frames - _frames_offset
 
 
 def close():
+    """Close the window."""
+
     _window.close()
 
 
 def is_running():
+    """Hook for a main loop.
+
+    Returns
+    -------
+    bool
+        The close function will cause this to return False
+    """
+
     return not _window.is_closing
 
 
 def post_input():
+    """Gathers input from the window provider and posts it into the gamelib
+    event system."""
+
     eval(_poll_for_input, {}, {"self": _window})
     while _queued_input:
         events.post(_queued_input.pop(0))
@@ -109,6 +183,11 @@ def post_input():
 
 
 def dispatch_is_pressed_events():
+    """Checks each mouse button for state and posts events accordingly.
+    Instead of checking all the keys this will only check keys which have
+    been subscribed to with the input module currently.
+    """
+
     for key_enum in input.monitored_key_states:
         mglw_key = getattr(_window.keys, key_enum.name, None)
 
@@ -119,18 +198,44 @@ def dispatch_is_pressed_events():
         if _window.is_key_pressed(mglw_key):
             events.post(input.KeyIsPressed(key_enum, _get_modifiers()))
 
+    if _window.mouse_states.left:
+        events.post(
+            input.MouseIsPressed(
+                *_mouse_position, button=input.MouseButton.LEFT
+            )
+        )
+    elif _window.mouse_states.right:
+        events.post(
+            input.MouseIsPressed(
+                *_mouse_position, button=input.MouseButton.RIGHT
+            )
+        )
+    elif _window.mouse_states.middle:
+        events.post(
+            input.MouseIsPressed(
+                *_mouse_position, button=input.MouseButton.MIDDLE
+            )
+        )
+
 
 def _get_buttons():
+    """Gets the state of the mouse buttons."""
+
     m = _window.mouse_states
     return input.Buttons(m.left, m.right, m.middle)
 
 
 def _get_modifiers():
+    """Gets the state of the modifier keys."""
+
     mods = _window.modifiers
     return input.Modifiers(mods.shift, mods.ctrl, mods.alt)
 
 
 def _hook_window_events():
+    """Defines functions to be integrated with the window that will
+    adapt the window providers user input events into gamelib events."""
+
     def _broadcast_key_event(key, action, modifiers):
         key = _input_type_lookup.get(key)
         modifiers = input.Modifiers(
@@ -153,10 +258,12 @@ def _hook_window_events():
         _queued_input.append(event)
 
     def _broadcast_mouse_motion_event(x, y, dx, dy):
+        _mouse_position[0], _mouse_position[1] = x, y
         event = input.MouseMotion(x, y, dx, dy)
         _queued_input.append(event)
 
     def _broadcast_mouse_drag_event(x, y, dx, dy):
+        _mouse_position[0], _mouse_position[1] = x, y
         event = input.MouseDrag(x, y, dx, dy, buttons=_get_buttons())
         _queued_input.append(event)
 

@@ -24,7 +24,7 @@ class TestTimer:
 
         timer.tick(rate)
 
-        assert_almost_equal(time.time() + 1/rate, timer.next)
+        assert_almost_equal(time.time() + 1 / rate, timer.next)
 
     def test_tick_sleeps_until_next(self):
         timer = Timer()
@@ -41,7 +41,7 @@ class TestTimer:
         timer.tick(30)
         time.sleep(0.01)
 
-        assert_almost_equal(1/30 - 0.01, timer.remaining())
+        assert_almost_equal(1 / 30 - 0.01, timer.remaining())
 
     def test_remaining_given_now_as_arg(self):
         timer = Timer()
@@ -49,7 +49,7 @@ class TestTimer:
         timer.tick(60)
         remaining = timer.remaining(now=time.time() + 0.01)
 
-        assert_almost_equal(1/60 - 0.01, remaining)
+        assert_almost_equal(1 / 60 - 0.01, remaining)
 
     def test_now(self):
         assert_almost_equal(time.time(), Timer.now())
@@ -59,10 +59,10 @@ class TestTimer:
         timer2 = Timer()
 
         timer1.tick()
-        assert_almost_equal(time.time() + 1/120, timer1.next)
+        assert_almost_equal(time.time() + 1 / 120, timer1.next)
 
         timer2.tick()
-        assert_almost_equal(time.time() + 1/Timer.default_rate, timer2.next)
+        assert_almost_equal(time.time() + timer2.internal_dt, timer2.next)
 
 
 @pytest.mark.ignore_github

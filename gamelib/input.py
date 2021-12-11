@@ -67,11 +67,11 @@ class InputSchema:
             The general format for an input handler looks like:
                 (input_type, *optional, callback)
 
-            input_type 
+            input_type
                 should map to either Keyboard.*, MouseButton.* or Mouse.*
-            *optional 
+            *optional
                 args should define action/modifiers where applicable.
-            callback 
+            callback
                 the function that will handle the event described.
 
         enable : bool, optional
