@@ -4,7 +4,8 @@ from typing import NamedTuple, Any
 import numpy as np
 import pytest
 
-from gamelib import Update, events
+from gamelib import events
+from gamelib.events import Update
 from gamelib.ecs import EntityDestroyed
 from gamelib.ecs.environment import Environment
 from gamelib.ecs.system import SystemUpdateComplete, System
@@ -207,7 +208,7 @@ class TestEnvironment:
         events.subscribe(SystemUpdateComplete, recorded_callback)
 
         with ExampleEnvironment() as env:
-            events.post(Update())
+            events.post(Update(0))
 
             expected_number_of_calls = len(env.PROCESS_SYSTEMS) + len(
                 env.LOCAL_SYSTEMS

@@ -6,11 +6,13 @@ import gamelib
 
 from gamelib import gl
 from gamelib import shaders
+from gamelib import _window
 
 
 @pytest.fixture(autouse=True, scope="module")
 def init_ctx():
-    yield gamelib.init(headless=True).ctx
+    gamelib.init(headless=True)
+    yield _window.context
     gamelib.exit()
 
 

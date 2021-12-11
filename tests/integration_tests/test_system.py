@@ -3,9 +3,9 @@ from typing import NamedTuple, Any
 
 import pytest
 
-from gamelib import SystemStop, Update, events
+from gamelib import events
 from gamelib.ecs import _EcsGlobals
-from gamelib.events import handler
+from gamelib.events import handler, Update, SystemStop
 from gamelib.ecs.component import Component
 from gamelib.ecs.system import (
     SystemUpdateComplete,
@@ -19,7 +19,7 @@ class TestSystemInProcess:
         with self.system_tester(ExampleSystem):
             recorded_callback.register(Response)
 
-            events.post(Update())
+            events.post(Update(0))
             recorded_callback.await_called(1)
 
             assert recorded_callback.event == Response("updated")
@@ -35,7 +35,7 @@ class TestSystemInProcess:
     ):
         with self.system_tester(ExampleSystem):
             recorded_callback.register(SystemUpdateComplete)
-            events.post(Update())
+            events.post(Update(0))
 
             recorded_callback.await_called(1)
             assert (
@@ -69,7 +69,7 @@ class TestSystemInProcess:
         with self.system_tester(SyncTestingSystem) as runner:
             instance = Component1(0, 0, entity=0)
 
-            events.post(Update())
+            events.post(Update(0))
             for _ in range(1_000):
                 with Component1.locks:
                     instance.val1 += 1
@@ -81,7 +81,7 @@ class TestSystemInProcess:
         with self.system_tester(SyncTestingSystem) as runner:
             instance = Component1(0, 0, entity=0)
 
-            events.post(Update())
+            events.post(Update(0))
             for _ in range(1_000):
                 with instance.locks:
                     instance.val1 += 1

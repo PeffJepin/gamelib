@@ -39,6 +39,9 @@ from typing import NamedTuple
 
 from gamelib import events
 
+_key_states_to_monitor_lookup = dict()
+monitored_key_states = set()
+
 
 class InputSchema:
     """InputSchema serves as both an adapter to the events module for
@@ -50,10 +53,10 @@ class InputSchema:
 
     Multiple InputSchema objects can be active at once, as such a single
     input event can be consumed by multiple InputSchema instances, though
-    each instance can only hold one callback for a particular event.
+    each instance can only hold one callback for a particular event mapping.
     """
 
-    def __init__(self, *schema):
+    def __init__(self, *schema, enable=True):
         """Map different types of user input to callback functions.
         The schema will immediately begin handling input events that get
         posted by the window.
@@ -64,9 +67,15 @@ class InputSchema:
             The general format for an input handler looks like:
                 (input_type, *optional, callback)
 
-            input_type should map to either Keyboard, MouseButton or Mouse.
-            *optional args should define action/modifiers where applicable.
-            callback is the function that will handle the event described.
+            input_type 
+                should map to either Keyboard.*, MouseButton.* or Mouse.*
+            *optional 
+                args should define action/modifiers where applicable.
+            callback 
+                the function that will handle the event described.
+
+        enable : bool, optional
+            Optional flag - Should this schema be enabled on __init__ ?
 
         Example
         -------
@@ -87,9 +96,9 @@ class InputSchema:
         ...     # MouseDrag event. Actions and modifiers not applicable.
         ...     ("drag", handler),
         ...
-        ...     # When applicable, action default = Action.PRESS
-        ...     ("a", handler),
-        ...     ("mouse3", handler),
+        ...     # When applicable, the default action is Action.PRESS.
+        ...     ("a", handler),  # KeyDown, Keyboard.A
+        ...     ("mouse3", handler),  # MouseDown, MouseButton.MIDDLE
         ...
         ...     # Modifiers can be grouped into an iterable for clarity
         ...     ("a", "release", ("shift", "ctrl"), handler),
@@ -109,7 +118,8 @@ class InputSchema:
 
         self._callback_tree = _InputHandlerLookup()
         self._process_schema(*schema)
-        self.enable()
+        if enable:
+            self.enable()
 
     def enable(self, *, master=False):
         """Subscribes this Schema to handle input events posted to the
@@ -120,23 +130,29 @@ class InputSchema:
         master : bool, optional
             If True, then this will clear all other input handlers
             subscribed to handle input events, such that this instance
-            will be the only event handler.
+            will be the only remaining event handler.
 
             This may be inadvisable if you're handling any _InputEvent
             types directly through the events.py machinery, as this will
-            remove those handlers as well.
+            remove those handlers as well, not just InputSchemas.
         """
 
         if master:
             events.clear_handlers(*self._events)
         for event in self._events:
             events.subscribe(event, self)
+        _key_states_to_monitor_lookup[self] = set(
+            self._callback_tree.key_is_pressed_types
+        )
+        _update_monitored_key_states()
 
     def disable(self):
         """Stop this instance from handling input events."""
 
         for event in self._events:
             events.unsubscribe(event, self)
+        del _key_states_to_monitor_lookup[self]
+        _update_monitored_key_states()
 
     @property
     def _events(self):
@@ -177,6 +193,7 @@ class InputSchema:
                 elif isinstance(arg, Action):
                     action = arg
 
+            action = action or Action.PRESS
             mods = Modifiers(
                 Modifier.SHIFT in mods,
                 Modifier.CTRL in mods,
@@ -203,9 +220,18 @@ class InputSchema:
             callback()
 
 
+def _update_monitored_key_states():
+    global monitored_key_states
+    sets = tuple(_key_states_to_monitor_lookup.values())
+    if len(sets) == 1:
+        monitored_key_states = sets[0]
+    else:
+        monitored_key_states = set.union(*sets)
+
+
 class _StringMappingEnum(Enum):
     """Internal class for managing the mapping of many possible strings to
-    and Enum field."""
+    an Enum field."""
 
     @classmethod
     def map_string(cls, string):
@@ -350,7 +376,7 @@ class Action(_StringMappingEnum):
 
     PRESS = ("press", "down", "on_press", "on_down")
     RELEASE = ("release", "up", "on_release", "on_up")
-    IS_PRESSED = ("pressed", "ispressed", "isdown", "is_pressed", "is_down")
+    IS_PRESSED = ("pressed", "is_pressed", "is_down")
 
 
 class Modifiers(NamedTuple):
@@ -421,7 +447,7 @@ class MouseUp(_InputEvent):
 
 @dataclass
 class MouseIsPressed(_InputEvent):
-    """Key state is extracted once per frame for this event."""
+    """Key state is extracted once per tick for this event."""
 
     x: int
     y: int
@@ -477,11 +503,9 @@ class _InputHandlerLookup:
         }
 
     def register(
-        self, callback, input_enum, modifiers=Modifiers(), action=None
+        self, callback, input_enum, modifiers=Modifiers(), action=Action.PRESS
     ):
         if input_enum in Keyboard:
-            if action is None:
-                action = Action.PRESS
             if action == Action.PRESS:
                 self._lookup[KeyDown][input_enum][modifiers] = callback
             elif action == Action.RELEASE:
@@ -490,8 +514,6 @@ class _InputHandlerLookup:
                 self._lookup[KeyIsPressed][input_enum][modifiers] = callback
 
         elif input_enum in MouseButton:
-            if action is None:
-                action = Action.PRESS
             if action == Action.PRESS:
                 self._lookup[MouseDown][input_enum] = callback
             elif action == Action.RELEASE:
@@ -527,3 +549,11 @@ class _InputHandlerLookup:
                 return self._lookup[event_type][enum].get(modifiers)
             return self._lookup[event_type].get(enum)
         return self._lookup[event_type]
+
+    @property
+    def mouse_is_pressed_types(self):
+        return self._lookup[MouseIsPressed].keys()
+
+    @property
+    def key_is_pressed_types(self):
+        return self._lookup[KeyIsPressed].keys()

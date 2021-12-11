@@ -9,11 +9,19 @@ class VerboseSchema(InputSchema):
         super().__call__(event)
 
 
-window = gamelib.init()
-schema = VerboseSchema()
+def dummy():
+    pass
 
 
-while not window.is_closing:
-    window.clear()
-    window.swap_buffers()
+# is_pressed event wont be checked it nothing is subscribed
+schema = VerboseSchema(
+    ("a", "is_pressed", dummy),
+    ("s", "is_pressed", dummy),
+    ("d", "is_pressed", dummy),
+    ("f", "is_pressed", dummy)
+)
+
+
+gamelib.config._max_tps = 5
+gamelib.run()
 

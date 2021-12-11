@@ -1,5 +1,6 @@
 import pytest
 
+from gamelib import input
 from gamelib.input import (
     Keyboard,
     Modifier,
@@ -20,6 +21,12 @@ from gamelib.input import (
 )
 
 from tests.conftest import RecordedCallback
+
+
+@pytest.fixture(autouse=True, scope="function")
+def cleanup():
+    input._key_states_to_monitor_lookup.clear()
+    input.monitored_key_states.clear()
 
 
 @pytest.mark.parametrize(
@@ -53,6 +60,36 @@ def test_mapping_strings_to_enum(string, expected):
     enum = expected.__class__
     assert enum.map_string(string) == expected
     assert expected == string
+
+
+def test_tracking_keys_to_monitor(recorded_callback):
+    dummy_func = recorded_callback
+    schema1 = InputSchema(
+        ("a", "is_pressed", dummy_func),
+        ("b", "is_pressed", dummy_func),
+        ("c", "is_pressed", dummy_func),
+        enable=False,
+    )
+    schema2 = InputSchema(
+        ("c", "is_pressed", dummy_func),
+        ("d", "is_pressed", dummy_func),
+        ("e", "is_pressed", dummy_func),
+        enable=False,
+    )
+
+    assert len(input.monitored_key_states) == 0
+
+    schema1.enable()
+    expected = {Keyboard.A, Keyboard.B, Keyboard.C}
+    assert expected == input.monitored_key_states
+
+    schema2.enable()
+    expected = {Keyboard.A, Keyboard.B, Keyboard.C, Keyboard.D, Keyboard.E}
+    assert expected == input.monitored_key_states
+
+    schema1.disable()
+    expected = {Keyboard.C, Keyboard.D, Keyboard.E}
+    assert expected == input.monitored_key_states
 
 
 class TestKeyEvent:

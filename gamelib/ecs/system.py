@@ -6,7 +6,7 @@ from typing import Type, NamedTuple
 
 from . import export_globals, import_globals
 from .. import events
-from .. import Update, SystemStop
+from ..events import Update, SystemStop
 
 
 class System:

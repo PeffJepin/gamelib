@@ -25,11 +25,9 @@ Subscribe and unsubscribe functions as event handlers:
 >>> def do_update(event):
 ...     print(f"dt={event.dt}")
 ...
-
 >>> subscribe(Update, do_update)
 >>> post(Update(0.01))
 dt=0.01
-
 >>> unsubscribe(Update, do_update)
 >>> post(Update(0.01))
 >>> # no callback
@@ -45,7 +43,6 @@ Using an object as a container for handlers:
 >>> system = System()
 >>> post(Update(0.01))
 >>> # nothing happens
-
 >>> subscribe_obj(system)
 >>> post(Update(0.01))
 Doing update, dt=0.01
@@ -57,12 +54,34 @@ import inspect
 import threading
 from collections import defaultdict
 from dataclasses import dataclass
+from enum import Enum
 from multiprocessing.connection import Connection
 from typing import Callable, Sequence, NamedTuple
 
 _HANDLER_INJECTION_ATTRIBUTE = "_gamelib_handler_"
 _event_handlers = defaultdict(list)
 _adapters = dict()
+
+
+class Update(NamedTuple):
+    dt: float
+
+
+class Signal(Enum):
+    """
+    Todo: Signal class for events with no args. Should be interchangable
+        with event and offer fast ipc support.
+    """
+
+    pass
+
+
+class SystemStop:
+    pass
+
+
+class Quit:
+    pass
 
 
 def post(event):
@@ -108,7 +127,7 @@ def unsubscribe(event_type, *callbacks) -> None:
 
 
 def subscribe_obj(obj):
-    """Finds methods bound to and object that have been marked as event
+    """Finds methods bound to an object that have been marked as event
     handlers and subscribe them to appropriate events.
 
     Parameters
@@ -154,11 +173,11 @@ def clear_handlers(*event_types):
 
 def handler(event_type):
     """Decorator to mark methods of a class as event handlers. See tests or
-    the module docstring for examples.
+    the module docstring above for examples.
 
     It is probably not advisable to create a large number of instances of
     a class using these markers, as the module is not optimized for adding and
-    removing events frequently.
+    removing handlers frequently.
 
     This is better served to organize several handlers together on a system
     that itself might operate over many instances of objects.
@@ -186,7 +205,7 @@ def find_marked_handlers(obj):
     Returns
     -------
     dict[type, list[Callable]]:
-        A dictionary mapping handler event types to the actual callbacks.
+        A dictionary mapping event types to the actual handlers.
     """
 
     handlers = defaultdict(list)
@@ -204,7 +223,7 @@ def find_marked_handlers(obj):
 def service_connection(conn, *event_types, poll=True):
     """Send the specified event_types over the given connection when they
     are posted. If `poll` is True (the default) then this will also poll the
-    pipe and read events out of it, posting them after receiving.
+    pipe and read events out of it, posting them after being received.
 
     Parameters
     ----------
@@ -218,7 +237,7 @@ def service_connection(conn, *event_types, poll=True):
     for type_ in event_types:
         subscribe(type_, adapter)
     if poll:
-        adapter.thread.start()
+        adapter.start()
 
 
 def stop_connection_service(conn):
@@ -267,6 +286,9 @@ class _ConnectionAdapter:
                     raise message
                 else:
                     raise e
+
+    def start(self):
+        self.thread.start()
 
     def stop(self):
         self._running = False

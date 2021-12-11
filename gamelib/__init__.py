@@ -1,42 +1,11 @@
-import pathlib
+from ._core import init
+from ._core import update
+from ._core import run
+from ._core import exit
+from ._core import is_running
+from ._core import config
+from ._core import set_draw_commands
+from ._core import schedule
+from ._core import threaded_schedule
+from ._window import clear
 
-import moderngl
-import moderngl_window
-import pygame
-
-from ._window import make_window
-from . import resources
-from . import gl
-
-window: moderngl_window.BaseWindow
-context: moderngl.Context
-
-
-def init(headless=False, **config):
-    global window
-    global context
-
-    pygame.init()
-    resources.discover_directories(pathlib.Path.cwd())
-    window = make_window(headless=headless, **config)
-    context = window.ctx
-    return window
-
-
-def exit():
-    if window:
-        window.close()
-    if context:
-        context.release()
-
-
-class Update:
-    pass
-
-
-class SystemStop:
-    pass
-
-
-class Quit:
-    pass
