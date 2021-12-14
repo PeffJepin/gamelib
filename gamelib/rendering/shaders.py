@@ -3,9 +3,9 @@ from typing import NamedTuple, List
 
 import numpy as np
 
-from . import gl
-from . import _window
-from . import resources
+from gamelib.rendering import gl
+from gamelib import _window
+from gamelib import resources
 
 
 class AutoBuffer:
@@ -186,7 +186,14 @@ class OrderedIndexBuffer(AutoBuffer):
     indices.
     """
 
-    def __init__(self, order, num_entities=0, max_entities=1000, **kwargs):
+    def __init__(
+        self,
+        order,
+        num_entities=0,
+        max_entities=1000,
+        repitition_offset=None,
+        **kwargs,
+    ):
         """Initialize the buffer.
 
         Parameters
@@ -208,7 +215,8 @@ class OrderedIndexBuffer(AutoBuffer):
         self._num_entities = 0
         self.indices_per_entity = len(order)
         order = np.array(order, "u4")
-        index_offsets = np.array(np.arange(max_entities) * (max(order) + 1))
+        offset = repitition_offset or max(order) + 1
+        index_offsets = np.array(np.arange(max_entities) * offset)
         index_offsets = np.repeat(index_offsets, len(order))
         indices = np.tile(order, max_entities) + index_offsets
         super().__init__(

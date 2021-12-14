@@ -7,7 +7,7 @@ import numpy as np
 import pygame
 from PIL import Image
 
-from gamelib.textures import (
+from gamelib.rendering.textures import (
     TextureAtlas,
     ImageAsset,
     SimpleRowAllocator,

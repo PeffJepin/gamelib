@@ -109,8 +109,8 @@ def update():
         if _commands != _dummy_func:
             _window.clear()
             _commands()
-        _window.post_input()
         dt = _update_timer.tick(config.tps)
+        _window.post_input(dt)
         events.post(events.Update(dt))
         schedule.update()
 

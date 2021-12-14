@@ -216,8 +216,11 @@ class InputSchema:
 
         try:
             callback(event)
-        except TypeError:
-            callback()
+        except TypeError as e:
+            if "required positional argument" in e.args[0]:
+                callback()
+            else:
+                raise e
 
 
 def _update_monitored_key_states():
@@ -382,18 +385,18 @@ class Action(_StringMappingEnum):
 class Modifiers(NamedTuple):
     """Tuple passed around with input events that care about Modifier keys."""
 
-    SHIFT: bool = False
-    CTRL: bool = False
-    ALT: bool = False
+    shift: bool = False
+    ctrl: bool = False
+    alt: bool = False
 
 
 class Buttons(NamedTuple):
     """Tuple passed around with input events that care about MouseButton
     state."""
 
-    LEFT: bool = False
-    RIGHT: bool = False
-    MIDDLE: bool = False
+    left: bool = False
+    right: bool = False
+    middle: bool = False
 
 
 @dataclass
@@ -425,6 +428,7 @@ class KeyIsPressed(_InputEvent):
 
     key: Keyboard
     modifiers: Modifiers
+    dt: float = 0
 
 
 @dataclass
@@ -452,6 +456,7 @@ class MouseIsPressed(_InputEvent):
     x: int
     y: int
     button: MouseButton
+    dt: float = 0
 
 
 @dataclass

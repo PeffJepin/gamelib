@@ -9,7 +9,7 @@ import pytest
 from PIL import Image
 
 from gamelib import events
-from gamelib.textures import ImageAsset
+from gamelib.rendering.textures import ImageAsset
 
 
 _counter = itertools.count(0)
@@ -197,3 +197,8 @@ def glsl_dtype_and_input(request):
     # against the minimum supported glsl version #version 330
     dtype, value = request.param
     yield dtype, value
+
+
+def assert_all_equal(iter1, iter2):
+    for v1, v2 in zip(iter1, iter2):
+        assert v1 == pytest.approx(v2, rel=1e-6)

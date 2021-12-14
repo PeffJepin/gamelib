@@ -172,17 +172,17 @@ def is_running():
     return not _window.is_closing
 
 
-def post_input():
+def post_input(dt):
     """Gathers input from the window provider and posts it into the gamelib
     event system."""
 
     eval(_poll_for_input, {}, {"self": _window})
     while _queued_input:
         events.post(_queued_input.pop(0))
-    dispatch_is_pressed_events()
+    dispatch_is_pressed_events(dt)
 
 
-def dispatch_is_pressed_events():
+def dispatch_is_pressed_events(dt):
     """Checks each mouse button for state and posts events accordingly.
     Instead of checking all the keys this will only check keys which have
     been subscribed to with the input module currently.
@@ -196,24 +196,24 @@ def dispatch_is_pressed_events():
             continue
 
         if _window.is_key_pressed(mglw_key):
-            events.post(input.KeyIsPressed(key_enum, _get_modifiers()))
+            events.post(input.KeyIsPressed(key_enum, _get_modifiers(), dt))
 
     if _window.mouse_states.left:
         events.post(
             input.MouseIsPressed(
-                *_mouse_position, button=input.MouseButton.LEFT
+                *_mouse_position, button=input.MouseButton.LEFT, dt=dt
             )
         )
     elif _window.mouse_states.right:
         events.post(
             input.MouseIsPressed(
-                *_mouse_position, button=input.MouseButton.RIGHT
+                *_mouse_position, button=input.MouseButton.RIGHT, dt=dt
             )
         )
     elif _window.mouse_states.middle:
         events.post(
             input.MouseIsPressed(
-                *_mouse_position, button=input.MouseButton.MIDDLE
+                *_mouse_position, button=input.MouseButton.MIDDLE, dt=dt
             )
         )
 
@@ -277,3 +277,19 @@ def _hook_window_events():
     _window.mouse_position_event_func = _broadcast_mouse_motion_event
     _window.mouse_drag_event_func = _broadcast_mouse_drag_event
     _window.mouse_scroll_event_func = _broadcast_mouse_wheel_event
+
+
+def get_context():
+    return context
+
+
+def aspect_ratio():
+    return _window.aspect_ratio
+
+
+def get_width():
+    return _window.width
+
+
+def get_height():
+    return _window.height

@@ -1,6 +1,6 @@
 import pytest
 
-from gamelib.textures import (
+from gamelib.rendering.textures import (
     ImageAsset,
     TextureAtlas,
     SimpleRowAllocator,

@@ -4,8 +4,7 @@ import time
 import numpy as np
 
 import gamelib
-from gamelib import shaders
-
+from gamelib.rendering import shaders
 
 gamelib.init()
 

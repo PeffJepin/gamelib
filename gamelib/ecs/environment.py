@@ -9,7 +9,7 @@ from gamelib.events import handler
 from . import EntityDestroyed, StaticGlobals, reset_globals
 from .component import Component
 from .system import System, SystemRunner
-from gamelib.textures import TextureAtlas
+from gamelib.rendering.textures import TextureAtlas
 
 
 class UpdateComplete(NamedTuple):

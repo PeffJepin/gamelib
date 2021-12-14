@@ -4,8 +4,7 @@ import numpy as np
 import pytest
 import gamelib
 
-from gamelib import gl
-from gamelib import shaders
+from gamelib.rendering import shaders, gl
 from gamelib import _window
 
 

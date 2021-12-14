@@ -1,6 +1,6 @@
 import gamelib
 import numpy as np
-from gamelib import shaders
+from gamelib.rendering import shaders
 
 gamelib.init()
 shader = shaders.ShaderProgram(

@@ -128,10 +128,10 @@ class TestKeyEvent:
         "mods, expected_index",
         (
             (Modifiers(), 0),
-            (Modifiers(SHIFT=True), 1),
-            (Modifiers(SHIFT=True, CTRL=True), 2),
-            (Modifiers(SHIFT=True, ALT=True), 3),
-            (Modifiers(SHIFT=True, ALT=True, CTRL=True), 4),
+            (Modifiers(shift=True), 1),
+            (Modifiers(shift=True, ctrl=True), 2),
+            (Modifiers(shift=True, alt=True), 3),
+            (Modifiers(shift=True, alt=True, ctrl=True), 4),
         ),
     )
     def test_with_modifiers(self, mods, expected_index):
@@ -154,15 +154,15 @@ class TestKeyEvent:
         "event, callback_index",
         (
             (KeyDown(Keyboard.A, Modifiers()), 0),
-            (KeyDown(Keyboard.A, Modifiers(SHIFT=True, ALT=True)), 1),
-            (KeyDown(Keyboard.A, Modifiers(ALT=True)), 2),
+            (KeyDown(Keyboard.A, Modifiers(shift=True, alt=True)), 1),
+            (KeyDown(Keyboard.A, Modifiers(alt=True)), 2),
             (KeyIsPressed(Keyboard.A, Modifiers()), 3),
             (KeyUp(Keyboard.A, Modifiers()), 4),
-            (KeyUp(Keyboard.A, Modifiers(SHIFT=True, ALT=True, CTRL=True)), 5),
-            (KeyUp(Keyboard.A, Modifiers(CTRL=True)), 6),
+            (KeyUp(Keyboard.A, Modifiers(shift=True, alt=True, ctrl=True)), 5),
+            (KeyUp(Keyboard.A, Modifiers(ctrl=True)), 6),
             (KeyDown(Keyboard.B, Modifiers()), 7),
-            (KeyDown(Keyboard.B, Modifiers(SHIFT=True, ALT=True)), 8),
-            (KeyDown(Keyboard.B, Modifiers(ALT=True)), 9),
+            (KeyDown(Keyboard.B, Modifiers(shift=True, alt=True)), 8),
+            (KeyDown(Keyboard.B, Modifiers(alt=True)), 9),
         ),
     )
     def test_all_options_integrated(self, event, callback_index):

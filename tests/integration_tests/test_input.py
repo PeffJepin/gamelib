@@ -28,7 +28,7 @@ def cleanup():
         ("mouse1", MouseDown(0, 0, MouseButton.LEFT)),
         ("scroll", MouseScroll(0, 0)),
         ("motion", MouseMotion(0, 0, 0, 0)),
-        ("drag", MouseDrag(0, 0, 0, 0, Buttons(LEFT=True))),
+        ("drag", MouseDrag(0, 0, 0, 0, Buttons(left=True))),
     )
 )
 def schema_str_and_event(request):
