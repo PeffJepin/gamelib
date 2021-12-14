@@ -1,5 +1,7 @@
 import numpy as np
 
+from .rendering import gl
+
 
 class GridMesh:
     def __init__(self, lod=1, scale=1):
@@ -38,7 +40,7 @@ def normalize(vector: np.ndarray):
 class Mat3:
     # https://mathworld.wolfram.com/RotationMatrix.html
     @staticmethod
-    def rotate_about_x(theta, dtype="f4"):
+    def rotate_about_x(theta, dtype=gl.mat3):
         theta = _radians(theta)
         return np.array(
             (
@@ -50,7 +52,7 @@ class Mat3:
         ).T
 
     @staticmethod
-    def rotate_about_y(theta, dtype="f4"):
+    def rotate_about_y(theta, dtype=gl.mat3):
         theta = _radians(theta)
         return np.array(
             (
@@ -62,7 +64,7 @@ class Mat3:
         ).T
 
     @staticmethod
-    def rotate_about_z(theta, dtype="f4"):
+    def rotate_about_z(theta, dtype=gl.mat3):
         theta = _radians(theta)
         return np.array(
             (
@@ -74,11 +76,11 @@ class Mat3:
         ).T
 
     @staticmethod
-    def rotate_about_axis(axis, theta, dtype="f4"):
+    def rotate_about_axis(axis, theta, dtype=gl.mat3):
         # https://mathworld.wolfram.com/RodriguesRotationFormula.html
 
         theta = _radians(theta)
-        axis = np.asarray(axis, dtype)
+        axis = np.asarray(axis, "f4")
         normalize(axis)
 
         cos = np.cos(theta)
@@ -98,12 +100,12 @@ class Mat3:
 
 class Mat4:
     @staticmethod
-    def look_at_transform(eye, look_at, up, dtype="f4"):
+    def look_at_transform(eye, look_at, up, dtype=gl.mat4):
         # https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/gluLookAt.xml
 
-        eye = np.asarray(eye, "f4")
-        look_at = np.asarray(look_at, "f4")
-        up = np.asarray(up, "f4")
+        eye = np.asarray(eye)
+        look_at = np.asarray(look_at)
+        up = np.asarray(up)
 
         forward = normalize(look_at - eye)
         right = normalize(np.cross(forward, up))
@@ -120,7 +122,7 @@ class Mat4:
         ).T
 
     @staticmethod
-    def perspective_transform(fovy, aspect, near, far, dtype="f4"):
+    def perspective_transform(fovy, aspect, near, far, dtype=gl.mat4):
         # https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/gluPerspective.xml
 
         f = _cotangent(fovy * np.pi / 360)
@@ -139,7 +141,7 @@ class Mat4:
         ).T
 
     @staticmethod
-    def orthogonal_transform(left, right, bottom, top, near, far, dtype="f4"):
+    def orthogonal_transform(left, right, bottom, top, near, far, dtype=gl.mat4):
         # https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/glOrtho.xml
 
         a = 2 / (right - left)

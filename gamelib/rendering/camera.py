@@ -2,6 +2,7 @@ import numpy as np
 
 import gamelib
 
+from . import gl
 from ..input import InputSchema
 from ..geometry import normalize, Mat3, Mat4
 
@@ -20,14 +21,14 @@ class BaseCamera:
 
         self._near = near
         self._far = far
-        self._pos = np.asarray(pos, "f4")
-        self._up = np.asarray(up, "f4")
-        self._dir = np.asarray(dir, "f4")
+        self._pos = np.asarray(pos, gl.vec3)
+        self._up = np.asarray(up, gl.vec3)
+        self._dir = np.asarray(dir, gl.vec3)
         normalize(self._dir)
         normalize(self._up)
 
-        self.view = np.empty((4, 4), "f4")
-        self.proj = np.empty((4, 4), "f4")
+        self.view = np.empty(1, gl.mat4)
+        self.proj = np.empty(1, gl.mat4)
         self._update_view()
         self._update_proj()
 
