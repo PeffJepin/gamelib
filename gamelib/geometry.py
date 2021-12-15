@@ -141,7 +141,9 @@ class Mat4:
         ).T
 
     @staticmethod
-    def orthogonal_transform(left, right, bottom, top, near, far, dtype=gl.mat4):
+    def orthogonal_transform(
+        left, right, bottom, top, near, far, dtype=gl.mat4
+    ):
         # https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/glOrtho.xml
 
         a = 2 / (right - left)
