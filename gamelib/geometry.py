@@ -1,3 +1,5 @@
+from typing import Sequence
+
 import numpy as np
 
 from .rendering import gl
@@ -5,6 +7,17 @@ from .rendering import gl
 
 class GridMesh:
     def __init__(self, lod=1, scale=1):
+        """Creates a quad subdivided `lod` number of times and scaled up
+        based on given scale. Z = 0 resulting in a plane along the x-y axis.
+
+        Parameters
+        ----------
+        lod : int
+            How many times to subdivide the plane.
+        scale : float
+            How much space the place occupies. Scale 1000 == 1000x1000
+        """
+
         x = y = np.linspace(0, scale, lod + 1)
         xv, yv = np.meshgrid(x, y)
         self.vertices = np.empty(xv.size * 3, float)
@@ -23,24 +36,58 @@ class GridMesh:
                 ptr += order.size
 
 
-def _cotangent(x):
-    # x should be in radians
-    return np.cos(x) / np.sin(x)
-
-
 def _radians(theta):
+    """Transform theta from degrees to radians."""
+
     return theta * np.pi / 180
 
 
-def normalize(vector: np.ndarray):
-    vector /= np.sqrt(np.sum(vector ** 2))
+def normalize(vector):
+    """Normalize the given vector in place.
+
+    Parameters
+    ----------
+    vector : np.ndarray
+
+    Returns
+    -------
+    np.ndarray:
+        returns vector for convenience.
+    """
+
+    magnitude = np.sqrt(np.sum(vector ** 2))
+    if magnitude == 0:
+        return vector
+    vector /= magnitude
     return vector
 
 
 class Mat3:
-    # https://mathworld.wolfram.com/RotationMatrix.html
+    """
+    Namespace for 3x3 transformation matrices.
+
+    Notes
+    -----
+    https://mathworld.wolfram.com/RotationMatrix.html
+    https://mathworld.wolfram.com/RodriguesRotationFormula.html
+    """
+
     @staticmethod
     def rotate_about_x(theta, dtype=gl.mat3):
+        """Create a 3x3 rotation matrix.
+
+        Parameters
+        ----------
+        theta : float
+            Rotation angle given in degrees. (Right hand coordinate system)
+        dtype : np.dtype | str
+            np compatible dtype for return matrix
+
+        Returns
+        -------
+        np.ndarray
+        """
+
         theta = _radians(theta)
         return np.array(
             (
@@ -53,6 +100,20 @@ class Mat3:
 
     @staticmethod
     def rotate_about_y(theta, dtype=gl.mat3):
+        """Create a 3x3 rotation matrix.
+
+        Parameters
+        ----------
+        theta : float
+            Rotation angle in degrees. (Right hand coordinate system)
+        dtype : np.dtype | str
+            np compatible dtype for matrix
+
+        Returns
+        -------
+        np.ndarray
+        """
+
         theta = _radians(theta)
         return np.array(
             (
@@ -65,6 +126,20 @@ class Mat3:
 
     @staticmethod
     def rotate_about_z(theta, dtype=gl.mat3):
+        """Create a 3x3 rotation matrix.
+
+        Parameters
+        ----------
+        theta : float
+            Rotation angle in degrees. (Right hand coordinate system)
+        dtype : np.dtype | str
+            np compatible dtype for matrix
+
+        Returns
+        -------
+        np.ndarray
+        """
+
         theta = _radians(theta)
         return np.array(
             (
@@ -77,7 +152,21 @@ class Mat3:
 
     @staticmethod
     def rotate_about_axis(axis, theta, dtype=gl.mat3):
-        # https://mathworld.wolfram.com/RodriguesRotationFormula.html
+        """Create a 3x3 rotation matrix.
+
+        Parameters
+        ----------
+        axis : Sequence
+            3 component vector, the axis about which the rotation will occur.
+        theta : float
+            Rotation angle in degrees. (Right hand coordinate system)
+        dtype : np.dtype | str
+            np compatible dtype for matrix
+
+        Returns
+        -------
+        np.ndarray
+        """
 
         theta = _radians(theta)
         axis = np.asarray(axis, "f4")
@@ -99,13 +188,35 @@ class Mat3:
 
 
 class Mat4:
+    """Namespace for 4x4 transformation matrices."""
+
     @staticmethod
     def look_at_transform(eye, look_at, up, dtype=gl.mat4):
-        # https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/gluLookAt.xml
+        """Transform vertices as if viewed from eye, towards look_at.
 
-        eye = np.asarray(eye)
-        look_at = np.asarray(look_at)
-        up = np.asarray(up)
+        Parameters
+        ----------
+        eye : Sequence
+            The xyz position of the "eye" or viewing a scene of vertices.
+        look_at : Sequence
+            The xyz position that the eye should look at.
+        up : Sequence
+            The xyz vector that points up.
+        dtype : np.dtype | str
+            Numpy compatible dtype for the return matrix.
+
+        Returns
+        -------
+        np.ndarray
+
+        Notes
+        -----
+        https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/gluLookAt.xml
+        """
+
+        eye = np.asarray(eye, gl.float)
+        look_at = np.asarray(look_at, gl.float)
+        up = np.asarray(up, gl.float)
 
         forward = normalize(look_at - eye)
         right = normalize(np.cross(forward, up))
@@ -123,9 +234,32 @@ class Mat4:
 
     @staticmethod
     def perspective_transform(fovy, aspect, near, far, dtype=gl.mat4):
-        # https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/gluPerspective.xml
+        """Create a 4x4 perspective projection matrix.
 
-        f = _cotangent(fovy * np.pi / 360)
+        Parameters
+        ----------
+        fovy : float
+            Y direction field of view given in degrees.
+        aspect : float
+            Camera aspect ratio.
+        near : float
+            Distance to the near clipping plane.
+        far : float
+            Distance to the far clipping plane.
+        dtype : np.dtype | str
+            Numpy compatible dtype for the return matrix.
+
+        Returns
+        -------
+        np.ndarray
+
+        Notes
+        -----
+        https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/gluPerspective.xml
+        """
+
+        theta = fovy * np.pi / 360
+        f = np.cos(theta) / np.sin(theta)
         a = near + far
         b = near - far
         c = near * far
@@ -144,7 +278,33 @@ class Mat4:
     def orthogonal_transform(
         left, right, bottom, top, near, far, dtype=gl.mat4
     ):
-        # https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/glOrtho.xml
+        """Create a 4x4 orthogonal projection matrix.
+
+        Parameters
+        ----------
+        left : float
+            Left bounds of the projection.
+        right : float
+            Right bounds of the projection.
+        bottom : float
+            Bottom bounds of the projection.
+        top : float
+            Top bounds of the projection.
+        near : float
+            Distance to the near clipping plane.
+        far : float
+            Distance to the far clipping plane.
+        dtype : np.ndarray | str
+            Any Numpy compatible dtype for the return matrix.
+
+        Returns
+        -------
+        np.ndarray
+
+        Notes
+        -----
+        https://www.khronos.org/registry/OpenGL-Refpages/gl2.1/xhtml/glOrtho.xml
+        """
 
         a = 2 / (right - left)
         b = 2 / (top - bottom)
