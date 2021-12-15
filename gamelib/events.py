@@ -50,13 +50,15 @@ Doing update, dt=0.01
 
 from __future__ import annotations
 
-import inspect
 import threading
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from multiprocessing.connection import Connection
-from typing import Callable, Sequence, NamedTuple
+from typing import Sequence, NamedTuple
+
+from . import utils
+
 
 _HANDLER_INJECTION_ATTRIBUTE = "_gamelib_handler_"
 _event_handlers = defaultdict(list)
@@ -187,11 +189,7 @@ def handler(event_type):
     event_type : type
     """
 
-    def inner(fn):
-        setattr(fn, _HANDLER_INJECTION_ATTRIBUTE, event_type)
-        return fn
-
-    return inner
+    return utils.MethodMarker(type="event", extra=event_type)
 
 
 def find_marked_handlers(obj):
@@ -209,14 +207,8 @@ def find_marked_handlers(obj):
     """
 
     handlers = defaultdict(list)
-    for name, attr in inspect.getmembers(obj):
-        if not isinstance(attr, Callable):
-            continue
-        if (
-            event_type := getattr(attr, _HANDLER_INJECTION_ATTRIBUTE, None)
-        ) is None:
-            continue
-        handlers[event_type].append(attr)
+    for mark, method in utils.MethodMarker.lookup(obj, type="event").items():
+        handlers[mark.extra].append(method)
     return handlers
 
 
