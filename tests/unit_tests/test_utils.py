@@ -25,8 +25,9 @@ def test_finding_marked_methods():
     expected = {
         MethodMarker(ExampleClass.get_value): instance.get_value,
         MethodMarker(ExampleClass.triple_value): instance.triple_value,
-        MethodMarker(ExampleClass.with_extra, type="testing", extra=5):
-            instance.with_extra,
+        MethodMarker(
+            ExampleClass.with_extra, type="testing", extra=5
+        ): instance.with_extra,
     }
     assert MethodMarker.lookup(instance) == expected
 
@@ -34,8 +35,9 @@ def test_finding_marked_methods():
 def test_finding_marked_methods_by_type_attr():
     instance = ExampleClass(10)
     expected = {
-        MethodMarker(ExampleClass.with_extra, type="testing", extra=5):
-            instance.with_extra
+        MethodMarker(
+            ExampleClass.with_extra, type="testing", extra=5
+        ): instance.with_extra
     }
     assert MethodMarker.lookup(instance, type="testing") == expected
 
@@ -65,7 +67,8 @@ class CustomExample:
 def test_creating_a_new_decorator():
     instance = CustomExample()
     expected = {
-        MethodMarker(CustomExample.custom_decorator, type="my_type",
-                     extra="hello"): instance.custom_decorator
+        MethodMarker(
+            CustomExample.custom_decorator, type="my_type", extra="hello"
+        ): instance.custom_decorator
     }
     assert MethodMarker.lookup(instance, type="my_type") == expected

@@ -1,5 +1,3 @@
-
-
 class MethodMarker:
     """This class meant to be used as a decorator to mark methods. It may be
     later extended to be used on functions as well as bound methods.
@@ -107,8 +105,10 @@ class MethodMarker:
         return hash((self.func, self.type, self.extra))
 
     def __repr__(self):
-        return f"<MethodMarker(owner={self.owner.__name__}, name" \
-               f"={self.name!r})>"
+        return (
+            f"<MethodMarker(owner={self.owner.__name__}, name"
+            f"={self.name!r})>"
+        )
 
     @classmethod
     def lookup(cls, instance, type=None):

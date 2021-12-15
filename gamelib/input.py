@@ -9,7 +9,9 @@ be used.
 
 Example
 -------
-A barebones example - see documentation below for further detail.
+
+A barebones InputSchema example - see documentation below for further detail.
+InputSchema is best used to map specific keystrokes to specific functions.
 
 >>> def attack(event):
 ...     # perform attack
@@ -31,15 +33,41 @@ A barebones example - see documentation below for further detail.
 >>> schema.enable(master=True)
 >>> # multiple schemas can be active at once
 >>> # master option means this will be the only schema processing input
+
+Similar to the events.py module, there is an API for marking event handling
+functions with decorators. This is preferable to using InputSchema if you want
+to have one function handle an entire class of event, rather than delegating
+based off of keystroke.
+
+>>> class ExampleController:
+...     @KeyDown.handler
+...     def handle_entire_keydown_event(self, event):
+...         # this handles fires for every key type
+...         pass
+...
+...     @KeyIsPressed.handler(iter("ASDW"))
+...     def handle_a_range_of_keys(self, event):
+...         # you can still narrow down which keys are being watched.
+...         pass
+...
+>>> # The ExampleController class must me enabled to start handling events.
+>>> controller = ExampleController()
+>>> enable_handlers(controller)
+...
+>>> # Disable the controller like so:
+>>> disable_handlers(controller)
 """
+
 from collections import defaultdict
 from enum import Enum
 from dataclasses import dataclass
-from typing import NamedTuple
+from typing import NamedTuple, Callable, Iterable
 
 from gamelib import events
+from gamelib import utils
 
 _key_states_to_monitor_lookup = dict()
+_decorated_schemas = dict()
 monitored_key_states = set()
 
 
@@ -399,16 +427,113 @@ class Buttons(NamedTuple):
     middle: bool = False
 
 
+class _InputHandlerTag(NamedTuple):
+    """Data involved with marking a method as an InputEvent handler."""
+
+    event_type: type
+    enums: tuple
+
+
+def enable_handlers(obj):
+    """Given an object with marked input handlers, creates an input schema and
+    enables it.
+
+    Using marked handlers is more suitable for a case where you want one
+    function to handle many different keystrokes, where using the
+    InputSchema API is more suited towards delegating many individual
+    keystrokes to many individual functions.
+
+    Parameters
+    ----------
+    obj : object
+        The marked object.
+
+    Examples
+    --------
+
+    A basic example. See tests for many more.
+
+    >>> class MyController:
+    ...     @KeyDown.handler
+    ...     def handle_key_down(self, event):
+    ...         pass
+    ...
+    >>> obj = MyController()
+    >>> enable_handlers(obj)
+    >>> # obj will now handle KeyDown events.
+    """
+
+    if obj in _decorated_schemas:
+        schema = _decorated_schemas[obj]
+    else:
+        marked_handlers = utils.MethodMarker.lookup(obj, type="input")
+        schema = _DecoratedInputSchema(
+            *[
+                (mark.extra, handler)
+                for mark, handler in marked_handlers.items()
+            ]
+        )
+        _decorated_schemas[obj] = schema
+    schema.enable()
+
+
+def disable_handlers(obj):
+    """Disables an object previously enabled with the `enable_handlers`
+    function. Safe to call even when obj isn't active.
+
+    Parameters
+    ----------
+    obj : object
+        An instance of a class marked with InputEvent.handler decoractors.
+    """
+
+    if obj not in _decorated_schemas:
+        return
+    schema = _decorated_schemas.pop(obj)
+    schema.disable()
+
+
 @dataclass
 class _InputEvent:
-    """Base class for convenience."""
+    ENUM = None
+    ACTION = None
 
-    pass
+    @classmethod
+    def handler(cls, input_enums=None):
+        """See `enable_handlers` or the module docstring for example usage."""
+
+        # might get called from _InputEvent.handler like:
+        #   @_InputEvent.handler
+        #   def handler(event):
+        # in which case input_enums is the `handler` function.
+        func = None
+        if isinstance(input_enums, Callable):
+            func, input_enums = input_enums, None
+
+        if not input_enums and cls.ENUM != Mouse:
+            enums = tuple(cls.ENUM)
+        elif isinstance(input_enums, str):
+            enums = (cls.ENUM.map_string(input_enums),)
+        elif isinstance(input_enums, Keyboard):
+            enums = (input_enums,)
+        elif isinstance(input_enums, Iterable):
+            enums = tuple(
+                e if isinstance(e, cls.ENUM) else cls.ENUM.map_string(e)
+                for e in input_enums
+            )
+        else:
+            enums = None
+
+        tag = _InputHandlerTag(cls, enums)
+        return utils.MethodMarker(func, type="input", extra=tag)
 
 
 @dataclass
 class KeyDown(_InputEvent):
     """Posted from window provider."""
+
+    ENUM = Keyboard
+    ACTION = Action.PRESS
 
     key: Keyboard
     modifiers: Modifiers
@@ -418,6 +543,9 @@ class KeyDown(_InputEvent):
 class KeyUp(_InputEvent):
     """Posted from window provider."""
 
+    ENUM = Keyboard
+    ACTION = Action.RELEASE
+
     key: Keyboard
     modifiers: Modifiers
 
@@ -425,6 +553,9 @@ class KeyUp(_InputEvent):
 @dataclass
 class KeyIsPressed(_InputEvent):
     """Key state is extracted once per frame for this event."""
+
+    ENUM = Keyboard
+    ACTION = Action.IS_PRESSED
 
     key: Keyboard
     modifiers: Modifiers
@@ -435,6 +566,9 @@ class KeyIsPressed(_InputEvent):
 class MouseDown(_InputEvent):
     """Posted from window provider."""
 
+    ENUM = MouseButton
+    ACTION = Action.PRESS
+
     x: int
     y: int
     button: MouseButton
@@ -444,6 +578,9 @@ class MouseDown(_InputEvent):
 class MouseUp(_InputEvent):
     """Posted from window provider."""
 
+    ENUM = MouseButton
+    ACTION = Action.RELEASE
+
     x: int
     y: int
     button: MouseButton
@@ -452,6 +589,9 @@ class MouseUp(_InputEvent):
 @dataclass
 class MouseIsPressed(_InputEvent):
     """Key state is extracted once per tick for this event."""
+
+    ENUM = MouseButton
+    ACTION = Action.IS_PRESSED
 
     x: int
     y: int
@@ -463,6 +603,8 @@ class MouseIsPressed(_InputEvent):
 class MouseMotion(_InputEvent):
     """Posted from window provider."""
 
+    ENUM = Mouse
+
     x: int
     y: int
     dx: int
@@ -472,6 +614,8 @@ class MouseMotion(_InputEvent):
 @dataclass
 class MouseDrag(_InputEvent):
     """Posted from window provider."""
+
+    ENUM = Mouse
 
     x: int
     y: int
@@ -483,6 +627,8 @@ class MouseDrag(_InputEvent):
 @dataclass
 class MouseScroll(_InputEvent):
     """Posted from window provider. dx not always applicable."""
+
+    ENUM = Mouse
 
     dx: int
     dy: int
@@ -562,3 +708,57 @@ class _InputHandlerLookup:
     @property
     def key_is_pressed_types(self):
         return self._lookup[KeyIsPressed].keys()
+
+
+class _DecoratedInputSchema:
+    """Used internally for managing input handlers marked by the
+    _InputEvent.handler decorator.
+
+    Like InputSchema, but instead of focusing on delegating events to
+    specific callbacks based on event attributes, this implementation is
+    focused on delegating many different keystrokes all to the same handler.
+    """
+
+    def __init__(self, *schema):
+        self._handler_lookup = defaultdict(dict)
+        for (tag, handler) in schema:
+            if tag.enums is None:
+                self._handler_lookup[tag.event_type][None] = handler
+            else:
+                for e in tag.enums:
+                    self._handler_lookup[tag.event_type][e] = handler
+
+    def __call__(self, event):
+        if type(event) not in self._handler_lookup:
+            return
+
+        key = getattr(event, "key", None)
+        button = getattr(event, "button", None)
+        enum = key or button
+        callback = self._handler_lookup[type(event)].get(enum)
+
+        if not callback:
+            return
+        try:
+            callback(event)
+        except TypeError as e:
+            if "required positional argument" in e.args[0]:
+                callback()
+            else:
+                raise e
+
+    def enable(self):
+        for event_type in self._handler_lookup.keys():
+            events.subscribe(event_type, self)
+
+        if handlers := self._handler_lookup.get(KeyIsPressed):
+            _key_states_to_monitor_lookup[self] = set(handlers.keys())
+            _update_monitored_key_states()
+
+    def disable(self):
+        for event_type in self._handler_lookup.keys():
+            events.unsubscribe(event_type, self)
+
+        if self._handler_lookup.get(KeyIsPressed):
+            del _key_states_to_monitor_lookup[self]
+            _update_monitored_key_states()

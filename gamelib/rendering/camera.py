@@ -2,8 +2,9 @@ import numpy as np
 
 import gamelib
 
-from . import gl
-from ..input import InputSchema
+from gamelib import input
+from gamelib.rendering import gl
+from ..input import KeyIsPressed, MouseDrag, MouseScroll
 from ..geometry import normalize, Mat3, Mat4
 
 
@@ -206,28 +207,9 @@ class _FreePerspectiveController:
     def __init__(self, camera: PerspectiveCamera, speed=35):
         self.camera = camera
         self.speed = speed
-        self._schema = InputSchema(
-            # need a input handler decorator for this use case
-            # where one function handles the base event
-            ("a", "is_pressed", self._pan_camera),
-            ("a", "is_pressed", "shift", self._pan_camera),
-            ("s", "is_pressed", self._pan_camera),
-            ("s", "is_pressed", "shift", self._pan_camera),
-            ("d", "is_pressed", self._pan_camera),
-            ("d", "is_pressed", "shift", self._pan_camera),
-            ("w", "is_pressed", self._pan_camera),
-            ("w", "is_pressed", "shift", self._pan_camera),
-            ("left", "is_pressed", self._pan_camera),
-            ("left", "is_pressed", "shift", self._pan_camera),
-            ("right", "is_pressed", self._pan_camera),
-            ("right", "is_pressed", "shift", self._pan_camera),
-            ("up", "is_pressed", self._pan_camera),
-            ("up", "is_pressed", "shift", self._pan_camera),
-            ("down", "is_pressed", self._pan_camera),
-            ("drag", self._rotate_camera),
-            ("scroll", self._z_scroll_camera),
-        )
+        input.enable_handlers(self)
 
+    @KeyIsPressed.handler(iter("asdw"))
     def _pan_camera(self, event):
         if event.key in ("a", "left"):
             vec = self.camera.left
@@ -243,6 +225,7 @@ class _FreePerspectiveController:
         translation = norm * mult * self.speed * event.dt
         self.camera.move(translation)
 
+    @MouseDrag.handler
     def _rotate_camera(self, event):
         if event.dx != 0:
             theta = -event.dx / gamelib.get_width() * self.camera.fov_x
@@ -252,6 +235,7 @@ class _FreePerspectiveController:
             theta = -event.dy / gamelib.get_width() * self.camera.fov_y
             self.camera.rotate(matrix=Mat3.rotate_about_axis(axis, theta))
 
+    @MouseScroll.handler
     def _z_scroll_camera(self, event):
         speed = 1
         translation = -np.array((0, 0, event.dy)) * speed
@@ -262,28 +246,9 @@ class _FreeOrthogonalController:
     def __init__(self, camera: OrthogonalCamera, speed=35):
         self.camera = camera
         self.speed = speed
-        self._schema = InputSchema(
-            # need a input handler decorator for this use case
-            # where one function handles the base event
-            ("a", "is_pressed", self._pan_camera),
-            ("a", "is_pressed", "shift", self._pan_camera),
-            ("s", "is_pressed", self._pan_camera),
-            ("s", "is_pressed", "shift", self._pan_camera),
-            ("d", "is_pressed", self._pan_camera),
-            ("d", "is_pressed", "shift", self._pan_camera),
-            ("w", "is_pressed", self._pan_camera),
-            ("w", "is_pressed", "shift", self._pan_camera),
-            ("left", "is_pressed", self._pan_camera),
-            ("left", "is_pressed", "shift", self._pan_camera),
-            ("right", "is_pressed", self._pan_camera),
-            ("right", "is_pressed", "shift", self._pan_camera),
-            ("up", "is_pressed", self._pan_camera),
-            ("up", "is_pressed", "shift", self._pan_camera),
-            ("down", "is_pressed", self._pan_camera),
-            ("drag", self._rotate_camera),
-            ("scroll", self._z_scroll_camera),
-        )
+        input.enable_handlers(self)
 
+    @KeyIsPressed.handler(iter("asdw"))
     def _pan_camera(self, event):
         if event.key in ("a", "left"):
             vec = self.camera.left
@@ -299,11 +264,13 @@ class _FreeOrthogonalController:
         translation = norm * mult * self.speed * event.dt
         self.camera.move(translation)
 
+    @MouseDrag.handler
     def _rotate_camera(self, event):
         if event.dx != 0:
             theta = -event.dx / gamelib.get_width() * 90
             self.camera.rotate(theta)
 
+    @MouseScroll.handler
     def _z_scroll_camera(self, event):
         scale = 1.05
         if event.dy > 0:
