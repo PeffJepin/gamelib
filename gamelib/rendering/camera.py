@@ -2,109 +2,317 @@ import numpy as np
 
 import gamelib
 
-from gamelib import input
-from gamelib.rendering import gl
-from ..input import KeyIsPressed, MouseDrag, MouseScroll
-from ..geometry import normalize, Mat3, Mat4
+from . import gl
+from .. import input
+from ..input import KeyIsPressed
+from ..input import MouseDrag
+from ..input import MouseScroll
+from ..geometry import normalize
+from ..geometry import Mat3
+from ..geometry import Mat4
 
 
 class BaseCamera:
-    def __init__(
-        self,
-        pos,
-        up,
-        dir,
-        near,
-        far,
-    ):
-        # target/direction are conflicting, one or the other should be
-        # given, and one must be given
+    """A base class for cameras. Subclasses must implement _update_view and
+    _update_proj for updating the view and projection matrices."""
 
+    def __init__(self, pos, up, dir, near, far, controller=None):
+        """Initialize a camera. When a subclass calls super().__init__()
+        _update_proj and _update_view will be called, so be sure the self
+        object has the required attributes bound.
+
+        Parameters
+        ----------
+        pos : Sequence
+            xyz coordinate where the camera is located in world space.
+        up : Sequence
+            xyz up vector for world space.
+        dir : Sequence
+            xyz vector indicate the direction the camera is looking.
+        near : float
+            Distance to the near clipping plane.
+        far : float
+            Distance to the far clipping plane.
+        controller : type
+            A class marked with input handlers. Will be initialized if
+            given and passed `self` as an __init__ argument and can then
+            be toggled with the enable_controller/disable_controller methods.
+        """
+
+        self._view = np.empty(1, gl.mat4)
+        self._proj = np.empty(1, gl.mat4)
+        self._pos = np.asarray(pos, gl.vec3)
+        self._up = normalize(np.asarray(up, gl.vec3))
+        self._dir = normalize(np.asarray(dir, gl.vec3))
         self._near = near
         self._far = far
-        self._pos = np.asarray(pos, gl.vec3)
-        self._up = np.asarray(up, gl.vec3)
-        self._dir = np.asarray(dir, gl.vec3)
-        normalize(self._dir)
-        normalize(self._up)
-
-        self.view = np.empty(1, gl.mat4)
-        self.proj = np.empty(1, gl.mat4)
+        if controller:
+            self._controller = controller(self)
+            self.enable_controller()
+        else:
+            self._controller = None
         self._update_view()
         self._update_proj()
 
     @property
     def _aspect_ratio(self):
+        """Aspect ratio for the camera. Defaults implementation uses the
+        windows aspect ratio.
+
+        Returns
+        -------
+        float
+        """
+
         return gamelib.aspect_ratio()
 
     @property
     def near(self):
+        """Distance to the near clipping plane.
+
+        Returns
+        -------
+        float
+        """
+
         return self._near
 
     @near.setter
     def near(self, value):
+        """Set the near clipping plane and update the projection matrix.
+
+        Parameters
+        ----------
+        value : float
+        """
+
         self._near = value
         self._update_proj()
 
     @property
     def far(self):
+        """Get the distance to the far clipping plane.
+
+        Returns
+        -------
+        float
+        """
+
         return self._far
 
     @far.setter
     def far(self, value):
+        """Sets distance to the far clipping plane and updates the
+        projection matrix.
+
+        Parameters
+        ----------
+        value : float
+        """
+
         self._far = value
         self._update_proj()
 
     @property
     def pos(self):
-        return self._pos
+        """Gets a copy of the camera position.
+
+        Returns
+        -------
+        np.ndarray
+        """
+
+        return self._pos.copy()
 
     @pos.setter
     def pos(self, value):
+        """Sets the camera position and updates the view matrix.
+
+        Parameters
+        ----------
+        value : Sequence
+            xyz coordinate
+        """
+
         self._pos[:] = value
         self._update_view()
 
     @property
     def direction(self):
+        """Gets the direction the camera is facing.
+
+        Returns
+        -------
+        np.ndarray:
+            xyz vector
+        """
+
         return self._dir.copy()
 
     @direction.setter
     def direction(self, value):
+        """Sets and normalizes the camera direction then updates the view
+        matrix.
+
+        Parameters
+        ----------
+        value : Sequence
+            xyz vector for the camera to look towards.
+        """
+
         self._dir[:] = value
         normalize(self._dir)
         self._update_view()
 
     @property
     def up(self):
+        """Gets a copy of the up vector.
+
+        Returns
+        -------
+        np.ndarray:
+            xyz vector
+        """
+
         return self._up.copy()
 
     @up.setter
     def up(self, value):
+        """Sets and normalizes the up vector and updates the view matrix.
+
+        Parameters
+        ----------
+        value : Sequence
+            xyz vector
+        """
+
         self._up[:] = value
         normalize(self._up)
         self._update_view()
 
     @property
+    def down(self):
+        """Gets the down vector.
+
+        Returns
+        -------
+        np.ndarray:
+            xyz vector
+        """
+
+        return -self.up
+
+    @property
     def right(self):
+        """Gets the right vector.
+
+        Returns
+        -------
+        np.ndarray:
+            xyz vector
+        """
+
         return np.cross(self.direction, self.up)
 
     @property
     def left(self):
+        """Gets the left vector.
+
+        Returns
+        -------
+        np.ndarray
+            xyz vector
+        """
+
         return -self.right
 
+    @property
+    def view_matrix(self):
+        """Gets the current view matrix.
+
+        Returns
+        -------
+        np.ndarray:
+            4x4 view matrix
+        """
+
+        return self._view
+
+    @view_matrix.setter
+    def view_matrix(self, mat4):
+        """Sets the view matrix. The matrix is updated in place.
+
+        Parameters
+        ----------
+        mat4 : array-like
+            Most likely a matrix from geometry.Mat4 namespace.
+        """
+
+        self._view[:] = mat4
+
+    @property
+    def projection_matrix(self):
+        """Gets the projection matrix.
+
+        Returns
+        -------
+        np.ndarray:
+            4x4 projection matrix
+        """
+
+        return self._proj
+
+    @projection_matrix.setter
+    def projection_matrix(self, mat4):
+        """Updates the projection matrix in place.
+
+        Parameters
+        ----------
+        mat4 : array-like
+            Most likely a matrix from geometry.Mat4 namespace.
+        """
+
+        self._proj[:] = mat4
+
     def move(self, translation):
+        """Offset current position by given translation.
+
+        Parameters
+        ----------
+        translation : Sequence
+            xyz translation vector
+        """
+
         translation = np.asarray(translation, self._pos.dtype)
         self._pos += translation
         self._update_view()
 
+    def enable_controller(self):
+        """Enable an attached controller to start handling input events."""
+
+        if self._controller:
+            input.enable_handlers(self._controller)
+
+    def disable_controller(self):
+        """Stop handling input events with the attached controller."""
+
+        if self._controller:
+            input.disable_handlers(self._controller)
+
     def _update_view(self):
+        """Set the view_matrix property based on current camera state."""
+
         raise NotImplementedError("Should be implemented in subclasses.")
 
     def _update_proj(self):
+        """Set the projection_matrix property based on current camera state."""
+
         raise NotImplementedError("Should be implemented in subclasses.")
 
 
 class PerspectiveCamera(BaseCamera):
+    """Simple camera for rendering a 3d scene with a perspective projection."""
+
     def __init__(
         self,
         pos,
@@ -113,67 +321,167 @@ class PerspectiveCamera(BaseCamera):
         near=1,
         far=1000,
         up=(0, 0, 1),
-        _controller=None,
+        controller=None,
     ):
-        # target/direction are conflicting, one or the other should be
-        # given, and one must be given
+        """Initialize the camera.
+
+        Parameters
+        ----------
+        pos : Sequence
+            xyz position in world space.
+        dir : Sequence
+            xyz vector the camera is facing - applied locally at the camera.
+        fovy : float
+            y field of view, given in degrees.
+        near : float
+            Distance to the near clipping plane.
+        far : float
+            Distance to the far clipping plane.
+        up : Sequence
+            xyz vector pointing to up in world space.
+        controller : type | bool
+            Can be `True` to activate a default controller. See BaseCamera for
+            more details otherwise.
+        """
 
         self._fov_y = fovy
-        super().__init__(pos, up, dir, near, far)
-        self._controller = _controller or _FreePerspectiveController(self)
+        if controller is True:
+            controller = _FreePerspectiveController
+        super().__init__(pos, up, dir, near, far, controller)
 
     @property
     def fov_y(self):
+        """Get the y field of view.
+
+        Returns
+        -------
+        float
+        """
+
         return self._fov_y
 
     @fov_y.setter
     def fov_y(self, value):
+        """Sets the y field of view and updates projection matrix.
+
+        Parameters
+        ----------
+        value : float
+            Field of view given in degrees.
+        """
+
         self._fov_y = value
         self._update_proj()
 
     @property
     def fov_x(self):
+        """Calculates the x field of view of the camera.
+
+        Returns
+        -------
+        float:
+            Fov given in degrees.
+        """
+
         return self.fov_y * self._aspect_ratio
 
     @fov_x.setter
     def fov_x(self, value):
+        """Updates fov_y given this value as fov_x.
+
+        Parameters
+        ----------
+        value : float
+            Fov given in degrees.
+        """
+
         self.fov_y = value / self._aspect_ratio
 
-    def rotate(self, axis=None, theta=None, matrix=None):
-        if matrix is None:
-            matrix = Mat3.rotate_about_axis(axis, theta)
+    def rotate(self, axis=None, theta=None):
+        """Rotate the cameras direction vector.
+
+        Parameters
+        ----------
+        axis : Sequence, optional
+            xyz vector representing the axis of rotation.
+        theta : float
+            The rotation angle given in degrees.
+            (Right handed coordinate system)
+        """
+
+        matrix = Mat3.rotate_about_axis(axis, theta)
         self.direction = matrix.dot(self.direction)
 
     def _update_view(self):
-        self.view[:] = Mat4.look_at_transform(
+        self.view_matrix = Mat4.look_at_transform(
             self.pos, self.pos + self.direction, self.up
         )
 
     def _update_proj(self):
-        proj = Mat4.perspective_transform(
+        self.projection_matrix = Mat4.perspective_transform(
             self.fov_y, self._aspect_ratio, self.near, self.far
         )
-        self.proj[:] = proj
 
 
 class OrthogonalCamera(BaseCamera):
+    """Simple implementation of a camera with an orthogonal projection."""
+
     def __init__(
-        self, px_per_unit, pos=(0, 0, 10), up=(0, 1, 0), dir=(0, 0, -1)
+        self,
+        px_per_unit,
+        pos=(0, 0, 10),
+        up=(0, 1, 0),
+        dir=(0, 0, -1),
+        controller=None,
     ):
+        """Initialize the camera.
+
+        Parameters
+        ----------
+        px_per_unit : float
+            Ratio of screen pixels per world unit. This effectively controls
+            the "zoom" of the camera.
+        pos : Sequence
+            xyz camera position in world space.
+        up : Sequence
+            xyz vector pointing up in world space.
+        dir : Sequence
+            xyz vector the camera is looking.
+        controller : type | bool
+            Can be `True` to activate a default controller. See BaseCamera for
+            more details otherwise.
+        """
+
         self._left = 0
         self._right = 1
         self._bottom = 0
         self._top = 1
-        super().__init__(pos, up, dir, near=1, far=20)
+        if controller is True:
+            controller = _FreeOrthogonalController
+        super().__init__(pos, up, dir, 1, 20, controller)
         self.px_per_unit = px_per_unit
-        self._controller = _FreeOrthogonalController(self)
 
     @property
     def px_per_unit(self):
+        """Get the current px/unit value.
+
+        Returns
+        -------
+        float
+        """
+
         return self._px_per_unit
 
     @px_per_unit.setter
     def px_per_unit(self, value):
+        """Sets the px/unit ratio and updates the projection matrix
+        accordingly.
+
+        Parameters
+        ----------
+        value : float
+        """
+
         self._px_per_unit = value
         width = gamelib.get_width() / value / 2
         height = gamelib.get_height() / value / 2
@@ -183,8 +491,20 @@ class OrthogonalCamera(BaseCamera):
         self._bottom = -height
         self._update_proj()
 
+    def rotate(self, theta):
+        """Rotates about the axis the camera is facing.
+
+        Parameters
+        ----------
+        theta : float
+            Angle of rotation given in degrees.
+        """
+
+        self.up = Mat3.rotate_about_axis(self.direction, theta).dot(self.up)
+        self._update_view()
+
     def _update_proj(self):
-        self.proj[:] = Mat4.orthogonal_transform(
+        self.projection_matrix = Mat4.orthogonal_transform(
             self._left,
             self._right,
             self._bottom,
@@ -194,80 +514,90 @@ class OrthogonalCamera(BaseCamera):
         )
 
     def _update_view(self):
-        self.view[:] = Mat4.look_at_transform(
+        self.view_matrix = Mat4.look_at_transform(
             self.pos, self.pos + self.direction, self.up
         )
 
-    def rotate(self, theta):
-        self.up = self.up.dot(Mat3.rotate_about_z(theta))
-        self._update_view()
-
 
 class _FreePerspectiveController:
+    """Simple default controller."""
+
     def __init__(self, camera: PerspectiveCamera, speed=35):
         self.camera = camera
         self.speed = speed
-        input.enable_handlers(self)
 
     @KeyIsPressed.handler(iter("asdw"))
     def _pan_camera(self, event):
-        if event.key in ("a", "left"):
-            vec = self.camera.left
-        elif event.key in ("s", "down"):
-            vec = -self.camera.direction
-        elif event.key in ("d", "right"):
-            vec = self.camera.right
-        elif event.key in ("w", "up"):
-            vec = self.camera.direction
-        vec[2] = 0
-        norm = normalize(vec)
-        mult = 2 if event.modifiers.shift else 1
-        translation = norm * mult * self.speed * event.dt
+        if event.key == "a":
+            vector = self.camera.left
+        elif event.key == "s":
+            vector = -self.camera.direction
+        elif event.key == "d":
+            vector = self.camera.right
+        elif event.key == "w":
+            vector = self.camera.direction
+
+        # don't handle z axis movement here
+        vector[2] = 0
+        normalize(vector)
+
+        # move fast with shift being held
+        multiplier = 2 if event.modifiers.shift else 1
+
+        translation = vector * multiplier * self.speed * event.dt
         self.camera.move(translation)
 
     @MouseDrag.handler
     def _rotate_camera(self, event):
         if event.dx != 0:
-            theta = -event.dx / gamelib.get_width() * self.camera.fov_x
-            self.camera.rotate(matrix=Mat3.rotate_about_z(theta))
+            # z rotation for left/right
+            theta = event.dx / gamelib.get_width() * self.camera.fov_x
+            self.camera.rotate((0, 0, 1), theta)
         if event.dy != 0:
+            # rotate along the left/right axis for up/down
             axis = self.camera.right
-            theta = -event.dy / gamelib.get_width() * self.camera.fov_y
-            self.camera.rotate(matrix=Mat3.rotate_about_axis(axis, theta))
+            theta = event.dy / gamelib.get_width() * self.camera.fov_y
+            self.camera.rotate(axis, theta)
 
     @MouseScroll.handler
     def _z_scroll_camera(self, event):
-        speed = 1
-        translation = -np.array((0, 0, event.dy)) * speed
+        scroll_rate = 1
+        translation = -np.array((0, 0, event.dy)) * scroll_rate
         self.camera.move(translation)
 
 
 class _FreeOrthogonalController:
+    """Simple default controller."""
+
     def __init__(self, camera: OrthogonalCamera, speed=35):
         self.camera = camera
         self.speed = speed
-        input.enable_handlers(self)
 
     @KeyIsPressed.handler(iter("asdw"))
     def _pan_camera(self, event):
-        if event.key in ("a", "left"):
-            vec = self.camera.left
-        elif event.key in ("s", "down"):
-            vec = -self.camera.up
-        elif event.key in ("d", "right"):
-            vec = self.camera.right
-        elif event.key in ("w", "up"):
-            vec = self.camera.up
-        vec[2] = 0
-        norm = normalize(vec)
-        mult = 2 if event.modifiers.shift else 1
-        translation = norm * mult * self.speed * event.dt
+        if event.key == "a":
+            vector = self.camera.left
+        elif event.key == "s":
+            vector = self.camera.down
+        elif event.key == "d":
+            vector = self.camera.right
+        elif event.key == "w":
+            vector = self.camera.up
+
+        # eliminate z axis motion. scroll wheel handles this
+        vector[2] = 0
+        normalize(vector)
+
+        # move fast when shift is held
+        multiplier = 2 if event.modifiers.shift else 1
+
+        translation = vector * multiplier * self.speed * event.dt
         self.camera.move(translation)
 
     @MouseDrag.handler
     def _rotate_camera(self, event):
         if event.dx != 0:
-            theta = -event.dx / gamelib.get_width() * 90
+            theta = event.dx / gamelib.get_width() * 90
             self.camera.rotate(theta)
 
     @MouseScroll.handler

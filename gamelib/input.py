@@ -245,7 +245,7 @@ class InputSchema:
         try:
             callback(event)
         except TypeError as e:
-            if "required positional argument" in e.args[0]:
+            if "positional argument" in e.args[0]:
                 callback()
             else:
                 raise e
