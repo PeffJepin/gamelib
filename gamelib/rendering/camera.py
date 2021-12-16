@@ -7,9 +7,9 @@ from .. import input
 from ..input import KeyIsPressed
 from ..input import MouseDrag
 from ..input import MouseScroll
-from ..geometry import normalize
-from ..geometry import Mat3
-from ..geometry import Mat4
+from ..transforms import normalize
+from ..transforms import Mat3
+from ..transforms import Mat4
 
 
 class BaseCamera:
