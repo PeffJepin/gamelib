@@ -1,121 +1,166 @@
+import pytest
 import threading
 import time
 
-import numpy as np
-import pytest
+from gamelib.component import Component
 
-from gamelib import ecs
-from gamelib.ecs import StaticGlobals
-from gamelib.ecs.component import Component
+
+class ExampleComponent(Component):
+    x: float
+    y: float
 
 
 class TestComponent:
-    def test_accessing_the_underlying_array(self):
-        assert isinstance(ExampleComponent.array, np.ndarray)
-        assert max_entities() == len(ExampleComponent.array)
+    @pytest.fixture(autouse=True)
+    def cleanup(self):
+        ExampleComponent.clear()
 
-    def test_late_bind_to_entity(self):
-        instance = ExampleComponent(1, 2)
-        assert instance.val1 is None
-        assert instance.val2 is None
+    def test_creating_a_component(self):
+        component = ExampleComponent(123, 124)
 
-        instance.bind_to_entity(0)
+        assert component.x == 123
+        assert component.y == 124
+        assert 123 in ExampleComponent.x
+        assert 124 in ExampleComponent.y
+        actual = ExampleComponent.get_raw_arrays()[component.id]
+        assert actual["x"], actual["y"] == (123, 124)
 
-        assert instance.val1 == 1
-        assert instance.val2 == 2
+    def test_getting_a_component(self):
+        component = ExampleComponent(1.23, 4.56)
 
-    def test_binding_to_entity_on_init(self):
-        instance = ExampleComponent(1, 2, entity=0)
+        assert ExampleComponent.get(component.id) == component
 
-        assert 1 == instance.val1
-        assert 2 == instance.val2
-        assert 1 == ExampleComponent.array[0]["val1"]
-        assert 2 == ExampleComponent.array[0]["val2"]
+    def test_destroying_a_component(self):
+        component1 = ExampleComponent(0.1234, 0.1234)
+        component2 = ExampleComponent(321, 321)
 
-    def test_changing_data_with_an_instance(self):
-        instance = ExampleComponent(1, 2, entity=0)
-        instance.val1 = 100
+        assert component1 == ExampleComponent.get(component1.id)
+        assert component2 == ExampleComponent.get(component2.id)
 
-        assert 100 == ExampleComponent.get_for_entity(0).val1
-        assert 100 == ExampleComponent.array[0]["val1"]
+        component1.destroy(component1.id)
+        ExampleComponent.destroy(component2.id)
 
-    def test_retrieved_components_can_mutate_data(self):
-        ExampleComponent(1, 2, entity=0)
+        assert ExampleComponent.get(component1.id) is None
+        assert ExampleComponent.get(component2.id) is None
 
-        instance = ExampleComponent.get_for_entity(0)
-        instance.val1 = 100
+    def test_length_of_component(self):
+        length = ExampleComponent.length
+        ExampleComponent(0, 0)
 
-        assert 100 == ExampleComponent.get_for_entity(0).val1
-        assert 100 == ExampleComponent.array[0]["val1"]
+        assert ExampleComponent.length == length + 1
 
-    def test_getting_a_component_by_entity(self):
-        ExampleComponent(3, 4, entity=5)
+    def test_equality_comparison(self):
+        assert ExampleComponent(123.0, 123.0) == (123.0, 123.0)
+        assert ExampleComponent(123.0, 123.0) != (123.1, 123.1)
 
-        retrieved = ExampleComponent.get_for_entity(5)
+    def test_getting_an_existing_component_by_id(self):
+        id = ExampleComponent(519, 542).id
 
-        assert 3 == retrieved.val1 and 4 == retrieved.val2
+        looked_up = ExampleComponent.get(id)
+        assert looked_up == (519, 542)
 
-    def test_accessing_the_data_for_a_single_attribute(self):
-        for i in range(10):
-            ExampleComponent(1, 2, entity=i)
+        looked_up.x = 1024
+        looked_up.y = 1025
 
-        assert np.all(1 == ExampleComponent.val1)
-        assert np.all(2 == ExampleComponent.val2)
+        assert ExampleComponent.get(id) == (1024, 1025)
 
-    def test_mutating_data_across_a_single_attribute(self):
-        for i in range(10):
-            ExampleComponent(1, 2, entity=i)
+    def test_id_when_created(self):
+        component = ExampleComponent(1234, 1234)
 
-        ExampleComponent.val1 += 100
+        assert isinstance(component.id, int)
+        assert ExampleComponent.get(component.id) == (1234, 1234)
+        assert ExampleComponent(1234, 1234).id == component.id + 1
 
-        assert np.all(101 == ExampleComponent.val1)
+    def test_recycling_an_id(self):
+        component1 = ExampleComponent(0, 0)
+        c1_id = component1.id
+        ExampleComponent.destroy(component1.id)
+        component2 = ExampleComponent(1, 1)
 
-    def test_getting_a_view_of_only_existing_components(self):
-        for i in range(20):
-            ExampleComponent(100, 200, entity=i)
+        assert component2.id == c1_id
 
-        assert 20 == len(ExampleComponent.existing)
+    def test_ids_back_to_0_after_clear(self):
+        for _ in range(10):
+            ExampleComponent(0, 0)
+        ExampleComponent.clear()
 
-    def test_all_components_can_be_destroyed(self):
-        for i in range(10):
-            ExampleComponent(1, 4, entity=i)
+        assert ExampleComponent(0, 0).id == 0
 
-        ExampleComponent.destroy_all()
+    def test_clearing_a_component(self):
+        for _ in range(10):
+            component = ExampleComponent(0, 0)
 
-        assert 0 == len(ExampleComponent.existing)
+        assert ExampleComponent.length >= 10
 
-    def test_a_single_component_can_be_destroyed(self):
-        ExampleComponent(1, 2, entity=5)
+        ExampleComponent.clear()
 
-        ExampleComponent.destroy(5)
+        assert ExampleComponent.length == 0
+        assert component.x is None
+        assert component.y is None
 
-        assert ExampleComponent.get_for_entity(5) is None
+    def test_masked_after_being_destroyed(self):
+        component1 = ExampleComponent(1, 1)
+        component2 = ExampleComponent(2, 2)
+        component3 = ExampleComponent(3, 3)
 
-    def test_components_can_be_enumerated(self):
-        ExampleComponent(0, 0, entity=0)
-        ExampleComponent(1, 1, entity=5)
-        ExampleComponent(5, 5, entity=7)
+        ExampleComponent.destroy(component2.id)
 
-        expected = [
-            (0, ExampleComponent.get_for_entity(0)),
-            (5, ExampleComponent.get_for_entity(5)),
-            (7, ExampleComponent.get_for_entity(7)),
-        ]
-        assert expected == list(ExampleComponent.enumerate())
+        assert ExampleComponent.get(component1.id) == component1
+        assert ExampleComponent.get(component3.id) == component3
+        assert ExampleComponent.length == 2
 
-    def test_getting_the_current_active_entities(self):
-        for i in range(10):
-            ExampleComponent(0, 0, entity=i)
+    def test_allocating_space_manually(self):
+        max_length = len(ExampleComponent.get_raw_arrays())
+        ExampleComponent.reallocate(max_length + 5)
+        assert len(ExampleComponent.get_raw_arrays()) == max_length + 5
 
-        assert list(range(10)) == list(ExampleComponent.entities)
+    def test_allocating_space_automatically(self):
+        max_length = len(ExampleComponent.get_raw_arrays())
+        current_length = ExampleComponent.length
+
+        for i in range(max_length - current_length + 1):
+            ExampleComponent(i, i)
+
+        assert len(ExampleComponent.get_raw_arrays()) > max_length
+
+    def test_freeing_space_automatically(self):
+        starting_length = len(ExampleComponent.get_raw_arrays()) * 2 
+
+        for i in range(starting_length):
+            ExampleComponent(i, i)
+
+        second_length = len(ExampleComponent.get_raw_arrays()) 
+        for i in reversed(range(starting_length - 1)):
+            ExampleComponent.destroy(i)
+        
+        assert len(ExampleComponent.get_raw_arrays()) < second_length
+
+    def test_mutating_data_by_an_instance(self):
+        component = ExampleComponent(1, 2)
+        assert ExampleComponent.get(component.id) == (1, 2)
+
+        component.x = 132
+        component.y = 1234
+
+        assert (132, 1234) == ExampleComponent.get(component.id)
+
+    def test_mutating_data_by_class_array(self):
+        component1 = ExampleComponent(0, 0)
+        component2 = ExampleComponent(1, 1)
+
+        ExampleComponent.x += 100
+        
+        assert (100, 0) == component1
+        assert (101, 1) == component2
 
     def test_locking_access_using_context_manager(self):
-        instance = ExampleComponent(0, 0, entity=0)
+        instance = ExampleComponent(0, 0)
         running = True
 
         def increment(inst):
             while running:
-                inst.val1 += 1
+                inst.x += 1
+                inst.y += 1
 
         t = threading.Thread(target=increment, args=(instance,), daemon=True)
         t.start()
@@ -123,44 +168,21 @@ class TestComponent:
         try:
             # thread shouldn't be able to increment
             # a component instance can lock the entire array
-            with instance.locks:
-                first_peek = instance.val1
+            with instance:
+                first_peek = (instance.x, instance.y)
                 for _ in range(100):
-                    assert first_peek == instance.val1
+                    assert first_peek == (instance.x, instance.y)
 
             # thread should do some increments
             time.sleep(0.001)
 
             # thread should be locked out again
             # the component type can lock the entire array
-            with ExampleComponent.locks:
-                second_peek = instance.val1
+            with ExampleComponent:
+                second_peek = (instance.x, instance.y)
                 assert second_peek != first_peek
                 for _ in range(100):
-                    assert second_peek == instance.val1
+                    assert second_peek == (instance.x, instance.y)
         finally:
             running = False
 
-    def test_freeing_the_shared_memory_allocation(self):
-        assert len(ExampleComponent.array) == max_entities()
-
-        ExampleComponent.free()
-
-        with pytest.raises(Exception):
-            ExampleComponent.array
-
-
-@pytest.fixture(autouse=True)
-def ensure_cleanup():
-    ecs.reset_globals({StaticGlobals.MAX_ENTITIES: 100})
-    ExampleComponent.free()
-    ExampleComponent.allocate()
-
-
-def max_entities():
-    return ecs.get_static_global(StaticGlobals.MAX_ENTITIES)
-
-
-class ExampleComponent(Component):
-    val1: int
-    val2: float
