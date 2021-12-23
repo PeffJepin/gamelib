@@ -13,7 +13,7 @@ class ExampleComponent(Component):
 class TestComponent:
     @pytest.fixture(autouse=True)
     def cleanup(self):
-        ExampleComponent.clear()
+        ExampleComponent.reset()
 
     def test_creating_a_component(self):
         component = ExampleComponent(123, 124)
@@ -82,7 +82,7 @@ class TestComponent:
     def test_ids_back_to_0_after_clear(self):
         for _ in range(10):
             ExampleComponent(0, 0)
-        ExampleComponent.clear()
+        ExampleComponent.reset()
 
         assert ExampleComponent(0, 0).id == 0
 
@@ -92,7 +92,7 @@ class TestComponent:
 
         assert ExampleComponent.length >= 10
 
-        ExampleComponent.clear()
+        ExampleComponent.reset()
 
         assert ExampleComponent.length == 0
         assert component.x is None
@@ -124,15 +124,15 @@ class TestComponent:
         assert len(ExampleComponent.get_raw_arrays()) > max_length
 
     def test_freeing_space_automatically(self):
-        starting_length = len(ExampleComponent.get_raw_arrays()) * 2 
+        starting_length = len(ExampleComponent.get_raw_arrays()) * 2
 
         for i in range(starting_length):
             ExampleComponent(i, i)
 
-        second_length = len(ExampleComponent.get_raw_arrays()) 
+        second_length = len(ExampleComponent.get_raw_arrays())
         for i in reversed(range(starting_length - 1)):
             ExampleComponent.destroy(i)
-        
+
         assert len(ExampleComponent.get_raw_arrays()) < second_length
 
     def test_mutating_data_by_an_instance(self):
@@ -149,7 +149,7 @@ class TestComponent:
         component2 = ExampleComponent(1, 1)
 
         ExampleComponent.x += 100
-        
+
         assert (100, 0) == component1
         assert (101, 1) == component2
 
@@ -185,4 +185,3 @@ class TestComponent:
                     assert second_peek == (instance.x, instance.y)
         finally:
             running = False
-
