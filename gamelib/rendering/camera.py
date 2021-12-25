@@ -2,7 +2,7 @@ import numpy as np
 
 import gamelib
 
-from . import gl
+from gamelib import gl
 from .. import input
 from ..input import KeyIsPressed
 from ..input import MouseDrag

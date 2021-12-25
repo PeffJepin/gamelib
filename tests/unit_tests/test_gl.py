@@ -1,6 +1,6 @@
 import pytest
 import numpy as np
-from gamelib.rendering import gl
+from gamelib import gl
 
 
 @pytest.mark.parametrize(

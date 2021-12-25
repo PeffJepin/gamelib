@@ -3,8 +3,8 @@ from typing import NamedTuple, List
 
 import numpy as np
 
-from gamelib.rendering import gl
-from gamelib import _window
+from gamelib import gl
+from gamelib import get_context
 from gamelib import resources
 
 
@@ -52,7 +52,7 @@ class AutoBuffer:
 
         self._num_elements = 0
         self._max_elements = max_elements
-        self._ctx = ctx or _window.context
+        self._ctx = ctx or get_context
         self._lock = lock
         self._array = source
 
@@ -391,7 +391,7 @@ class ShaderProgram:
         """
 
         # set some initial values
-        ctx = ctx or _window.context
+        ctx = ctx or get_context()
         buffers = buffers or {}
         uniforms = uniforms or {}
         self._mode = mode

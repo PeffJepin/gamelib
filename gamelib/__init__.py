@@ -14,3 +14,4 @@ from ._window import get_context
 from ._window import get_width
 from ._window import get_height
 from ._window import aspect_ratio
+from . import _gl as gl

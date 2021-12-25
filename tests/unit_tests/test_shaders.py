@@ -1,4 +1,4 @@
-from gamelib.rendering import gl
+from gamelib import gl
 from gamelib.rendering.shaders import TokenDesc, parse_source
 
 

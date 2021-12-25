@@ -1,9 +1,4 @@
-import pytest
-import numpy as np
-
 from gamelib import geometry
-
-from ..conftest import assert_all_equal
 
 
 def test_grid_mesh():
@@ -15,4 +10,3 @@ def test_grid_mesh():
 
     assert mesh2.vertices.size == 9 * 3
     assert mesh2.indices.size == 24
-

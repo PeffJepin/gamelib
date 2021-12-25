@@ -4,8 +4,8 @@ import numpy as np
 import pytest
 import gamelib
 
-from gamelib.rendering import shaders, gl
-from gamelib import _window
+from gamelib.rendering import shaders
+from gamelib import _window, gl
 
 
 @pytest.fixture(autouse=True, scope="module")

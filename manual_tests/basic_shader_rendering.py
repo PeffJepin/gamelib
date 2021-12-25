@@ -1,9 +1,10 @@
 import gamelib
 import numpy as np
-from gamelib.rendering import shaders
+
+from gamelib.rendering import ShaderProgram
 
 gamelib.init()
-shader = shaders.ShaderProgram(
+shader = ShaderProgram(
     vertex_shader="""
         #version 330
         in vec2 v_pos;
