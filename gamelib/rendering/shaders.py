@@ -52,7 +52,7 @@ class AutoBuffer:
 
         self._num_elements = 0
         self._max_elements = max_elements
-        self._ctx = ctx or get_context
+        self._ctx = ctx or get_context()
         self._lock = lock
         self._array = source
 
