@@ -172,7 +172,7 @@ def is_running():
     return not _window.is_closing
 
 
-def post_input(dt):
+def poll_for_user_input(dt):
     """Gathers input from the window provider and posts it into the gamelib
     event system."""
 
@@ -283,7 +283,7 @@ def get_context():
     return context
 
 
-def aspect_ratio():
+def get_aspect_ratio():
     return _window.aspect_ratio
 
 

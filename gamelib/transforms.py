@@ -21,7 +21,7 @@ def normalize(vector):
     Returns
     -------
     np.ndarray:
-        returns vector for convenience.
+        Returns vector for convenience.
     """
 
     magnitude = np.sqrt(np.sum(vector ** 2))
@@ -43,14 +43,14 @@ class Mat3:
 
     @staticmethod
     def rotate_about_x(theta, dtype=gl.float):
-        """Create a 3x3 rotation matrix.
+        """Create a 3x3 rotation matrix about the positive x-axis.
 
         Parameters
         ----------
         theta : float
             Rotation angle given in degrees. (Right hand coordinate system)
         dtype : np.dtype | str
-            np compatible dtype for return matrix
+            Numpy compatible dtype for the returned matrix
 
         Returns
         -------
@@ -69,14 +69,14 @@ class Mat3:
 
     @staticmethod
     def rotate_about_y(theta, dtype=gl.mat3):
-        """Create a 3x3 rotation matrix.
+        """Create a 3x3 rotation matrix about the positive y-axis.
 
         Parameters
         ----------
         theta : float
             Rotation angle in degrees. (Right hand coordinate system)
         dtype : np.dtype | str
-            np compatible dtype for matrix
+            Numpy compatible dtype for the returned matrix.
 
         Returns
         -------
@@ -95,14 +95,14 @@ class Mat3:
 
     @staticmethod
     def rotate_about_z(theta, dtype=gl.mat3):
-        """Create a 3x3 rotation matrix.
+        """Create a 3x3 rotation matrix about the positive z-axis.
 
         Parameters
         ----------
         theta : float
             Rotation angle in degrees. (Right hand coordinate system)
         dtype : np.dtype | str
-            np compatible dtype for matrix
+            Numpy compatible dtype for the returned matrix.
 
         Returns
         -------
@@ -126,11 +126,11 @@ class Mat3:
         Parameters
         ----------
         axis : Sequence
-            3 component vector, the axis about which the rotation will occur.
+            XYZ vector about which the rotation should occur.
         theta : float
             Rotation angle in degrees. (Right hand coordinate system)
         dtype : np.dtype | str
-            np compatible dtype for matrix
+            Numpy compatible dtype for the returned matrix.
 
         Returns
         -------
@@ -158,8 +158,8 @@ class Mat3:
 
 class Mat4:
     """Namespace for 4x4 transformation matrices. Note that these matrices
-    are in column major are transposed to meet OpenGL expectations, use the
-    Transform.apply method to transform numpy vectors in python."""
+    are transposed for OpenGL. Use the transform.apply method to transform
+    numpy vectors."""
 
     @staticmethod
     def look_at_transform(eye, look_at, up, dtype=gl.mat4):
@@ -168,13 +168,13 @@ class Mat4:
         Parameters
         ----------
         eye : Sequence
-            The xyz position of the "eye" or viewing a scene of vertices.
+            XYZ position of the "eye" for viewing a scene of vertices.
         look_at : Sequence
-            The xyz position that the eye should look at.
+            XYZ position that the eye should be looking at.
         up : Sequence
-            The xyz vector that points up.
+            XYZ vector describing world space 'up' direction.
         dtype : np.dtype | str
-            Numpy compatible dtype for the return matrix.
+            Numpy compatible dtype for the returned matrix.
 
         Returns
         -------
@@ -266,7 +266,7 @@ class Mat4:
         far : float
             Distance to the far clipping plane.
         dtype : np.ndarray | str
-            Any Numpy compatible dtype for the return matrix.
+            Numpy compatible dtype for the returned matrix.
 
         Returns
         -------
@@ -296,30 +296,31 @@ class Mat4:
 
     @staticmethod
     def rotate_about_x(theta, dtype=gl.float):
-        """4x4 rotation matrix about positive x axis.
+        """4x4 rotation matrix about the positive x axis.
 
         Parameters
         ----------
         theta : float
-            Angle in degrees.
+            Angle measured in degrees.
         dtype : Any, optional
 
         Returns
         -------
         np.ndarray
         """
+
         mat = np.identity(4, gl.float)
         mat[0:3, 0:3] = Mat3.rotate_about_x(theta, dtype)
         return mat.T
 
     @staticmethod
     def rotate_about_y(theta, dtype=gl.float):
-        """"4x4 rotation matrix about the positive y axis.
+        """4x4 rotation matrix about the positive y axis.
 
         Parameters
         ----------
         theta : float
-            Angle in degrees.
+            Angle measured in degrees.
         dtype : Any, optional
 
         Returns
@@ -338,7 +339,7 @@ class Mat4:
         Parameters
         ----------
         theta : float
-            Angle in degrees.
+            Angle measured in degrees.
         dtype : Any, optional
 
         Returns
@@ -357,9 +358,9 @@ class Mat4:
         Parameters
         ----------
         axis : Sequence
-            A vector describing the rotation axis.
+            XYZ vector describing the rotation axis.
         theta : float
-            Angle in degrees.
+            Angle measured in degrees.
         dtype : Any, optional
 
         Returns
@@ -372,12 +373,12 @@ class Mat4:
         return mat4.T
 
     @staticmethod
-    def scale(scale, dtype=gl.float):
+    def scale(scale_vector, dtype=gl.float):
         """4x4 scaling transformation matrix.
 
         Parameters
         ----------
-        scale : Sequence
+        scale_vector : Sequence
             Scale for each axis.
         dtype : Any, optional
 
@@ -386,7 +387,7 @@ class Mat4:
         np.ndarray
         """
 
-        x, y, z = scale
+        x, y, z = scale_vector
         # fmt: off
         return np.array((
             (x, 0, 0, 0), 
@@ -422,24 +423,32 @@ class Mat4:
         ).T
         # fmt: on
 
+    @classmethod
+    def transform(cls, translation, scale, axis, theta):
+        return cls.translation(translation).dot(
+            cls.rotate_about_axis(axis, theta).dot(cls.scale(scale))
+        )
+
 
 class Transform:
     """Combines translation, scale, and rotation matrices together into a
     single transformation matrix. The Mat4 matrices are transposed for
     OpenGL, this class has an apply method to apply those matrices to a
-    numpy ndarray."""
+    Numpy ndarray."""
 
-    def __init__(self, pos=(0, 0, 0), scale=(1, 1, 1), axis=(0, 0, 1), theta=0):
+    def __init__(
+        self, pos=(0, 0, 0), scale=(1, 1, 1), axis=(0, 0, 1), theta=0
+    ):
         """Initialize the transform.
 
         Parameters
         ----------
         pos : Sequence
-            xyz translation vector.
+            XYZ translation vector.
         scale : Sequence
-            xyz scaling vector.
+            XYZ scaling vector.
         axis : Sequence
-            xyz rotation axis
+            XYZ rotation axis
         theta : float
             Rotation angle in degrees.
         """
@@ -460,18 +469,18 @@ class Transform:
 
         Returns
         -------
-        Sequence: (x, y, z)
+        Sequence
         """
 
         return self._pos
 
     @pos.setter
     def pos(self, translation):
-        """Sets the translation vector.
+        """Sets the translation vector and updated the matrix.
 
         Parameters
         ----------
-        translation : Sequence, (x, y, z)
+        translation : Sequence
         """
 
         self._pos = translation
@@ -483,7 +492,7 @@ class Transform:
 
         Returns
         -------
-        Sequence: (x, y, z)
+        Sequence
         """
 
         return self._scale
@@ -494,7 +503,7 @@ class Transform:
 
         Parameters
         ----------
-        scale_vector : Sequence, (x, y, z)
+        scale_vector : Sequence
         """
 
         self._scale = scale_vector
@@ -506,7 +515,7 @@ class Transform:
 
         Returns
         -------
-        Sequence: (x, y, z)
+        Sequence
         """
 
         return self._axis
@@ -514,9 +523,10 @@ class Transform:
     @axis.setter
     def axis(self, rotation_axis):
         """Set the rotation axis and update the matrix.
+
         Parameters
         ----------
-        rotation_axis : Sequence, (x, y, z)
+        rotation_axis : Sequence
         """
 
         self._axis = rotation_axis
@@ -524,11 +534,11 @@ class Transform:
 
     @property
     def theta(self):
-        """Gets the current rotation angle.
+        """Gets the current rotation angle measured in degrees.
 
         Returns
         -------
-        float: (degrees)
+        float
         """
 
         return self._theta
@@ -575,10 +585,10 @@ class Transform:
         matrix = self._get_transpose()
         dtype = vertex.dtype
         if len(vertex) == 3:
-            tmp = np.zeros(4, dtype)
-            tmp[0:3] = vertex
-            tmp[3] = 1
-            transformed = matrix.dot(tmp)[:3]
+            len4_temp = np.zeros(4, dtype)
+            len4_temp[0:3] = vertex
+            len4_temp[3] = 1
+            transformed = matrix.dot(len4_temp)[:3]
             if np.issubdtype(dtype, np.integer):
                 transformed = np.rint(transformed)
             vertex[:] = transformed
@@ -607,7 +617,7 @@ class Transform:
         """Constructs a transposed matrix for use against numpy ndarrays."""
 
         return Mat4.translation(self.pos).T.dot(
-                Mat4.rotate_about_axis(self.axis, self.theta).T.dot(
-                    Mat4.scale(self.scale).T
+            Mat4.rotate_about_axis(self.axis, self.theta).T.dot(
+                Mat4.scale(self.scale).T
             )
         )

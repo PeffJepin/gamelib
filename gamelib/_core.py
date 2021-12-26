@@ -110,7 +110,7 @@ def update():
             _window.clear()
             _commands()
         dt = _update_timer.tick(config.tps)
-        _window.post_input(dt)
+        _window.poll_for_user_input(dt)
         events.post(events.Update(dt))
         schedule.update()
 

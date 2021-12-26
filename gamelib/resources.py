@@ -1,31 +1,47 @@
+# TODO: A more general approach to discovering resources such that different
+#  types of resources can be added with a few lines of code.
+# TODO: Implement some BaseResource type of class so it can be made quite
+#  uniform in what to expect this module to return when asking it to locate
+#  a resource.
+
 import pathlib
 from collections import defaultdict
+from dataclasses import dataclass
+from dataclasses import field
 from itertools import groupby
 from typing import List, DefaultDict, Dict
+
+
+@dataclass
+class ResourceDirectories:
+    shaders: List[pathlib.Path] = field(default_factory=list)
+    assets: List[pathlib.Path] = field(default_factory=list)
+
+    def clear(self):
+        self.shaders.clear()
+        self.assets.clear()
 
 
 _RESOURCE_ROOTS = (pathlib.Path.cwd(),)
 _SHADER_EXTS = (".vert", ".frag", ".tesc", ".tese", ".geom")
 _ASSET_EXTS = (".jpg", ".png")
 
-_shader_dirs: List[pathlib.Path] = []
+_discovered_resource_directories = ResourceDirectories()
 _shader_srcs: DefaultDict[str, list] = defaultdict(list)
-_asset_dirs: List[pathlib.Path] = []
 _asset_paths: Dict[str, pathlib.Path] = {}
 
 
 def clear_cache():
     """Clear all cached resources that have been discovered."""
 
+    _discovered_resource_directories.clear()
     _shader_srcs.clear()
-    _shader_dirs.clear()
-    _asset_dirs.clear()
     _asset_paths.clear()
 
 
 def set_resource_roots(*paths):
-    """Sets the root path that will be searched to find resources.
-    When this method is called the cache will be cleared.
+    """Sets the root path that will be searched to find resources. When this
+    method is called the cache will be cleared.
 
     Parameters
     ----------
@@ -39,8 +55,8 @@ def set_resource_roots(*paths):
 
 
 def add_resource_roots(*paths):
-    """Similar to `set_resource_roots` but doesn't overwrite what's
-    currently in use, and doesn't clear the cache.
+    """Similar to `set_resource_roots` but doesn't overwrite what's currently
+    in use, and doesn't clear the cache.
 
     Parameters
     ----------
@@ -54,9 +70,8 @@ def add_resource_roots(*paths):
 
 
 def discover_directories(*paths):
-    """Crawls through either given paths or paths that have
-    been added to the resource roots for directories named
-    "assets" or "shaders" and caches them.
+    """Crawls through either given paths or paths that have been added to the
+    resource roots for directories named "assets" or "shaders" and caches them.
 
     Parameters
     ----------
@@ -64,9 +79,8 @@ def discover_directories(*paths):
 
     Returns
     -------
-    dict[str, list]
-        A dictionary with keys "assets" and "shaders" who's values
-        are lists of those respective directories that have been found.
+    ResourceDirectories:
+        Returns the resource directories cache.
     """
 
     paths = paths or _RESOURCE_ROOTS
@@ -75,9 +89,9 @@ def discover_directories(*paths):
         if not dir_path.is_dir():
             return
         if dir_path.name == "shaders":
-            _shader_dirs.append(dir_path)
+            _discovered_resource_directories.shaders.append(dir_path)
         elif dir_path.name == "assets":
-            _asset_dirs.append(dir_path)
+            _discovered_resource_directories.assets.append(dir_path)
         else:
             for p in dir_path.iterdir():
                 _walk_dir(p)
@@ -85,7 +99,7 @@ def discover_directories(*paths):
     for path in paths:
         _walk_dir(path)
 
-    return {"assets": _asset_dirs.copy(), "shaders": _shader_dirs.copy()}
+    return _discovered_resource_directories
 
 
 def discover_shader_sources(*paths):
@@ -118,7 +132,7 @@ def discover_shader_sources(*paths):
     if paths:
         discover_directories(*paths)
 
-    if not _shader_dirs:
+    if not _discovered_resource_directories.shaders:
         discover_directories()
 
     def _walk_dir(dir_path):
@@ -131,7 +145,7 @@ def discover_shader_sources(*paths):
         for name, group in groupby(src, lambda p: p.name.split(".")[0]):
             _shader_srcs[name].extend(group)
 
-    for d in _shader_dirs:
+    for d in _discovered_resource_directories.shaders:
         _walk_dir(d)
 
     return _shader_srcs.copy()
@@ -158,7 +172,7 @@ def discover_asset_files(*paths):
     if paths:
         discover_directories(*paths)
 
-    if not _asset_dirs:
+    if not _discovered_resource_directories.assets:
         discover_directories()
 
     def _walk_dir(dir_path):
@@ -168,7 +182,7 @@ def discover_asset_files(*paths):
             elif path.is_dir():
                 _walk_dir(path)
 
-    for d in _asset_dirs:
+    for d in _discovered_resource_directories.assets:
         _walk_dir(d)
 
     return _asset_paths.copy()

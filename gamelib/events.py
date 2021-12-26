@@ -47,13 +47,14 @@ Using an object as a container for handlers:
 >>> post(Update(0.01))
 Doing update, dt=0.01
 """
-
-from __future__ import annotations
+# TODO: I should consider at some point whether or not to change the handler
+#   decorator to behave more like the _InputEvent.handler. It would make event
+#   handler marking more uniform, but may conflict with using dataclasses and
+#   named tuples for events.
 
 import threading
 from collections import defaultdict
 from dataclasses import dataclass
-from enum import Enum
 from multiprocessing.connection import Connection
 from typing import Sequence, NamedTuple
 
@@ -67,15 +68,6 @@ _adapters = dict()
 
 class Update(NamedTuple):
     dt: float
-
-
-class Signal(Enum):
-    """
-    Todo: Signal class for events with no args. Should be interchangable
-        with event and offer fast ipc support.
-    """
-
-    pass
 
 
 class SystemStop:

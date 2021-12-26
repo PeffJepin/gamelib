@@ -8,10 +8,10 @@ from tests.conftest import assert_all_equal
 def stub_aspect_ratio():
     import gamelib
 
-    normal_implementation = gamelib.aspect_ratio
-    gamelib.aspect_ratio = lambda: 16 / 9
+    normal_implementation = gamelib.get_aspect_ratio
+    gamelib.get_aspect_ratio = lambda: 16 / 9
     yield
-    gamelib.aspect_ratio = normal_implementation
+    gamelib.get_aspect_ratio = normal_implementation
 
 
 @pytest.fixture

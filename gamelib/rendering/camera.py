@@ -64,7 +64,7 @@ class BaseCamera:
         float
         """
 
-        return gamelib.aspect_ratio()
+        return gamelib.get_aspect_ratio()
 
     @property
     def near(self):

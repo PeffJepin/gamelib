@@ -1,11 +1,11 @@
 class MethodMarker:
-    """This class meant to be used as a decorator to mark methods. It may be
+    """This class is meant to be used as a decorator to mark methods. It may be
     later extended to be used on functions as well as bound methods.
 
     Examples
     --------
 
-    Using the class as a decorator directly:
+    Using MethodMarker as a decorator directly:
 
     >>> class MyClass:
     ...     @MethodMarker
@@ -55,7 +55,7 @@ class MethodMarker:
     _INJECTION_ATTRIBUTE = "_gamelib_marker_"
 
     def __new__(cls, func=None, /, *, type=None, extra=None):
-        """Checks if the call was done with parenthesis or not. And returns
+        """Checks if the call was done with parenthesis or not and returns
         a wrapper or instance of MethodMarker accordingly.
 
         Parameters
@@ -113,7 +113,7 @@ class MethodMarker:
     @classmethod
     def lookup(cls, instance, type=None):
         """Return a dict of markers mapped to their bound methods on this
-        particular instance. Optionally filter on mark type.
+        particular instance. Optionally filter on MethodMarker.type.
 
         Parameters
         ----------
@@ -124,7 +124,7 @@ class MethodMarker:
 
         Returns
         -------
-        dict[MethodMarker, BoundMethod]
+        dict[MethodMarker, BoundMethod]:
             A dictionary mapping markers to the method they are marking.
         """
 

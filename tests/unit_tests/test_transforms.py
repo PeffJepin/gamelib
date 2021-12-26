@@ -35,6 +35,7 @@ def test_mat4():
 
     assert_all_equal(transformed, (1, -1, 1))
 
+
 @pytest.mark.parametrize(
     "transform, expected",
     # fmt: off

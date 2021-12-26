@@ -57,6 +57,13 @@ based off of keystroke.
 >>> # Disable the controller like so:
 >>> disable_handlers(controller)
 """
+# TODO: Eventually the StringMappingEnum class will need to be implemented
+#   in such a way that the values mapped to the enums are simply ints and the
+#   string matching lookup can be stored in some dictionary or something.
+#   It's not really a problem now, but if these events have to start getting
+#   sent across connections I want to be sure they're not taking up a bunch
+#   of unnecessary space.
+
 
 from collections import defaultdict
 from enum import Enum
@@ -73,13 +80,13 @@ monitored_key_states = set()
 
 class InputSchema:
     """InputSchema serves as both an adapter to the events module for
-    user input, and defines the format in which user input mappings are
+    input events, and defines a format in which user input mappings can be
     declared.
 
     The window is responsible for collecting the user input and posting
     events, so this wont work with gamelib.init(headless=True).
 
-    Multiple InputSchema objects can be active at once, as such a single
+    Multiple InputSchema objects can be active at once, as such, a single
     input event can be consumed by multiple InputSchema instances, though
     each instance can only hold one callback for a particular event mapping.
     """
@@ -87,7 +94,7 @@ class InputSchema:
     def __init__(self, *schema, enable=True):
         """Map different types of user input to callback functions.
         The schema will immediately begin handling input events that get
-        posted by the window.
+        posted by the window unless the `enable` flag is set to False.
 
         Parameters
         ----------
@@ -150,7 +157,7 @@ class InputSchema:
             self.enable()
 
     def enable(self, *, master=False):
-        """Subscribes this Schema to handle input events posted to the
+        """Subscribes this InputSchema to handle input events posted to the
         events module.
 
         Parameters
@@ -160,9 +167,8 @@ class InputSchema:
             subscribed to handle input events, such that this instance
             will be the only remaining event handler.
 
-            This may be inadvisable if you're handling any _InputEvent
-            types directly through the events.py machinery, as this will
-            remove those handlers as well, not just InputSchemas.
+            Note that this will also clear event handlers defined using the
+            _InputEvent.handler API.
         """
 
         if master:
@@ -246,18 +252,10 @@ class InputSchema:
             callback(event)
         except TypeError as e:
             if "positional argument" in e.args[0]:
+                # callback without passing event as an argument
                 callback()
             else:
                 raise e
-
-
-def _update_monitored_key_states():
-    global monitored_key_states
-    sets = tuple(_key_states_to_monitor_lookup.values())
-    if len(sets) == 1:
-        monitored_key_states = sets[0]
-    else:
-        monitored_key_states = set.union(*sets)
 
 
 class _StringMappingEnum(Enum):
@@ -435,13 +433,13 @@ class _InputHandlerTag(NamedTuple):
 
 
 def enable_handlers(obj):
-    """Given an object with marked input handlers, creates an input schema and
-    enables it.
+    """Given an object with methods marked by the _InputEvent.handler API,
+    enable all of the marked handlers.
 
     Using marked handlers is more suitable for a case where you want one
-    function to handle many different keystrokes, where using the
-    InputSchema API is more suited towards delegating many individual
-    keystrokes to many individual functions.
+    function to handle many different keystrokes, where using the InputSchema
+    API is more suited towards delegating many individual keystrokes to many
+    individual functions.
 
     Parameters
     ----------
@@ -450,7 +448,6 @@ def enable_handlers(obj):
 
     Examples
     --------
-
     A basic example. See tests for many more.
 
     >>> class MyController:
@@ -479,12 +476,12 @@ def enable_handlers(obj):
 
 def disable_handlers(obj):
     """Disables an object previously enabled with the `enable_handlers`
-    function. Safe to call even when obj isn't active.
+    function. Safe to call even when obj isn't enabled.
 
     Parameters
     ----------
     obj : object
-        An instance of a class marked with InputEvent.handler decoractors.
+        An instance of a class marked with _InputEvent.handler decorators.
     """
 
     if obj not in _decorated_schemas:
@@ -502,11 +499,12 @@ class _InputEvent:
     def handler(cls, input_enums=None):
         """See `enable_handlers` or the module docstring for example usage."""
 
+        func = None
+
         # might get called from _InputEvent.handler like:
         #   @_InputEvent.handler
         #   def handler(event):
-        # in which case input_enums is the `handler` function.
-        func = None
+        # in which case input_enums is actually the `handler` function.
         if isinstance(input_enums, Callable):
             func, input_enums = input_enums, None
 
@@ -762,3 +760,12 @@ class _DecoratedInputSchema:
         if self._handler_lookup.get(KeyIsPressed):
             del _key_states_to_monitor_lookup[self]
             _update_monitored_key_states()
+
+
+def _update_monitored_key_states():
+    global monitored_key_states
+    sets = tuple(_key_states_to_monitor_lookup.values())
+    if len(sets) == 1:
+        monitored_key_states = sets[0]
+    else:
+        monitored_key_states = set.union(*sets)

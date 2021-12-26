@@ -25,7 +25,7 @@ def test_discovering_shader_directories(filesystem_maker):
         "shaders/shader3.vert",
         "shaders/shader3.frag",
     )
-    directories = resources.discover_directories(root)["shaders"]
+    directories = resources.discover_directories(root).shaders
 
     assert len(directories) == 2
     assert root / "dir1" / "subdir" / "shaders" in directories
@@ -59,7 +59,7 @@ def test_discovering_asset_directories(filesystem_maker):
         "notassets/subdir/assets/nested/file3.jpg",
         "assets/file4.txt",
     )
-    dirs = resources.discover_directories(root)["assets"]
+    dirs = resources.discover_directories(root).assets
 
     assert len(dirs) == 2
     assert root / "notassets" / "subdir" / "assets" in dirs
