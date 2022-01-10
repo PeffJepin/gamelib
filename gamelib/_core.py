@@ -72,7 +72,7 @@ def init(headless=False, **kwargs):
     if _initialized:
         return
 
-    resources.discover_directories(pathlib.Path.cwd())
+    resources.set_content_roots(pathlib.Path.cwd())
     _window.create(headless=headless, **kwargs)
     _initialized = True
 

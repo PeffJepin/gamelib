@@ -136,7 +136,7 @@ def pipe_reader():
 
 
 @pytest.fixture
-def filesystem_maker(tempdir):
+def tmpdir_maker(tempdir):
     def inner(*paths):
         fs_root = tempdir / str(next(_counter))
         paths = [

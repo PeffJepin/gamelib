@@ -3,138 +3,149 @@ from gamelib import resources
 
 
 @pytest.fixture
-def _blank_filesystem(filesystem_maker):
-    return filesystem_maker()
+def _blank_filesystem(tmpdir_maker):
+    return tmpdir_maker("nothing_here")
 
 
 @pytest.fixture(autouse=True)
 def cleanup(_blank_filesystem):
-    resources.set_resource_roots(_blank_filesystem)
+    resources.set_content_roots(_blank_filesystem)
 
 
-def test_discovering_shader_directories(filesystem_maker):
-    root = filesystem_maker(
-        "dir1/subdir/shaders/shader1.vert",
-        "dir1/subdir/shaders/shader1.frag",
-        "dir1/subdir/shaders/shader1.tesc",
-        "dir1/subdir/shaders/shader1.tese",
-        "dir1/subdir/shaders/shader1.geom",
-        "dir1/subdir/shaders/shader1.glsl",
-        "shaders/shader2.vert",
-        "shaders/shader2.frag",
-        "shaders/shader3.vert",
-        "shaders/shader3.frag",
-    )
-    directories = resources.discover_directories(root).shaders
-
-    assert len(directories) == 2
-    assert root / "dir1" / "subdir" / "shaders" in directories
-    assert root / "shaders" in directories
+@pytest.fixture(params=(
+    "some_shader.vert",
+    "some_shader.frag",
+    "some_shader.tesc",
+    "some_shader.tese",
+    "some_shader.geom",
+    "some_shader.glsl",
+    "some_image.png",
+    "some_image.jpg",
+    "some_geometry.obj"
+))
+def supported_filename(request):
+    return request.param
 
 
-def test_discovering_shader_files(filesystem_maker):
-    root = filesystem_maker(
-        "dir1/subdir/shaders/shader1.vert",
-        "dir1/subdir/shaders/shader1.frag",
-        "dir1/subdir/shaders/shader1.tesc",
-        "dir1/subdir/shaders/shader1.tese",
-        "dir1/subdir/shaders/shader1.geom",
-        "shaders/shader2.vert",
-        "shaders/shader2.frag",
-        "shaders/shader3.vert",
-        "shaders/shader3.frag",
-    )
-    sources = resources.discover_shader_sources(root)
-
-    assert len(sources) == 3
-    assert len(sources["shader1"]) == 5
-    assert len(sources["shader2"]) == 2
-    assert len(sources["shader3"]) == 2
-
-
-def test_discovering_asset_directories(filesystem_maker):
-    root = filesystem_maker(
-        "notassets/subdir/assets/file1.jpg",
-        "notassets/subdir/assets/file2.png",
-        "notassets/subdir/assets/nested/file3.jpg",
-        "assets/file4.txt",
-    )
-    dirs = resources.discover_directories(root).assets
-
-    assert len(dirs) == 2
-    assert root / "notassets" / "subdir" / "assets" in dirs
-    assert root / "assets" in dirs
-
-
-def test_discovering_asset_files(filesystem_maker):
-    root = filesystem_maker(
-        "notassets/subdir/assets/file1.jpg",
-        "notassets/subdir/assets/file2.png",
-        "notassets/subdir/assets/nested/file3.jpg",
-        "assets/file4.txt",
-    )
-    files = resources.discover_asset_files(root)
-    dir_containing_files = root / "notassets" / "subdir" / "assets"
-
-    file1 = dir_containing_files / "file1.jpg"
-    file2 = dir_containing_files / "file2.png"
-    file3 = dir_containing_files / "nested" / "file3.jpg"
-
-    assert file1 == files["file1"]
-    assert file2 == files["file2"]
-    assert file3 == files["file3"]
-    assert len(files) == 3
-
-
-def test_set_resource_root(filesystem_maker):
-    root = filesystem_maker("assets/test_filename.png")
+def test_set_content_roots(tmpdir_maker):
+    root = tmpdir_maker("assets/test_filename.png")
 
     with pytest.raises(KeyError):
-        resources.find_asset("test_filename")
+        resources.get_image_file("test_filename")
 
-    resources.set_resource_roots(root)
-    assert resources.find_asset("test_filename") is not None
+    resources.set_content_roots(root)
+    assert resources.get_image_file("test_filename") is not None
 
 
-def test_set_resource_root_clears_cache(filesystem_maker):
-    fs1 = filesystem_maker("assets/file1.png")
-    fs2 = filesystem_maker("assets/file2.png")
-    resources.set_resource_roots(fs1)
+def test_set_content_roots_clears_cache(tmpdir_maker):
+    fs1 = tmpdir_maker("assets/file1.png")
+    fs2 = tmpdir_maker("assets/file2.png")
+    resources.set_content_roots(fs1)
 
-    assert resources.find_asset("file1") is not None
+    assert resources.get_image_file("file1") is not None
     with pytest.raises(KeyError):
-        resources.find_asset("file2")
+        resources.get_image_file("file2")
 
-    resources.set_resource_roots(fs2)
-    assert resources.find_asset("file2") is not None
+    resources.set_content_roots(fs2)
+    assert resources.get_image_file("file2") is not None
     with pytest.raises(KeyError):
-        resources.find_asset("file1")
+        resources.get_image_file("file1")
 
 
-def test_add_resources_roots(filesystem_maker):
-    fs1 = filesystem_maker("assets/file1.png")
-    fs2 = filesystem_maker("assets/file2.png")
-    fs3 = filesystem_maker("assets/file3.png")
-    resources.add_resource_roots(fs1, fs2, fs3)
+def test_add_content_roots(tmpdir_maker):
+    fs1 = tmpdir_maker("assets/file1.png")
+    fs2 = tmpdir_maker("assets/file2.png")
+    fs3 = tmpdir_maker("assets/file3.png")
+    resources.add_content_roots(fs1, fs2, fs3)
 
-    assert resources.find_asset("file1") is not None
-    assert resources.find_asset("file2") is not None
-    assert resources.find_asset("file3") is not None
+    assert resources.get_image_file("file1") is not None
+    assert resources.get_image_file("file2") is not None
+    assert resources.get_image_file("file3") is not None
 
 
-def test_find_asset(filesystem_maker):
-    root = filesystem_maker("assets/test_file.png")
-    resources.set_resource_roots(root)
+def test_get_file_base_case(tmpdir_maker, supported_filename):
+    unsupported_filename = "fjkaldf.fadjkfla"
+    root = tmpdir_maker(supported_filename, unsupported_filename)
+    resources.set_content_roots(root)
+    
+    discovered_file = resources.get_file(supported_filename)
+    assert discovered_file.name == supported_filename
+    
+    with pytest.raises(Exception):
+        resources.get_file(unsupported_filename)
+    
 
-    assert root / "assets" / "test_file.png" == resources.find_asset(
-        "test_file"
+def test_get_file_nested_case(tmpdir_maker, supported_filename):
+    nested = f"subdir/{supported_filename}"
+    root = tmpdir_maker(supported_filename, nested)
+    resources.set_content_roots(root)
+
+    # should return whatever it finds first... assume this is not determinate
+    assert resources.get_file(supported_filename) is not None
+
+    # parent directory can be specified to choose files with the same name
+    not_nested = f"{root.name}/{supported_filename}"
+    assert resources.get_file(nested).parent.name == "subdir"
+    assert resources.get_file(not_nested).parent.name == root.name
+
+    # only supports one parent directory specification
+    with pytest.raises(Exception):
+        double_nested = f"{root.name}/{nested}"
+        resources.get_file(double_nested)
+    
+
+def test_adding_a_supported_extension_base_case(tmpdir_maker):
+    unsupported = "bad_file.fafadf"
+    extended_support1 = "good_file.abcde"
+    extended_support2 = "good_file.custom_filetype"
+    root = tmpdir_maker(unsupported, extended_support1, extended_support2)
+
+    resources.add_supported_extensions(".abcde")
+    resources.add_supported_extensions("custom_filetype")  # . optional
+    resources.set_content_roots(root)
+    
+    assert resources.get_file(extended_support1).name == extended_support1
+    assert resources.get_file(extended_support2).name == extended_support2
+    with pytest.raises(Exception):
+        resources.get_file(unsupported)
+    
+
+def test_adding_a_supported_extension_rechecks_roots(tmpdir_maker):
+    filename = "filename.my_file_type"
+    root = tmpdir_maker(filename)
+    resources.set_content_roots(root)
+
+    with pytest.raises(Exception):
+        resources.get_file(filename)
+    resources.add_supported_extensions(".my_file_type")
+
+    assert resources.get_file(filename).name == filename
+
+
+def test_get_shader_files(tmpdir_maker):
+    root = tmpdir_maker(
+        "shader.vert",
+        "shader.frag",
+        "shader.tesc",
+        "shader.tese",
+        "shader.geom",
+        "shader.glsl",
     )
+    resources.set_content_roots(root)
+    shader = resources.get_shader_files("shader")
+
+    assert len(shader) == 6
 
 
-def test_find_shader(filesystem_maker):
-    root = filesystem_maker("shaders/example.vert", "shaders/example.frag")
-    resources.set_resource_roots(root)
+def test_get_image_file(tmpdir_maker):
+    root = tmpdir_maker("test_file.png")
+    resources.set_content_roots(root)
 
-    src = resources.find_shader("example")
-    assert root / "shaders" / "example.vert" in src
-    assert root / "shaders" / "example.frag" in src
+    assert root / "test_file.png" == resources.get_image_file("test_file")
+
+
+def test_get_model_file(tmpdir_maker):
+    root = tmpdir_maker("cube.obj")
+    resources.set_content_roots(root)
+
+    assert root / "cube.obj" == resources.get_model_file("cube")

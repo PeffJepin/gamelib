@@ -1,194 +1,132 @@
-# TODO: A more general approach to discovering resources such that different
-#  types of resources can be added with a few lines of code.
-# TODO: Implement some BaseResource type of class so it can be made quite
-#  uniform in what to expect this module to return when asking it to locate
-#  a resource.
+"""The resources module is responsible for serving the rest of the library
+paths to files.
+
+Manage searching with:
+    set_content_roots
+    add_content_roots
+    add_supported_extensions
+
+Find discovered files with:
+    # for any file, must provide extension
+    get_file
+
+    # shortcuts for specific filetypes, don't specify extension
+    get_image_file
+    get_model_file
+    get_shader_files
+"""
 
 import pathlib
 from collections import defaultdict
-from dataclasses import dataclass
-from dataclasses import field
-from itertools import groupby
-from typing import List, DefaultDict, Dict
 
 
-@dataclass
-class ResourceDirectories:
-    shaders: List[pathlib.Path] = field(default_factory=list)
-    assets: List[pathlib.Path] = field(default_factory=list)
-
-    def clear(self):
-        self.shaders.clear()
-        self.assets.clear()
-
-
-_RESOURCE_ROOTS = (pathlib.Path.cwd(),)
-_SHADER_EXTS = (".vert", ".frag", ".tesc", ".tese", ".geom")
-_ASSET_EXTS = (".jpg", ".png")
-
-_discovered_resource_directories = ResourceDirectories()
-_shader_srcs: DefaultDict[str, list] = defaultdict(list)
-_asset_paths: Dict[str, pathlib.Path] = {}
+_resource_roots = []
+_resource_cache = defaultdict(list)
+_shader_extensions = (".vert", ".frag", ".tesc", ".tese", ".geom", ".glsl")
+_image_extensions = (".jpg", ".png")
+_3d_model_extensions = (".obj",)
+_supported_extensions = [
+    *_shader_extensions,
+    *_image_extensions,
+    *_3d_model_extensions,
+]
 
 
 def clear_cache():
     """Clear all cached resources that have been discovered."""
 
-    _discovered_resource_directories.clear()
-    _shader_srcs.clear()
-    _asset_paths.clear()
+    _resource_cache.clear()
 
 
-def set_resource_roots(*paths):
-    """Sets the root path that will be searched to find resources. When this
-    method is called the cache will be cleared.
+def set_content_roots(*dirs):
+    """Sets the root directories that will be searched to find resources.
+    Calling this will clear all previously cached resources.
 
     Parameters
     ----------
-    *paths : pathlib.Path
+    *dirs : pathlib.Path
     """
 
-    global _RESOURCE_ROOTS
-    _RESOURCE_ROOTS = paths
-    clear_cache()
-    discover_directories()
+    _resource_roots.clear()
+    _resource_roots.extend(dirs)
+    _resource_cache.clear()
+    for path in dirs:
+        _search_directory(path)
 
 
-def add_resource_roots(*paths):
-    """Similar to `set_resource_roots` but doesn't overwrite what's currently
-    in use, and doesn't clear the cache.
+def add_content_roots(*dirs):
+    """Similar to `set_content_roots` but doesn't overwrite what's currently
+    set, and doesn't clear the cache.
 
     Parameters
     ----------
-    *paths : pathlib.Path
+    *dirs : pathlib.Path
     """
 
-    global _RESOURCE_ROOTS
-    for path in paths:
-        discover_directories(path)
-    _RESOURCE_ROOTS = (*_RESOURCE_ROOTS, *paths)
+    _resource_roots.extend(dirs)
+    for path in dirs:
+        _search_directory(path)
 
 
-def discover_directories(*paths):
-    """Crawls through either given paths or paths that have been added to the
-    resource roots for directories named "assets" or "shaders" and caches them.
+def add_supported_extensions(*extensions):
+    """Tell the resources module to look for this filetype.
 
     Parameters
     ----------
-    *paths : pathlib.Path, optional
-
-    Returns
-    -------
-    ResourceDirectories:
-        Returns the resource directories cache.
+    *extensions : str
     """
 
-    paths = paths or _RESOURCE_ROOTS
-
-    def _walk_dir(dir_path):
-        if not dir_path.is_dir():
-            return
-        if dir_path.name == "shaders":
-            _discovered_resource_directories.shaders.append(dir_path)
-        elif dir_path.name == "assets":
-            _discovered_resource_directories.assets.append(dir_path)
+    cleaned = []
+    for ext in extensions:
+        if ext[0] != ".":
+            cleaned.append(f".{ext}")
         else:
-            for p in dir_path.iterdir():
-                _walk_dir(p)
+            cleaned.append(ext)
 
-    for path in paths:
-        _walk_dir(path)
-
-    return _discovered_resource_directories
+    _supported_extensions.extend(cleaned)
+    for path in _resource_roots:
+        _search_directory(path, exts=cleaned)
 
 
-def discover_shader_sources(*paths):
-    """Looks through previously discovered shader directories to find files
-    with glsl shader extensions:
-        .vert
-        .frag
-        .tese
-        .tesc
-        .geom
-    If paths are given they will be included in the search.
+def get_file(filename):
+    """Tries to get a path to the requested filename.
 
     Parameters
     ----------
-    paths : pathlib.Path, optional
+    filename : str
+        This should include the file's extension. A parent directory can be
+        specified for ambiguous files: assets1/water.png, assets2/water.png
 
     Returns
     -------
-    dict[str, list]
-        The keys are shader names and values are paths to the files.
+    pathlib.Path
 
-        Given dir:
-            shaders/
-                water.vert
-                water.frag
-        key is "water"
-        value is a list containing paths to those two files.
+    Raises
+    ------
+    KeyError:
+        When the file cannot be located.
     """
 
-    if paths:
-        discover_directories(*paths)
+    if "/" in filename:
+        dir_, name = filename.split("/")
+    elif "\\" in filename:
+        dir_, name = filename.split("\\")
+    else:
+        dir_, name = None, filename
 
-    if not _discovered_resource_directories.shaders:
-        discover_directories()
+    if dir_ is None:
+        paths = _resource_cache[name]
+        if paths:
+            return paths[0]
 
-    def _walk_dir(dir_path):
-        src = []
-        for path in dir_path.iterdir():
-            if any((path.name.endswith(ext) for ext in _SHADER_EXTS)):
-                src.append(path)
-            elif path.is_dir():
-                _walk_dir(path)
-        for name, group in groupby(src, lambda p: p.name.split(".")[0]):
-            _shader_srcs[name].extend(group)
+    for path in _resource_cache[name]:
+        if path.parent.name == dir_:
+            return path
 
-    for d in _discovered_resource_directories.shaders:
-        _walk_dir(d)
-
-    return _shader_srcs.copy()
+    raise KeyError(f"Unable to locate {filename=}.")
 
 
-def discover_asset_files(*paths):
-    """Looks for files in previously discovered assets
-    directories with the extensions:
-        .jpg
-        .png
-    If given, paths will be included in the search.
-
-    Parameters
-    ----------
-    paths : pathlib.Path, optional
-
-    Returns
-    -------
-    dict[str, pathlib.Path]
-        Keys are the filename. water.png = "water"
-        values are pathlib.Paths to the file
-    """
-
-    if paths:
-        discover_directories(*paths)
-
-    if not _discovered_resource_directories.assets:
-        discover_directories()
-
-    def _walk_dir(dir_path):
-        for path in dir_path.iterdir():
-            if any((path.name.endswith(ext) for ext in _ASSET_EXTS)):
-                _asset_paths[path.name.split(".")[0]] = path
-            elif path.is_dir():
-                _walk_dir(path)
-
-    for d in _discovered_resource_directories.assets:
-        _walk_dir(d)
-
-    return _asset_paths.copy()
-
-
-def find_shader(name):
+def get_shader_files(name):
     """Tries to get a list of paths to shader source files with
     the given name.
 
@@ -207,23 +145,28 @@ def find_shader(name):
     KeyError:
         When the files could not be found for given name.
     """
-    if name not in _shader_srcs:
-        discover_shader_sources()
-        if name not in _shader_srcs:
-            raise KeyError(
-                f"Shader with {name=} not found in "
-                f"{list(_shader_srcs.keys())}."
-            )
-    return _shader_srcs[name]
+
+    sources = []
+    for ext in _shader_extensions:
+        try:
+            if name.endswith(ext):
+                return get_file(name)
+            sources.append(get_file(name + ext))
+        except KeyError:
+            pass
+
+    if not sources:
+        raise KeyError(f"Couldn't locate {name=}.")
+
+    return sources
 
 
-def find_asset(name):
-    """Tries to get the path to an asset resource file with the given name.
+def get_image_file(name):
+    """Tries to get the path to an image file with the given name.
 
     Parameters
     ----------
     name : str
-        water.jpg name would be "water"
 
     Returns
     -------
@@ -235,8 +178,51 @@ def find_asset(name):
         When the file could not be found.
     """
 
-    try:
-        return _asset_paths[name]
-    except KeyError:
-        discover_asset_files()
-        return _asset_paths[name]
+    for ext in _image_extensions:
+        try:
+            if name.endswith(ext):
+                return get_file(name)
+            return get_file(name + ext)
+        except KeyError:
+            pass
+    raise KeyError(f"Couldn't locate {name=}.")
+
+
+def get_model_file(name):
+    """Tries to get the path to a cached 3d model file.
+
+    Parameters
+    ----------
+    name : str
+
+    Returns
+    -------
+    pathlib.Path
+
+    Raises
+    ------
+    KeyError:
+        When the file can't be located.
+    """
+
+    for ext in _3d_model_extensions:
+        try:
+            if name.endswith(ext):
+                return get_file(name)
+            return get_file(name + ext)
+        except KeyError:
+            pass
+    raise KeyError(f"Couldn't locate {name=}.")
+
+
+def _search_directory(path, exts=_supported_extensions):
+    """Search through the given directory path recursively and cache files
+    found with supported extensions."""
+
+    assert path.is_dir()
+
+    for path in path.iterdir():
+        if path.is_dir():
+            _search_directory(path)
+        elif any(path.name.endswith(ext) for ext in exts):
+            _resource_cache[path.name].append(path)

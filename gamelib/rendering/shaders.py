@@ -743,7 +743,7 @@ _EXT_MAPPING = {
 
 
 def _load_shader_sources_by_name(name):
-    shader_files = resources.find_shader(name)
+    shader_files = resources.get_shader_files(name)
     return {
         _EXT_MAPPING[p.name[-5:]]: _read_shader_source(p) for p in shader_files
     }
