@@ -4,6 +4,7 @@ Current limitations:
     Vertices are always made up of 3 components
     Only vertices, vertex_normals and faces are parsed. (v, vn, f)
     Simple triangulation on faces that aren't length 3.
+    Does not parse .mtl yet.
 """
 
 import dataclasses
@@ -24,9 +25,8 @@ class _PreProcessorData:
     normal_lookup: Optional[dict]
 
 
-
 def parse(path):
-    with open(path, 'r') as f:
+    with open(path, "r") as f:
         lines = f.readlines()
         ppd = _preprocess_lines(lines)
         return _parse_lines(lines, ppd)
@@ -39,7 +39,7 @@ def _init_arrays(ppd):
         normals = np.zeros(ppd.nverts * 3, gl.float)
     else:
         normals = None
-    return geometry.Geometry(vertices, normals, triangles)
+    return geometry.Model(vertices, normals, triangles)
 
 
 def _parse_lines(lines, ppd):
@@ -51,7 +51,7 @@ def _parse_lines(lines, ppd):
         spec, *data = line.split(" ")
         if spec == "v":
             values = [float(d) for d in data if d != ""]
-            geo.vertices[vertices_pointer:vertices_pointer+3] = values
+            geo.vertices[vertices_pointer : vertices_pointer + 3] = values
             vertices_pointer += 3
 
         elif spec == "vn":
@@ -59,7 +59,7 @@ def _parse_lines(lines, ppd):
             normal = transforms.normalize(np.array(values, gl.float))
             index = ppd.normal_lookup[normal_counter] - 1
             start = index * 3
-            geo.normals[start:start+3] = normal
+            geo.normals[start : start + 3] = normal
             normal_counter += 1
 
         elif spec == "f":
@@ -74,10 +74,10 @@ def _parse_lines(lines, ppd):
             for i in range(len(cleaned_values) - 2):
                 tri = [
                     cleaned_values[0],
-                    cleaned_values[i+1],
-                    cleaned_values[i+2],
+                    cleaned_values[i + 1],
+                    cleaned_values[i + 2],
                 ]
-                geo.triangles[triangles_pointer:triangles_pointer+3] = tri
+                geo.triangles[triangles_pointer : triangles_pointer + 3] = tri
                 triangles_pointer += 3
     return geo
 
@@ -94,14 +94,12 @@ def _preprocess_lines(lines) -> _PreProcessorData:
             nverts += 1
         if spec == "f":
             values = [d for d in data if d != ""]
-            ntris += (len(values) - 2)
+            ntris += len(values) - 2
             for value in values:
                 if "/" in value:
                     v, vt, vn = value.split("/")
                     if vn != "":
                         has_normals = True
                         normal_lookup[int(vn)] = int(v)
-        
+
     return _PreProcessorData(nverts, ntris, has_normals, normal_lookup)
-
-

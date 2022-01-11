@@ -1,7 +1,7 @@
 import pytest
 
 from gamelib.rendering.camera import PerspectiveCamera
-from tests.conftest import assert_all_equal
+from tests.conftest import assert_approx
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -86,4 +86,4 @@ class TestPerspectiveCamera:
 
         assert camera.projection_matrix.tobytes() == proj_bytes
         assert camera.view_matrix.tobytes() != view_bytes
-        assert_all_equal(camera.direction, (-1, 0, 0))
+        assert_approx(camera.direction, (-1, 0, 0))

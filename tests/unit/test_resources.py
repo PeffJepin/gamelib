@@ -1,5 +1,5 @@
 import pytest
-from gamelib import resources
+from gamelib.core import resources
 
 
 @pytest.fixture
@@ -12,17 +12,19 @@ def cleanup(_blank_filesystem):
     resources.set_content_roots(_blank_filesystem)
 
 
-@pytest.fixture(params=(
-    "some_shader.vert",
-    "some_shader.frag",
-    "some_shader.tesc",
-    "some_shader.tese",
-    "some_shader.geom",
-    "some_shader.glsl",
-    "some_image.png",
-    "some_image.jpg",
-    "some_geometry.obj"
-))
+@pytest.fixture(
+    params=(
+        "some_shader.vert",
+        "some_shader.frag",
+        "some_shader.tesc",
+        "some_shader.tese",
+        "some_shader.geom",
+        "some_shader.glsl",
+        "some_image.png",
+        "some_image.jpg",
+        "some_geometry.obj",
+    )
+)
 def supported_filename(request):
     return request.param
 
@@ -67,13 +69,13 @@ def test_get_file_base_case(tmpdir_maker, supported_filename):
     unsupported_filename = "fjkaldf.fadjkfla"
     root = tmpdir_maker(supported_filename, unsupported_filename)
     resources.set_content_roots(root)
-    
+
     discovered_file = resources.get_file(supported_filename)
     assert discovered_file.name == supported_filename
-    
+
     with pytest.raises(Exception):
         resources.get_file(unsupported_filename)
-    
+
 
 def test_get_file_nested_case(tmpdir_maker, supported_filename):
     nested = f"subdir/{supported_filename}"
@@ -92,7 +94,7 @@ def test_get_file_nested_case(tmpdir_maker, supported_filename):
     with pytest.raises(Exception):
         double_nested = f"{root.name}/{nested}"
         resources.get_file(double_nested)
-    
+
 
 def test_adding_a_supported_extension_base_case(tmpdir_maker):
     unsupported = "bad_file.fafadf"
@@ -103,12 +105,12 @@ def test_adding_a_supported_extension_base_case(tmpdir_maker):
     resources.add_supported_extensions(".abcde")
     resources.add_supported_extensions("custom_filetype")  # . optional
     resources.set_content_roots(root)
-    
+
     assert resources.get_file(extended_support1).name == extended_support1
     assert resources.get_file(extended_support2).name == extended_support2
     with pytest.raises(Exception):
         resources.get_file(unsupported)
-    
+
 
 def test_adding_a_supported_extension_rechecks_roots(tmpdir_maker):
     filename = "filename.my_file_type"

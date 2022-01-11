@@ -2,15 +2,15 @@
 and running the main loop of an application."""
 
 import pathlib
-from dataclasses import dataclass
+import dataclasses
 
-from . import _window
-from . import resources
-from . import events
-from . import time
+from gamelib.core import time
+from gamelib.core import window
+from gamelib.core import events
+from gamelib.core import resources
 
 
-@dataclass
+@dataclasses.dataclass
 class _Config:
     """Global config variables.
 
@@ -65,7 +65,7 @@ def init(headless=False, **kwargs):
     headless : bool, optional
         Make a context with no window?
     **kwargs : Any
-        Window config kwargs. see _window.create().
+        Window config kwargs. see window.create().
     """
 
     global _initialized
@@ -73,7 +73,7 @@ def init(headless=False, **kwargs):
         return
 
     resources.set_content_roots(pathlib.Path.cwd())
-    _window.create(headless=headless, **kwargs)
+    window.create(headless=headless, **kwargs)
     _initialized = True
 
 
@@ -103,14 +103,14 @@ def update():
 
     if next_frame < next_update:
         _render_timer.tick(config.fps)
-        _window.swap_buffers()
+        window.swap_buffers()
         update()
     else:
         if _commands != _dummy_func:
-            _window.clear()
+            window.clear()
             _commands()
         dt = _update_timer.tick(config.tps)
-        _window.poll_for_user_input(dt)
+        window.poll_for_user_input(dt)
         events.post(events.Update(dt))
         schedule.update()
 
@@ -118,7 +118,7 @@ def update():
 def exit():
     """Called to end an application."""
 
-    _window.close()
+    window.close()
 
 
 def run():
@@ -129,7 +129,7 @@ def run():
 
     if not _initialized:
         init()
-    while _window.is_running():
+    while window.is_running():
         update()
     exit()
 

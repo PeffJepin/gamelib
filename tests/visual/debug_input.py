@@ -1,9 +1,7 @@
 import gamelib
 
-from gamelib.input import InputSchema
 
-
-class VerboseSchema(InputSchema):
+class VerboseSchema(gamelib.InputSchema):
     def __call__(self, event):
         print(event)
         super().__call__(event)
@@ -22,6 +20,8 @@ schema = VerboseSchema(
 )
 
 
-gamelib.config._max_tps = 5
+# slow down gamelib runtime
+gamelib.config.fps = 1
+gamelib.config.tps = 5
 gamelib.run()
 

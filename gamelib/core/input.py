@@ -4,7 +4,7 @@ into an application.
 
 The only component needed to get user input integrated is InputSchema. The
 input events can be selected with python strings, or if more verbose
-declarations are desired the Enum classes Keyboard, Mouse, and MouseButton can
+declarations are desired the enum.Enum classes Keyboard, Mouse, and MouseButton can
 be used.
 
 Example
@@ -50,27 +50,28 @@ based off of keystroke.
 ...         # you can still narrow down which keys are being watched.
 ...         pass
 ...
->>> # The ExampleController class must me enabled to start handling events.
+>>> # The ExampleController class must be enabled to start handling events.
 >>> controller = ExampleController()
 >>> enable_handlers(controller)
 ...
 >>> # Disable the controller like so:
 >>> disable_handlers(controller)
 """
-# TODO: Eventually the StringMappingEnum class will need to be implemented
+# TODO: Eventually the StringMappingenum.Enum class will need to be implemented
 #   in such a way that the values mapped to the enums are simply ints and the
 #   string matching lookup can be stored in some dictionary or something.
 #   It's not really a problem now, but if these events have to start getting
 #   sent across connections I want to be sure they're not taking up a bunch
 #   of unnecessary space.
 
+import collections
+import dataclasses
+import enum
+from typing import NamedTuple
+from typing import Callable
+from typing import Iterable
 
-from collections import defaultdict
-from enum import Enum
-from dataclasses import dataclass
-from typing import NamedTuple, Callable, Iterable
-
-from gamelib import events
+from gamelib.core import events
 from gamelib import utils
 
 _key_states_to_monitor_lookup = dict()
@@ -84,7 +85,7 @@ class InputSchema:
     declared.
 
     The window is responsible for collecting the user input and posting
-    events, so this wont work with gamelib.init(headless=True).
+    events, so this will not work with gamelib.init(headless=True).
 
     Multiple InputSchema objects can be active at once, as such, a single
     input event can be consumed by multiple InputSchema instances, though
@@ -110,7 +111,7 @@ class InputSchema:
                 the function that will handle the event described.
 
         enable : bool, optional
-            Optional flag - Should this schema be enabled on __init__ ?
+            Should this schema be enabled on __init__ ?
 
         Example
         -------
@@ -144,7 +145,7 @@ class InputSchema:
         ...     # KeyIsPressed event
         ...     ("space", "is_pressed", handler),
         ...
-        ...     # Descriptions can be made more verbose with module Enums.
+        ...     # Descriptions can be made more verbose with module enum.Enums.
         ...     (Keyboard.B, Action.PRESS, Modifier.ALT, handler),
         ...     (MouseButton.LEFT, Action.RELEASE, handler),
         ...     (Mouse.MOTION, handler),
@@ -241,7 +242,7 @@ class InputSchema:
         """The event module will call this object as if it were an event
         handler itself.
 
-        Instead lookup the appropriate handler and forward the event there.
+        Instead, lookup the appropriate handler and forward the event there.
         """
 
         callback = self._callback_tree.get_callback(event)
@@ -258,9 +259,9 @@ class InputSchema:
                 raise e
 
 
-class _StringMappingEnum(Enum):
+class _StringMappingEnum(enum.Enum):
     """Internal class for managing the mapping of many possible strings to
-    an Enum field."""
+    an enum.Enum field."""
 
     @classmethod
     def map_string(cls, string):
@@ -434,7 +435,7 @@ class _InputHandlerTag(NamedTuple):
 
 def enable_handlers(obj):
     """Given an object with methods marked by the _InputEvent.handler API,
-    enable all of the marked handlers.
+    enable all the marked handlers.
 
     Using marked handlers is more suitable for a case where you want one
     function to handle many different keystrokes, where using the InputSchema
@@ -490,7 +491,7 @@ def disable_handlers(obj):
     schema.disable()
 
 
-@dataclass
+@dataclasses.dataclass
 class _InputEvent:
     ENUM = None
     ACTION = None
@@ -526,7 +527,7 @@ class _InputEvent:
         return utils.MethodMarker(func, type="input", extra=tag)
 
 
-@dataclass
+@dataclasses.dataclass
 class KeyDown(_InputEvent):
     """Posted from window provider."""
 
@@ -537,7 +538,7 @@ class KeyDown(_InputEvent):
     modifiers: Modifiers
 
 
-@dataclass
+@dataclasses.dataclass
 class KeyUp(_InputEvent):
     """Posted from window provider."""
 
@@ -548,7 +549,7 @@ class KeyUp(_InputEvent):
     modifiers: Modifiers
 
 
-@dataclass
+@dataclasses.dataclass
 class KeyIsPressed(_InputEvent):
     """Key state is extracted once per frame for this event."""
 
@@ -560,7 +561,7 @@ class KeyIsPressed(_InputEvent):
     dt: float = 0
 
 
-@dataclass
+@dataclasses.dataclass
 class MouseDown(_InputEvent):
     """Posted from window provider."""
 
@@ -572,7 +573,7 @@ class MouseDown(_InputEvent):
     button: MouseButton
 
 
-@dataclass
+@dataclasses.dataclass
 class MouseUp(_InputEvent):
     """Posted from window provider."""
 
@@ -584,7 +585,7 @@ class MouseUp(_InputEvent):
     button: MouseButton
 
 
-@dataclass
+@dataclasses.dataclass
 class MouseIsPressed(_InputEvent):
     """Key state is extracted once per tick for this event."""
 
@@ -597,7 +598,7 @@ class MouseIsPressed(_InputEvent):
     dt: float = 0
 
 
-@dataclass
+@dataclasses.dataclass
 class MouseMotion(_InputEvent):
     """Posted from window provider."""
 
@@ -609,7 +610,7 @@ class MouseMotion(_InputEvent):
     dy: int
 
 
-@dataclass
+@dataclasses.dataclass
 class MouseDrag(_InputEvent):
     """Posted from window provider."""
 
@@ -622,7 +623,7 @@ class MouseDrag(_InputEvent):
     buttons: Buttons
 
 
-@dataclass
+@dataclasses.dataclass
 class MouseScroll(_InputEvent):
     """Posted from window provider. dx not always applicable."""
 
@@ -640,9 +641,9 @@ class _InputHandlerLookup:
 
     def __init__(self):
         self._lookup = {
-            KeyDown: defaultdict(dict),
-            KeyUp: defaultdict(dict),
-            KeyIsPressed: defaultdict(dict),
+            KeyDown: collections.defaultdict(dict),
+            KeyUp: collections.defaultdict(dict),
+            KeyIsPressed: collections.defaultdict(dict),
             MouseDown: dict(),
             MouseUp: dict(),
             MouseIsPressed: dict(),
@@ -679,7 +680,7 @@ class _InputHandlerLookup:
                 self._lookup[MouseScroll] = callback
 
     def get_callback(self, event):
-        """ "Try to get registered callback for this event.
+        """Try to get registered callback for this event.
 
         Returns
         -------
@@ -691,12 +692,12 @@ class _InputHandlerLookup:
         if not self._lookup.get(event_type):
             return
 
-        enum = getattr(event, "key", None) or getattr(event, "button", None)
-        if enum:
+        enum_ = getattr(event, "key", None) or getattr(event, "button", None)
+        if enum_:
             modifiers = getattr(event, "modifiers", None)
             if modifiers is not None:
-                return self._lookup[event_type][enum].get(modifiers)
-            return self._lookup[event_type].get(enum)
+                return self._lookup[event_type][enum_].get(modifiers)
+            return self._lookup[event_type].get(enum_)
         return self._lookup[event_type]
 
     @property
@@ -718,7 +719,7 @@ class _DecoratedInputSchema:
     """
 
     def __init__(self, *schema):
-        self._handler_lookup = defaultdict(dict)
+        self._handler_lookup = collections.defaultdict(dict)
         for (tag, handler) in schema:
             if tag.enums is None:
                 self._handler_lookup[tag.event_type][None] = handler
@@ -732,8 +733,8 @@ class _DecoratedInputSchema:
 
         key = getattr(event, "key", None)
         button = getattr(event, "button", None)
-        enum = key or button
-        callback = self._handler_lookup[type(event)].get(enum)
+        enum_ = key or button
+        callback = self._handler_lookup[type(event)].get(enum_)
 
         if not callback:
             return
@@ -765,7 +766,9 @@ class _DecoratedInputSchema:
 def _update_monitored_key_states():
     global monitored_key_states
     sets = tuple(_key_states_to_monitor_lookup.values())
-    if len(sets) == 1:
+    if not sets:
+        monitored_key_states = set()
+    elif len(sets) == 1:
         monitored_key_states = sets[0]
     else:
         monitored_key_states = set.union(*sets)

@@ -6,7 +6,7 @@ import dataclasses
 from typing import NamedTuple
 from multiprocessing.connection import Pipe
 
-from gamelib import events
+from gamelib.core import events
 
 from tests.conftest import RecordedCallback
 

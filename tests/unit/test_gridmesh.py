@@ -1,9 +1,9 @@
-from gamelib import geometry
+from gamelib.geometry import GridMesh
 
 
 def test_grid_mesh():
-    mesh1 = geometry.GridMesh(lod=1)
-    mesh2 = geometry.GridMesh(lod=2)
+    mesh1 = GridMesh(lod=1)
+    mesh2 = GridMesh(lod=2)
 
     assert mesh1.vertices.size == 4 * 3
     assert mesh1.indices.size == 6

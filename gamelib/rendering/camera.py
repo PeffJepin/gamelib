@@ -3,13 +3,8 @@ import numpy as np
 import gamelib
 
 from gamelib import gl
-from .. import input
-from ..input import KeyIsPressed
-from ..input import MouseDrag
-from ..input import MouseScroll
-from ..transforms import normalize
-from ..transforms import Mat3
-from ..transforms import Mat4
+from gamelib.core import input
+from gamelib.geometry import transforms
 
 
 class BaseCamera:
@@ -42,8 +37,8 @@ class BaseCamera:
         self._view = np.empty(1, gl.mat4)
         self._proj = np.empty(1, gl.mat4)
         self._pos = np.asarray(pos, gl.vec3)
-        self._up = normalize(np.asarray(up, gl.vec3))
-        self._dir = normalize(np.asarray(dir, gl.vec3))
+        self._up = transforms.normalize(np.asarray(up, gl.vec3))
+        self._dir = transforms.normalize(np.asarray(dir, gl.vec3))
         self._near = near
         self._far = far
         if controller:
@@ -151,7 +146,7 @@ class BaseCamera:
 
     @direction.setter
     def direction(self, value):
-        """Sets and normalizes the camera direction then updates the view
+        """Sets and transforms.normalizes the camera direction then updates the view
         matrix.
 
         Parameters
@@ -161,7 +156,7 @@ class BaseCamera:
         """
 
         self._dir[:] = value
-        normalize(self._dir)
+        transforms.normalize(self._dir)
         self._update_view()
 
     @property
@@ -178,7 +173,7 @@ class BaseCamera:
 
     @up.setter
     def up(self, value):
-        """Sets and normalizes the up vector and updates the view matrix.
+        """Sets and transforms.normalizes the up vector and updates the view matrix.
 
         Parameters
         ----------
@@ -187,7 +182,7 @@ class BaseCamera:
         """
 
         self._up[:] = value
-        normalize(self._up)
+        transforms.normalize(self._up)
         self._update_view()
 
     @property
@@ -245,7 +240,7 @@ class BaseCamera:
         Parameters
         ----------
         mat4 : array-like
-            Most likely a matrix from geometry.Mat4 namespace.
+            Most likely a matrix from geometry.transforms.Mat4 namespace.
         """
 
         self._view[:] = mat4
@@ -269,7 +264,7 @@ class BaseCamera:
         Parameters
         ----------
         mat4 : array-like
-            Most likely a matrix from geometry.Mat4 namespace.
+            Most likely a matrix from geometry.transforms.Mat4 namespace.
         """
 
         self._proj[:] = mat4
@@ -409,16 +404,16 @@ class PerspectiveCamera(BaseCamera):
             (Right handed coordinate system)
         """
 
-        matrix = Mat3.rotate_about_axis(axis, theta)
+        matrix = transforms.Mat3.rotate_about_axis(axis, theta)
         self.direction = matrix.dot(self.direction)
 
     def _update_view(self):
-        self.view_matrix = Mat4.look_at_transform(
+        self.view_matrix = transforms.Mat4.look_at_transform(
             self.pos, self.pos + self.direction, self.up
         )
 
     def _update_proj(self):
-        self.projection_matrix = Mat4.perspective_transform(
+        self.projection_matrix = transforms.Mat4.perspective_transform(
             self.fov_y, self._aspect_ratio, self.near, self.far
         )
 
@@ -500,11 +495,13 @@ class OrthogonalCamera(BaseCamera):
             Angle of rotation given in degrees.
         """
 
-        self.up = Mat3.rotate_about_axis(self.direction, theta).dot(self.up)
+        self.up = transforms.Mat3.rotate_about_axis(self.direction, theta).dot(
+            self.up
+        )
         self._update_view()
 
     def _update_proj(self):
-        self.projection_matrix = Mat4.orthogonal_transform(
+        self.projection_matrix = transforms.Mat4.orthogonal_transform(
             self._left,
             self._right,
             self._bottom,
@@ -514,7 +511,7 @@ class OrthogonalCamera(BaseCamera):
         )
 
     def _update_view(self):
-        self.view_matrix = Mat4.look_at_transform(
+        self.view_matrix = transforms.Mat4.look_at_transform(
             self.pos, self.pos + self.direction, self.up
         )
 
@@ -526,7 +523,7 @@ class _FreePerspectiveController:
         self.camera = camera
         self.speed = speed
 
-    @KeyIsPressed.handler(iter("asdw"))
+    @input.KeyIsPressed.handler(iter("asdw"))
     def _pan_camera(self, event):
         if event.key == "a":
             vector = self.camera.left
@@ -539,7 +536,7 @@ class _FreePerspectiveController:
 
         # don't handle z axis movement here
         vector[2] = 0
-        normalize(vector)
+        transforms.normalize(vector)
 
         # move fast with shift being held
         multiplier = 2 if event.modifiers.shift else 1
@@ -547,7 +544,7 @@ class _FreePerspectiveController:
         translation = vector * multiplier * self.speed * event.dt
         self.camera.move(translation)
 
-    @MouseDrag.handler
+    @input.MouseDrag.handler
     def _rotate_camera(self, event):
         if event.dx != 0:
             # z rotation for left/right
@@ -559,7 +556,7 @@ class _FreePerspectiveController:
             theta = event.dy / gamelib.get_width() * self.camera.fov_y
             self.camera.rotate(axis, theta)
 
-    @MouseScroll.handler
+    @input.MouseScroll.handler
     def _z_scroll_camera(self, event):
         scroll_rate = 1
         translation = -np.array((0, 0, event.dy)) * scroll_rate
@@ -573,7 +570,7 @@ class _FreeOrthogonalController:
         self.camera = camera
         self.speed = speed
 
-    @KeyIsPressed.handler(iter("asdw"))
+    @input.KeyIsPressed.handler(iter("asdw"))
     def _pan_camera(self, event):
         if event.key == "a":
             vector = self.camera.left
@@ -586,7 +583,7 @@ class _FreeOrthogonalController:
 
         # eliminate z axis motion. scroll wheel handles this
         vector[2] = 0
-        normalize(vector)
+        transforms.normalize(vector)
 
         # move fast when shift is held
         multiplier = 2 if event.modifiers.shift else 1
@@ -594,13 +591,13 @@ class _FreeOrthogonalController:
         translation = vector * multiplier * self.speed * event.dt
         self.camera.move(translation)
 
-    @MouseDrag.handler
+    @input.MouseDrag.handler
     def _rotate_camera(self, event):
         if event.dx != 0:
             theta = event.dx / gamelib.get_width() * 90
             self.camera.rotate(theta)
 
-    @MouseScroll.handler
+    @input.MouseScroll.handler
     def _z_scroll_camera(self, event):
         scale = 1.05
         if event.dy > 0:

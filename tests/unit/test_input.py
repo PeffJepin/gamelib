@@ -1,7 +1,7 @@
 import pytest
 
-from gamelib import input
-from gamelib.input import (
+from gamelib.core import input
+from gamelib.core.input import (
     Keyboard,
     Modifier,
     Action,

@@ -17,11 +17,11 @@ Find discovered files with:
 """
 
 import pathlib
-from collections import defaultdict
+import collections
 
 
 _resource_roots = []
-_resource_cache = defaultdict(list)
+_resource_cache = collections.defaultdict(list)
 _shader_extensions = (".vert", ".frag", ".tesc", ".tese", ".geom", ".glsl")
 _image_extensions = (".jpg", ".png")
 _3d_model_extensions = (".obj",)

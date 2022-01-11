@@ -8,7 +8,7 @@ from multiprocessing.connection import Connection
 import pytest
 from PIL import Image
 
-from gamelib import events
+from gamelib.core import events
 from gamelib.rendering.textures import ImageAsset
 
 
@@ -199,6 +199,6 @@ def glsl_dtype_and_input(request):
     yield dtype, value
 
 
-def assert_all_equal(iter1, iter2):
+def assert_approx(iter1, iter2, rel=1e-6):
     for v1, v2 in zip(iter1, iter2):
-        assert v1 == pytest.approx(v2, rel=1e-6)
+        assert v1 == pytest.approx(v2, rel=rel)

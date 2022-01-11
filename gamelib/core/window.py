@@ -14,8 +14,8 @@ import logging
 import moderngl_window as mglw
 from moderngl_window.conf import settings
 
-from gamelib import input
-from gamelib import events
+from gamelib.core import input
+from gamelib.core import events
 
 Window = mglw.BaseWindow
 Context = moderngl.Context
@@ -90,7 +90,7 @@ def create(headless=False, **config):
     if config["class"] == "moderngl_window.context.glfw.Window":
         # polling for events needs glfw in namespace for eval
         # see _polling_function_lookup
-        import glfw
+        pass
 
     global _poll_for_input
     _poll_for_input = _polling_function_lookup[config["class"]]
@@ -128,7 +128,7 @@ def swap_buffers():
 
 def clear(red=0.0, blue=0.0, green=0.0, alpha=0.0, depth=1.0, viewport=None):
     """Clears the framebuffer. The float values should be on a range
-    from 0 - 1.
+    from 0 to 1.
 
     Parameters
     ----------

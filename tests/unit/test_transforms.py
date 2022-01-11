@@ -1,11 +1,11 @@
 import pytest
 import numpy as np
 
-from gamelib.transforms import Mat3
-from gamelib.transforms import Mat4
-from gamelib.transforms import Transform
+from gamelib.geometry.transforms import Mat3
+from gamelib.geometry.transforms import Mat4
+from gamelib.geometry.transforms import Transform
 
-from ..conftest import assert_all_equal
+from ..conftest import assert_approx
 
 
 @pytest.mark.parametrize(
@@ -26,14 +26,14 @@ def test_3d_rotation_matrices(matrix, expected):
     input_vector = np.array((1, 1, 1))
     transformed_vector = matrix.dot(input_vector)
 
-    assert_all_equal(expected, transformed_vector)
+    assert_approx(expected, transformed_vector)
 
 
 def test_mat4():
     vertex = np.array((1, 1, 1, 1))
     transformed = Mat4.rotate_about_axis((1, 0, 0), 90).T.dot(vertex)
 
-    assert_all_equal(transformed, (1, -1, 1))
+    assert_approx(transformed, (1, -1, 1))
 
 
 @pytest.mark.parametrize(
@@ -54,7 +54,7 @@ def test_transform(transform, expected):
     vertex = np.array((1, 1, 1))
     transform.apply(vertex)
 
-    assert_all_equal(expected, vertex)
+    assert_approx(expected, vertex)
 
     # also test that fiddling with the attributes gets the expected
     # results against these inputs
@@ -66,4 +66,4 @@ def test_transform(transform, expected):
     blank_transform.axis = transform.axis
     blank_transform.apply(vertex)
 
-    assert_all_equal(expected, vertex)
+    assert_approx(expected, vertex)

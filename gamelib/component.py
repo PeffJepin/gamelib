@@ -15,10 +15,9 @@
 #   require a new shared memory module so other processes can easily find the
 #   internal array after it has been reallocated.
 
-from __future__ import annotations
-
 import itertools
 import threading
+
 import numpy as np
 
 
@@ -69,8 +68,8 @@ class Component(metaclass=_ComponentType):
     def __init_subclass__(cls, **kwargs):
         """Initialize the subclass based on what has been annotated."""
 
-        # __init_subclass__ can also be used to reset a component
-        # so it needs to be reset to False here.
+        # __init_subclass__ can also be used to reset a component, so it
+        # needs to be reset to False here.
         cls._initialized = False
         cls._lock = threading.RLock()
 
@@ -217,7 +216,7 @@ class Component(metaclass=_ComponentType):
 
     @property
     def values(self):
-        """Get the values for this instances annotated attributes."""
+        """Get the values for this instance's annotated attributes."""
 
         return tuple(getattr(self, name) for name in self._fields)
 
@@ -232,7 +231,7 @@ class Component(metaclass=_ComponentType):
         Returns
         -------
         Component | None:
-            Depending if a component with this id is accounted for.
+            Depending on if a component with this id is accounted for.
         """
 
         return cls(id=id)
@@ -298,7 +297,7 @@ class Component(metaclass=_ComponentType):
     def reallocate(cls, new_length):
         """Reallocates the internal arrays to the new length. When
         automatically used internally, this will be sure not to delete entries.
-        If invoked manually its possible to destroy data that still in use.
+        If invoked manually it's possible to destroy data that still in use.
 
         Parameters
         ----------

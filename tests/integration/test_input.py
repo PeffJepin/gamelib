@@ -1,8 +1,7 @@
 import pytest
 
-from gamelib import events
-from gamelib import input
-from gamelib.input import (
+from gamelib.core import input, events
+from gamelib.core.input import (
     InputSchema,
     Keyboard,
     Buttons,

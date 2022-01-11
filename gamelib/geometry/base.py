@@ -1,22 +1,23 @@
 import dataclasses
-
 from typing import Optional
+
 import numpy as np
+
+from gamelib.geometry import wavefront
 from gamelib import gl
-from gamelib import _obj
 
 
 @dataclasses.dataclass
-class Geometry:
+class Model:
     vertices: np.ndarray
     normals: Optional[np.ndarray]
     triangles: np.ndarray
-    
 
-def parse_file(path):
-    if path.name.endswith(".obj"):
-        return _obj.parse(path)
-    raise ValueError(f"File format for {path=} not supported.")
+    @classmethod
+    def from_file(cls, path):
+        if path.name.endswith(".obj"):
+            return wavefront.parse(path)
+        raise ValueError(f"File format for {path=} not supported.")
 
 
 class GridMesh:

@@ -8,7 +8,7 @@ Examples
 --------
 Events are just data containers, the following are essentially equivilant:
 
->>> @dataclass
+>>> @dataclasses.dataclass
 >>> class Update:
 ...     dt: float
 
@@ -53,16 +53,18 @@ Doing update, dt=0.01
 #   named tuples for events.
 
 import threading
-from collections import defaultdict
-from dataclasses import dataclass
-from multiprocessing.connection import Connection
-from typing import Sequence, NamedTuple
+import collections
+import dataclasses
+import multiprocessing as mp
 
-from . import utils
+from typing import Sequence
+from typing import NamedTuple
+
+from gamelib import utils
 
 
 _HANDLER_INJECTION_ATTRIBUTE = "_gamelib_handler_"
-_event_handlers = defaultdict(list)
+_event_handlers = collections.defaultdict(list)
 _adapters = dict()
 
 
@@ -198,7 +200,7 @@ def find_marked_handlers(obj):
         A dictionary mapping event types to the actual handlers.
     """
 
-    handlers = defaultdict(list)
+    handlers = collections.defaultdict(list)
     for mark, method in utils.MethodMarker.lookup(obj, type="event").items():
         handlers[mark.extra].append(method)
     return handlers
@@ -245,7 +247,7 @@ class _ConnectionAdapter:
 
     def __init__(
         self,
-        conn: Connection,
+        conn: mp.Pipe,
         event_types: Sequence[type],
     ):
         self.conn = conn

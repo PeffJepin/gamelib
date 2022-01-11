@@ -1,11 +1,10 @@
 import numpy as np
 
 import gamelib
-from gamelib.geometry import Cube
-from gamelib.transforms import Mat4, Transform
 from gamelib.rendering import PerspectiveCamera
 from gamelib.rendering import ShaderProgram
-from gamelib.input import InputSchema
+from gamelib.geometry import transforms
+from gamelib.geometry import base
 
 
 gamelib.init()
@@ -18,8 +17,8 @@ camera = PerspectiveCamera(
     dir=(0, 1, 0),
     controller=True
 )
-cube = Cube()
-transform = Transform(
+cube = base.Cube()
+transform = transforms.Transform(
     scale=(5, 1, 1),
     pos=(0, 0, 0),
     axis=(0, 0, 1),
@@ -39,6 +38,7 @@ shader = ShaderProgram(
 
 waiting_for_input = False
 
+
 def next_test():
     global waiting_for_input
     waiting_for_input = False
@@ -49,10 +49,12 @@ def quit():
     waiting_for_input = False
     gamelib.exit()
 
-schema = InputSchema(
+
+schema = gamelib.InputSchema(
     ("y", "down", next_test),
     ("n", "down", quit)
 )
+
 
 def prompt(msg):
     global waiting_for_input
@@ -67,7 +69,7 @@ theta = 0
 while waiting_for_input:
     gamelib.clear()
     theta += 1
-    model_matrix[:] = Mat4.rotate_about_z(theta)
+    model_matrix[:] = transforms.Mat4.rotate_about_z(theta)
     shader.render()
     gamelib.update()
 
@@ -77,7 +79,7 @@ theta = 0
 while waiting_for_input:
     gamelib.clear()
     theta -= 1
-    model_matrix[:] = Mat4.rotate_about_z(theta)
+    model_matrix[:] = transforms.Mat4.rotate_about_z(theta)
     shader.render()
     gamelib.update()
 
@@ -87,7 +89,7 @@ theta = 0
 while waiting_for_input:
     gamelib.clear()
     theta += 1
-    model_matrix[:] = Mat4.rotate_about_y(theta)
+    model_matrix[:] = transforms.Mat4.rotate_about_y(theta)
     shader.render()
     gamelib.update()
 
@@ -97,7 +99,7 @@ theta = 0
 while waiting_for_input:
     gamelib.clear()
     theta -= 1
-    model_matrix[:] = Mat4.rotate_about_y(theta)
+    model_matrix[:] = transforms.Mat4.rotate_about_y(theta)
     shader.render()
     gamelib.update()
 
@@ -107,7 +109,7 @@ theta = 0
 while waiting_for_input:
     gamelib.clear()
     theta += 1
-    model_matrix[:] = Mat4.rotate_about_x(theta)
+    model_matrix[:] = transforms.Mat4.rotate_about_x(theta)
     shader.render()
     gamelib.update()
 
@@ -117,7 +119,7 @@ theta = 0
 while waiting_for_input:
     gamelib.clear()
     theta -= 1
-    model_matrix[:] = Mat4.rotate_about_x(theta)
+    model_matrix[:] = transforms.Mat4.rotate_about_x(theta)
     shader.render()
     gamelib.update()
     
@@ -131,7 +133,7 @@ theta = 0
 while waiting_for_input:
     gamelib.clear()
     theta += 1
-    model_matrix[:] = Mat4.rotate_about_axis(camera.direction, theta)
+    model_matrix[:] = transforms.Mat4.rotate_about_axis(camera.direction, theta)
     shader.render()
     gamelib.update()
 
@@ -141,7 +143,7 @@ theta = 0
 while waiting_for_input:
     gamelib.clear()
     theta -= 1
-    model_matrix[:] = Mat4.rotate_about_axis(camera.direction, theta)
+    model_matrix[:] = transforms.Mat4.rotate_about_axis(camera.direction, theta)
     shader.render()
     gamelib.update()
 
@@ -155,7 +157,7 @@ scale = 1
 while waiting_for_input:
     gamelib.clear()
     scale += 0.02
-    model_matrix[:] = Mat4.scale((scale, 1, 1))
+    model_matrix[:] = transforms.Mat4.scale((scale, 1, 1))
     shader.render()
     gamelib.update()
 
@@ -165,7 +167,7 @@ scale = 1
 while waiting_for_input:
     gamelib.clear()
     scale += 0.02
-    model_matrix[:] = Mat4.scale((1, 1, scale))
+    model_matrix[:] = transforms.Mat4.scale((1, 1, scale))
     shader.render()
     gamelib.update()
 
@@ -180,7 +182,7 @@ scale = 1
 while waiting_for_input:
     gamelib.clear()
     scale += 0.02
-    model_matrix[:] = Mat4.scale((1, scale, 1))
+    model_matrix[:] = transforms.Mat4.scale((1, scale, 1))
     shader.render()
     gamelib.update()
 
@@ -195,7 +197,7 @@ offset = 0
 while waiting_for_input:
     gamelib.clear()
     offset += 0.02
-    model_matrix[:] = Mat4.translation((-offset, 0, 0))
+    model_matrix[:] = transforms.Mat4.translation((-offset, 0, 0))
     shader.render()
     gamelib.update()
 
@@ -205,7 +207,7 @@ offset = 0
 while waiting_for_input:
     gamelib.clear()
     offset += 0.02
-    model_matrix[:] = Mat4.translation((offset, 0, 0))
+    model_matrix[:] = transforms.Mat4.translation((offset, 0, 0))
     shader.render()
     gamelib.update()
 
@@ -215,7 +217,7 @@ offset = 0
 while waiting_for_input:
     gamelib.clear()
     offset += 0.02
-    model_matrix[:] = Mat4.translation((0, 0, offset))
+    model_matrix[:] = transforms.Mat4.translation((0, 0, offset))
     shader.render()
     gamelib.update()
 
@@ -225,7 +227,7 @@ offset = 0
 while waiting_for_input:
     gamelib.clear()
     offset += 0.02
-    model_matrix[:] = Mat4.translation((0, 0, -offset))
+    model_matrix[:] = transforms.Mat4.translation((0, 0, -offset))
     shader.render()
     gamelib.update()
 
@@ -240,7 +242,7 @@ offset = 0
 while waiting_for_input:
     gamelib.clear()
     offset += 0.02
-    model_matrix[:] = Mat4.translation((0, offset, 0))
+    model_matrix[:] = transforms.Mat4.translation((0, offset, 0))
     shader.render()
     gamelib.update()
 
@@ -250,7 +252,7 @@ offset = 0
 while waiting_for_input:
     gamelib.clear()
     offset += 0.02
-    model_matrix[:] = Mat4.translation((0, -offset, 0))
+    model_matrix[:] = transforms.Mat4.translation((0, -offset, 0))
     shader.render()
     gamelib.update()
 
@@ -265,7 +267,7 @@ i = 0
 while waiting_for_input:
     gamelib.clear()
     sin = np.sin(i/66)
-    t = Transform(
+    t = transforms.Transform(
         pos=(0, 0, sin),
         scale=(1.5 + sin, 1, 1),
         axis=(0, 0, 1),

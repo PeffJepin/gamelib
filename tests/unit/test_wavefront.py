@@ -28,7 +28,7 @@ f 1 2 3
          0,   -1.11, 0,
          1.11, 0,    0], gl.float)
     triangles = np.array([0, 1, 2], gl.uint)
-    parsed = geometry.parse_file(tmpfile)
+    parsed = geometry.Model.from_file(tmpfile)
 
     assert np.all(parsed.vertices == vertices)
     assert np.all(parsed.triangles == triangles)
@@ -50,13 +50,13 @@ f 1//1 3//3 4//4
     with open(tmpfile, 'w') as f:
         f.write(source)
 
-    vertices=np.array(
+    vertices = np.array(
         [0,    0,    0, 
          0,    1.11, 0, 
          1.11, 1.11, 0, 
          1.11, 0,    0], gl.float)
 
-    normals=np.array(
+    normals = np.array(
         [0,  0, 1, 
          0,  0, 1, 
          1,  0, 0, 
@@ -66,7 +66,7 @@ f 1//1 3//3 4//4
         [0, 1, 2, 
          0, 2, 3], gl.uint)
 
-    parsed = geometry.parse_file(tmpfile)
+    parsed = geometry.Model.from_file(tmpfile)
     assert np.all(parsed.vertices == vertices)
     assert np.all(parsed.normals == normals)
     assert np.all(parsed.triangles == triangles)
@@ -88,13 +88,13 @@ f 1//3 3//1 4//2
     with open(tmpfile, 'w') as f:
         f.write(source)
 
-    vertices=np.array(
+    vertices = np.array(
         [0,    0,    0, 
          0,    1.11, 0, 
          1.11, 1.11, 0, 
          1.11, 0,    0], gl.float)
 
-    normals=np.array(
+    normals = np.array(
         [1, 0,  0, 
          0, 1,  0, 
          0, 0,  1, 
@@ -104,7 +104,7 @@ f 1//3 3//1 4//2
         [0, 1, 2, 
          0, 2, 3], gl.uint)
 
-    parsed = geometry.parse_file(tmpfile)
+    parsed = geometry.Model.from_file(tmpfile)
     assert np.all(parsed.vertices == vertices)
     assert np.all(parsed.normals == normals)
     assert np.all(parsed.triangles == triangles)
@@ -121,7 +121,6 @@ f 1 2 3 4
     with open(tmpfile, 'w') as f:
         f.write(source)
 
-    parsed = geometry.parse_file(tmpfile)
+    parsed = geometry.Model.from_file(tmpfile)
     # should be 6 indices: 2 triangles
     assert len(parsed.triangles) == 6
-

@@ -7,10 +7,10 @@ from gamelib import geometry
 gamelib.init()
 context = gamelib.get_context()
 context.wireframe = True
-
-
 scale = 1000
-mesh = geometry.GridMesh(lod=100, scale=scale)
+lod = 100
+
+mesh = geometry.GridMesh(lod=lod, scale=scale)
 perspective = rendering.PerspectiveCamera(
     pos=(-33, -33, 100),
     dir=(500, 500, 1),

@@ -5,13 +5,13 @@ import pytest
 import gamelib
 
 from gamelib.rendering import shaders
-from gamelib import _window, gl
+from gamelib import gl
 
 
 @pytest.fixture(autouse=True, scope="module")
 def init_ctx():
     gamelib.init(headless=True)
-    yield _window.context
+    yield gamelib.get_context()
     gamelib.exit()
 
 

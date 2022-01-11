@@ -1,11 +1,9 @@
-from __future__ import annotations
-
 import abc
-from abc import abstractmethod, ABC
+
 from typing import Tuple
 
-import numpy as np
 import pygame
+import numpy as np
 from PIL import Image
 
 
@@ -28,15 +26,15 @@ class Asset(abc.ABC):
         self.label = label
         self.texture = None
 
-    @abstractmethod
+    @abc.abstractmethod
     def load(self):
         """Load the asset into cpu memory."""
 
-    @abstractmethod
+    @abc.abstractmethod
     def free(self):
         """Clean-up state from load."""
 
-    @abstractmethod
+    @abc.abstractmethod
     def tobytes(self):
         """Return the bytes for the already loaded assets.
 
@@ -45,7 +43,7 @@ class Asset(abc.ABC):
         data_for_gpu : bytes
         """
 
-    @abstractmethod
+    @abc.abstractmethod
     def shape(self):
         """Return the px dimensions of this Asset after its been loaded.
 
@@ -292,11 +290,11 @@ class TextureReference:
         return self._y
 
 
-class AtlasWriter(ABC):
+class AtlasWriter(abc.ABC):
     """Writes a collection of images into a larger single
     image and keeps some metadata."""
 
-    @abstractmethod
+    @abc.abstractmethod
     def stitch_texture(self, allocations, shape):
         """
         Stitch a group of image files into a single larger texture.
@@ -313,13 +311,13 @@ class AtlasWriter(ABC):
         """
 
 
-class AtlasAllocator(ABC):
+class AtlasAllocator(abc.ABC):
     """Allocates space to paste smaller images
     into a single larger texture."""
 
     max_size: Tuple[int, int]
 
-    @abstractmethod
+    @abc.abstractmethod
     def pack_assets(self, assets) -> tuple:
         """Pack assets into some geometry, preferably
         utilizing space efficiently.

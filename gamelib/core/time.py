@@ -32,7 +32,7 @@ class Timer:
         Parameters
         ----------
         rate : int, optional
-            Override the sample rate assigned in __init__. This effect wont
+            Override the sample rate assigned in __init__. This effect will not
             persist past this tick.
 
         Returns

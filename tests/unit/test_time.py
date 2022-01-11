@@ -1,7 +1,7 @@
 import time
 import pytest
 
-from gamelib.time import Timer, Schedule
+from gamelib.core.time import Timer, Schedule
 from tests.conftest import RecordedCallback
 
 

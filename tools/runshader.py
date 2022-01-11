@@ -5,7 +5,7 @@ import time
 
 import gamelib
 import moderngl
-from gamelib import resources
+from gamelib.core import resources
 from gamelib import rendering
 
 START_TAG = "# BEGIN SCRIPT MAINTAINED REGION"

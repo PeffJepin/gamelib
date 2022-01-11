@@ -1,11 +1,13 @@
 import pathlib
-from typing import NamedTuple, List
+
+from typing import NamedTuple
+from typing import List
 
 import numpy as np
 
 from gamelib import gl
 from gamelib import get_context
-from gamelib import resources
+from gamelib.core import resources
 
 
 class AutoBuffer:
@@ -191,7 +193,7 @@ class OrderedIndexBuffer(AutoBuffer):
         order,
         num_entities=0,
         max_entities=1000,
-        repitition_offset=None,
+        repetition=None,
         **kwargs,
     ):
         """Initialize the buffer.
@@ -215,7 +217,7 @@ class OrderedIndexBuffer(AutoBuffer):
         self._num_entities = 0
         self.indices_per_entity = len(order)
         order = np.array(order, "u4")
-        offset = repitition_offset or max(order) + 1
+        offset = repetition or max(order) + 1
         index_offsets = np.array(np.arange(max_entities) * offset)
         index_offsets = np.repeat(index_offsets, len(order))
         indices = np.tile(order, max_entities) + index_offsets
@@ -328,7 +330,7 @@ class ShaderProgram:
             The keys should map to uniform names belonging to this shader.
             The values can be standard python values, which will be assigned
             to the shader once, or ndarrays which will act as sources to the
-            uniform an be auto-updated. See the moderngl docs for more info
+            uniform and be auto-updated. See the moderngl docs for more info
             on formatting single use python values.
 
         buffers : dict[str, np.ndarray | AutoBuffer]
@@ -457,8 +459,8 @@ class ShaderProgram:
 
     @property
     def uniforms(self):
-        """Gets a dictionary of uniforms parsed from all of the
-        shader source strings.
+        """Gets a dictionary of uniforms parsed from all the shader source
+        strings.
 
         Returns
         -------
