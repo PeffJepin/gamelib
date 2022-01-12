@@ -1,0 +1,5 @@
+python3 basic_shader_rendering.py
+python3 camera_example.py
+python3 loading_shader_by_name.py
+python3 rendering_with_index_buffer.py
+python3 rendering_geometry.py
