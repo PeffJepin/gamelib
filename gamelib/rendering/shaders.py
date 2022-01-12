@@ -396,9 +396,11 @@ class ShaderProgram:
         ctx = ctx or get_context()
         buffers = buffers or {}
         uniforms = uniforms or {}
+        self._initialized = False
         self._mode = mode
         self._vao = None
         self._max_elements = max_entities
+        self._max_element_multiplier = 1
         self._varyings = varyings
         self._foreign_auto_buffers = {}
         self._created_auto_buffers = {}
@@ -427,13 +429,7 @@ class ShaderProgram:
             self._uniforms.update({u.name: u for u in meta.uniforms})
 
         # set index buffer
-        if isinstance(index_buffer, np.ndarray):
-            self._index_buffer = AutoBuffer(index_buffer, gl.uint)
-        elif isinstance(index_buffer, OrderedIndexBuffer):
-            self._max_elements *= index_buffer.indices_per_entity
-            self._index_buffer = index_buffer
-        else:
-            self._index_buffer = index_buffer
+        self.use_indices(index_buffer)
 
         # process vertex buffers
         self._buffer_format_tuples = []
@@ -445,6 +441,7 @@ class ShaderProgram:
 
         # make vertex array for rendering
         self._make_vao()
+        self._initialized = True
 
     @property
     def vertex_attributes(self):
@@ -501,7 +498,18 @@ class ShaderProgram:
 
         for name, array in buffers.items():
             self._replace_buffer(name, array)
-        self._vao = self._make_vao()
+        self._make_vao()
+
+    def use_indices(self, index_buffer):
+        if isinstance(index_buffer, np.ndarray):
+            self._index_buffer = AutoBuffer(index_buffer, gl.uint)
+        elif isinstance(index_buffer, OrderedIndexBuffer):
+            self._max_element_multiplier = index_buffer.indices_per_entity
+            self._index_buffer = index_buffer
+        else:
+            self._index_buffer = index_buffer
+        if self._initialized:
+            self._make_vao()
 
     def write_buffers(self, **buffers):
         for name, array in buffers.items():
@@ -587,8 +595,9 @@ class ShaderProgram:
 
         dtype = self.vertex_attributes[name].dtype
         if isinstance(buf, np.ndarray):
+            max_ele = self._max_elements * self._max_element_multiplier
             auto = AutoBuffer(
-                buf, dtype, max_elements=self._max_elements, ctx=self.gl.ctx
+                buf, dtype, max_elements=max_ele, ctx=self.gl.ctx
             )
             self._created_auto_buffers[name] = auto
             vbo = auto.gl

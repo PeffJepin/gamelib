@@ -239,7 +239,7 @@ def _hook_window_events():
     def _broadcast_key_event(key, action, modifiers):
         key = _input_type_lookup.get(key)
         modifiers = input.Modifiers(
-            modifiers.shift, modifiers.ctrl, modifiers.alt
+            bool(modifiers.shift), bool(modifiers.ctrl), bool(modifiers.alt)
         )
         if not key:
             return

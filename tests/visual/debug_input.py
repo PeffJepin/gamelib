@@ -16,7 +16,7 @@ schema = VerboseSchema(
     ("a", "is_pressed", dummy),
     ("s", "is_pressed", dummy),
     ("d", "is_pressed", dummy),
-    ("f", "is_pressed", dummy)
+    ("f", "is_pressed", dummy),
 )
 
 
@@ -24,4 +24,3 @@ schema = VerboseSchema(
 gamelib.config.fps = 1
 gamelib.config.tps = 5
 gamelib.run()
-

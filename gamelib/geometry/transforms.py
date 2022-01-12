@@ -42,6 +42,10 @@ class Mat3:
     """
 
     @staticmethod
+    def identity():
+        return np.identity(3, gl.float)
+
+    @staticmethod
     def rotate_about_x(theta, dtype=gl.float):
         """Create a 3x3 rotation matrix about the positive x-axis.
 
@@ -160,6 +164,10 @@ class Mat4:
     """Namespace for 4x4 transformation matrices. Note that these matrices
     are transposed for OpenGL. Use the transform.apply method to transform
     numpy vectors."""
+
+    @staticmethod
+    def identity():
+        return np.identity(4, gl.float)
 
     @staticmethod
     def look_at_transform(eye, look_at, up, dtype=gl.mat4):
@@ -610,6 +618,11 @@ class Transform:
         self._matrix[:] = Mat4.translation(self.pos).dot(
             Mat4.rotate_about_axis(self.axis, self.theta).dot(
                 Mat4.scale(self.scale)
+            )
+        )
+        self._matrix[:] = Mat4.scale(self.scale).dot(
+            Mat4.rotate_about_axis(self.axis, self.theta).dot(
+                Mat4.translation(self.pos)
             )
         )
 

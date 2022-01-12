@@ -10,6 +10,9 @@ from gamelib.core import events
 from gamelib.core import resources
 
 
+DEFAULT_MODELS_DIR = pathlib.Path(__file__).parent.parent / "models"
+
+
 @dataclasses.dataclass
 class _Config:
     """Global config variables.
@@ -74,6 +77,9 @@ def init(headless=False, **kwargs):
 
     resources.set_content_roots(pathlib.Path.cwd())
     window.create(headless=headless, **kwargs)
+    ctx = window.get_context()
+    ctx.enable(ctx.DEPTH_TEST)
+
     _initialized = True
 
 

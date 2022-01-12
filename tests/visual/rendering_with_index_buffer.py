@@ -59,7 +59,7 @@ shader = shaders.ShaderProgram(
     """,
     index_buffer=index_buffer,
     buffers={"v_pos": pos_buffer, "v_col": col_buffer},
-    max_entities=100
+    max_entities=100,
 )
 
 prev_time = time.time()
@@ -76,4 +76,3 @@ while gamelib.is_running():
     gamelib.clear()
     shader.render()
     gamelib.update()
-

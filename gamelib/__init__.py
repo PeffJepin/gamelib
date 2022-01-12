@@ -1,3 +1,8 @@
+from gamelib.core import resources
+from gamelib.core import time
+from gamelib.core import events
+from gamelib.core import input
+
 from gamelib.core.runtime import init
 from gamelib.core.runtime import update
 from gamelib.core.runtime import run

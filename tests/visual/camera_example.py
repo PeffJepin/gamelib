@@ -17,14 +17,14 @@ perspective = rendering.PerspectiveCamera(
     up=(0, 0, 1),
     fovy=50,
     far=10_000,
-    controller=True
+    controller=True,
 )
 ortho = rendering.OrthogonalCamera(
     px_per_unit=1,
-    pos=(scale/2, scale/2, -5),
+    pos=(scale / 2, scale / 2, -5),
     up=(0, 1, 0),
     dir=(0, 0, -1),
-    controller=True
+    controller=True,
 )
 camera = perspective
 
@@ -62,7 +62,7 @@ shader = rendering.ShaderProgram(
     """,
     buffers={"pos": mesh.vertices},
     uniforms={"view": camera.view_matrix, "proj": camera.projection_matrix},
-    index_buffer=mesh.indices,
+    index_buffer=mesh.triangles,
 )
 
 
