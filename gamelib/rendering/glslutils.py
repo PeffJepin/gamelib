@@ -1,3 +1,94 @@
+"""This module is responsible for inspecting and manipulating glsl shader
+code.
+
+Notes
+--------
+Given a simple shader like shown below, the following shows the formats gamelib
+expects a shader to take.
+
+// vertex shader
+#version 330
+in vec3 v_pos;
+void main() {
+    gl_Position = vec4(v_pos, 1.0);
+}
+
+// fragment shader
+#version 330
+out vec4 frag;
+void main() {
+    frag = vec4(1.0, 1.0, 1.0, 1.0);
+}
+
+Each stage can be given separately, with the shader stage specified in whatever
+function call it is being passed into.
+
+Alternatively, this module includes some pre-processing directives for
+specifying a shader as a single string like so:
+
+c   #version 330
+
+    #vert
+v   in vec3 v_pos;
+v   void main() {
+v       gl_Position = vec4(v_pos, 1.0);
+v   }
+
+    #frag
+f   out vec4 frag;
+f   void main() {
+f       frag = vec4(1.0, 1.0, 1.0, 1.0);
+f   }
+
+In the 'gutter' above the letters v and f indicate which lines will end up in
+the vertex and fragment shaders respectively. The shader stage directives are
+as follows:
+    "#vert" : vertex shader
+    "#tesc" : tessellation control shader
+    "#tese" : tessellation evaluation shader
+    "#geom" : geometry shader
+    "#frag" : fragment shader
+
+A shader stage marked by a directive like shown above begins on the line
+immediately after the directive, and continues until the end of main().
+
+Note that #version 330 is marked with a c for common. Anything outside of a
+marked shader stage is considered common to all stages, and will be injected
+at the beginning of the shader before its own source code.
+
+Shaders can also be provided as files on disk. Much like using strings, shaders
+from a file can either be a collection of files:
+    (shader.vert, shader.frag)
+Or they can be given as a single file likes:
+    shader.glsl
+
+Finally, this module also implements an #include directive for injecting some
+code. Given the following:
+
+    // colors.glsl
+    vec4 my_red_color = vec4(1.0, 0.0, 0.0, 1.0);
+    vec4 my_blue_color = vec4(0.0, 1.0, 0.0, 1.0);
+    vec4 my_green_color = vec4(0.0, 0.0, 1.0, 1.0);
+
+    // fragment shader
+    #include <colors>
+    out vec4 frag;
+    void main() {
+        frag = my_red_color;
+    }
+    // #include <colors.glsl> also acceptable
+
+This fragment shader would expand to:
+    // fragment shader
+    vec4 my_red_color = vec4(1.0, 0.0, 0.0, 1.0);
+    vec4 my_blue_color = vec4(0.0, 1.0, 0.0, 1.0);
+    vec4 my_green_color = vec4(0.0, 0.0, 1.0, 1.0);
+    out vec4 frag;
+    void main() {
+        frag = my_red_color;
+    }
+"""
+
 import dataclasses
 
 from typing import List
@@ -41,17 +132,45 @@ class ShaderSourceCode:
 
 @dataclasses.dataclass
 class ShaderData:
+    """Entry point into the module for preprocessing glsl code."""
+
     code: ShaderSourceCode
     meta: ShaderMetaData
 
     @classmethod
-    def read_string(cls, string):
-        code = _ShaderPreProcessor.process_single_string(string)
+    def read_string(cls, code):
+        """Preprocesses and inspects a shader provided as a single string.
+
+        Parameters
+        ----------
+        code : str
+
+        Returns
+        -------
+        ShaderData
+        """
+
+        code = _ShaderPreProcessor.process_single_string(code)
         meta = _parse_metadata(code)
         return cls(code, meta)
 
     @classmethod
     def read_strings(cls, vert="", tesc="", tese="", geom="", frag=""):
+        """Preprocesses and inspects a shader provided as individual strings.
+
+        Parameters
+        ----------
+        vert : str
+        tesc : str
+        tese : str
+        geom : str
+        frag : str
+
+        Returns
+        -------
+        ShaderData
+        """
+
         code = _ShaderPreProcessor.process_separate_strings(
             vert, tesc, tese, geom, frag
         )
@@ -59,8 +178,19 @@ class ShaderData:
         return cls(code, meta)
 
     @classmethod
-    def read_file(cls, name):
-        paths = resources.get_shader_files(name)
+    def read_file(cls, filename):
+        """Locates and loads a shader on disk with the resources module.
+
+        Parameters
+        ----------
+        filename : str
+
+        Returns
+        -------
+        ShaderData
+        """
+
+        paths = resources.get_shader_files(filename)
 
         if len(paths) == 1 and paths[0].name.endswith(".glsl"):
             with open(paths[0], "r") as f:
@@ -159,7 +289,7 @@ class _ShaderPreProcessor:
                 self.curly_braces = [0, 0]
                 self.current_stage = self.common
 
-    def handle_gamelib_directives(self, line):
+    def handle_gamelib_directives(self, line) -> bool:
         if line == "#vert":
             self.seeking_stage_end = True
             self.current_stage = self.vert_stage
@@ -203,7 +333,7 @@ class _ShaderPreProcessor:
     @classmethod
     def process_separate_strings(
         cls, vert="", tesc="", tese="", geom="", frag=""
-    ):
+    ) -> ShaderSourceCode:
         self = cls()
 
         self.current_stage = self.vert_stage
@@ -229,7 +359,7 @@ class _ShaderPreProcessor:
         return self.compose()
 
     @classmethod
-    def process_single_string(cls, string):
+    def process_single_string(cls, string) -> ShaderSourceCode:
         self = cls()
 
         for line in string.splitlines():
@@ -266,6 +396,13 @@ def _parse_metadata(src: ShaderSourceCode) -> ShaderMetaData:
 
 
 def _create_token_desc(values) -> TokenDesc:
+    """After finding a keyword like uniform, in, out... etc, this will get
+    the rest of the tokens following the keyword and creates a TokenDesc.
+
+    For the line "uniform int my_uniform_array[3];"
+                values=("int", "my_uniform_array[3];")
+    """
+
     raw_name = values[1][:-1]
 
     if raw_name.endswith("]"):
