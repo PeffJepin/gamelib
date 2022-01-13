@@ -15,7 +15,7 @@ transform = geometry.Transform(
 )
 model_matrix = geometry.Mat4.identity()
 shader = rendering.ShaderProgram(
-    "flat_shaded",
+    "simple_faceted",
     buffers={"v_pos": cube.vertices},
     uniforms={
         "proj": camera.projection_matrix,

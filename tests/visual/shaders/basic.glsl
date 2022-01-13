@@ -1,8 +1,9 @@
 #version 330
 
+#vert
 out vec3 color;
 
-void main() 
+void main()
 {
     if (gl_VertexID == 0)
     {
@@ -19,5 +20,14 @@ void main()
         gl_Position = vec4(1, -1, 0, 1);
         color = vec3(0, 0, 1);
     }
+}
+
+#frag
+in vec3 color;
+out vec4 frag;
+
+void main()
+{
+    frag = vec4(color, 1);
 }
 

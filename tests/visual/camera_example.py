@@ -9,7 +9,6 @@ context = gamelib.get_context()
 context.wireframe = True
 scale = 1000
 lod = 100
-
 mesh = geometry.GridMesh(lod=lod, scale=scale)
 perspective = rendering.PerspectiveCamera(
     pos=(-33, -33, 100),
@@ -27,12 +26,11 @@ ortho = rendering.OrthogonalCamera(
     controller=True,
 )
 camera = perspective
-
-
 shader = rendering.ShaderProgram(
-    vertex_shader="""
+    source="""
         #version 330
         
+        #vert 
         in vec3 pos;
         out vec3 color;
         
@@ -48,10 +46,8 @@ shader = rendering.ShaderProgram(
             float green = distance(pos.xy, vec2(0, 0)) / diagonal;
             color = vec3(red, green, blue);
         }
-    """,
-    fragment_shader="""
-        #version 330
         
+        #frag
         in vec3 color;
         out vec4 frag;
         

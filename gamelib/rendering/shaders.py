@@ -1,13 +1,10 @@
 import pathlib
 
-from typing import NamedTuple
-from typing import List
-
 import numpy as np
 
 from gamelib import gl
 from gamelib import get_context
-from gamelib.core import resources
+from gamelib.rendering import glslutils
 
 
 class AutoBuffer:
@@ -305,7 +302,7 @@ class ShaderProgram:
         buffers=None,
         index_buffer=None,
         max_entities=-1,
-        **shader_sources,
+        **shader_code,
     ):
         """Initialize a shader from source.
 
@@ -407,26 +404,27 @@ class ShaderProgram:
 
         # load source, either by given name or kwargs
         if name:
-            shader_sources = _load_shader_sources_by_name(name)
+            shader_data = glslutils.ShaderData.read_file(name)
+        elif source := shader_code.get("source", None):
+            shader_data = glslutils.ShaderData.read_string(source)
         else:
-            for shader_type, src in shader_sources.items():
-                if isinstance(src, str):
-                    if not src.strip().startswith("#version"):
-                        shader_sources[shader_type] = _read_shader_source(src)
-                elif isinstance(src, pathlib.Path):
-                    shader_sources[shader_type] = _read_shader_source(src)
-        self.gl = ctx.program(**shader_sources, varyings=varyings)
+            shader_data = glslutils.ShaderData.read_strings(**shader_code)
+
+        self.gl = ctx.program(
+            vertex_shader=shader_data.code.vert,
+            tess_control_shader=shader_data.code.tesc,
+            tess_evaluation_shader=shader_data.code.tese,
+            geometry_shader=shader_data.code.geom,
+            fragment_shader=shader_data.code.frag,
+            varyings=varyings
+        )
 
         # parse shader source code and cache metadata
-        self._meta = {
-            name: parse_source(src) for name, src in shader_sources.items()
-        }
+        self._meta = shader_data.meta
         self._vertex_attrs = {
-            i.name: i for i in self._meta["vertex_shader"].inputs
+            desc.name: desc for desc in self._meta.attributes
         }
-        self._uniforms = dict()
-        for meta in self._meta.values():
-            self._uniforms.update({u.name: u for u in meta.uniforms})
+        self._uniforms = {desc.name: desc for desc in self._meta.uniforms}
 
         # set index buffer
         self.use_indices(index_buffer)
@@ -562,9 +560,9 @@ class ShaderProgram:
         self._auto_update()
         out_dtype = np.dtype(
             [
-                (o.name, o.dtype)
-                for o in self._meta["vertex_shader"].outputs
-                if o.name in self._varyings
+                (desc.name, desc.dtype)
+                for desc in self._meta.vertex_outputs
+                if desc.name in self._varyings
             ]
         )
 
@@ -683,78 +681,3 @@ class ShaderProgram:
         )
         self._vao = vao
         return vao
-
-
-class TokenDesc(NamedTuple):
-    """Data describing a token parsed from glsl source code."""
-
-    name: str
-    dtype: np.dtype
-    len: int  # array length if token is an array, else 1
-
-
-class ShaderMetaData(NamedTuple):
-    """A collection of metadata on tokens parsed from a single
-    glsl source file."""
-
-    inputs: List[TokenDesc]
-    outputs: List[TokenDesc]
-    uniforms: List[TokenDesc]
-
-
-def parse_source(src):
-    """Parse glsl source code for relevant metadata.
-
-    Parameters
-    ----------
-    src : str
-        glsl source code
-
-    Returns
-    -------
-    ShaderMetaData
-    """
-    inspections = {"in": [], "out": [], "uniform": []}
-    for line in src.split("\n"):
-        tokens = line.strip().split(" ")
-        for i, token in enumerate(tokens):
-            if token in ("in", "out", "uniform"):
-                raw_name = tokens[i + 2][:-1]
-                if raw_name.endswith("]"):
-                    length = int(raw_name[-2])
-                    name = raw_name[:-3]
-                else:
-                    length = 1
-                    name = raw_name
-                dtype = getattr(gl, tokens[i + 1])
-                assert isinstance(dtype, np.dtype)
-                inspections[token].append(
-                    TokenDesc(name=name, dtype=dtype, len=length)
-                )
-                break
-    return ShaderMetaData(
-        inputs=inspections["in"],
-        outputs=inspections["out"],
-        uniforms=inspections["uniform"],
-    )
-
-
-def _read_shader_source(path):
-    with open(path, "r") as f:
-        return f.read()
-
-
-_EXT_MAPPING = {
-    ".vert": "vertex_shader",
-    ".frag": "fragment_shader",
-    ".tese": "tess_evaluation_shader",
-    ".tesc": "tess_control_shader",
-    ".geom": "geometry_shader",
-}
-
-
-def _load_shader_sources_by_name(name):
-    shader_files = resources.get_shader_files(name)
-    return {
-        _EXT_MAPPING[p.name[-5:]]: _read_shader_source(p) for p in shader_files
-    }

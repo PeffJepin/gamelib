@@ -31,12 +31,12 @@ col_buffer = np.array(colors)
 
 # create shader
 shader = shaders.ShaderProgram(
-    vertex_shader="""
+    source="""
         #version 330
         
+        #vert
         in vec2 v_pos;
         in vec3 v_col;
-        
         out vec3 color;
         
         void main()
@@ -44,12 +44,9 @@ shader = shaders.ShaderProgram(
             gl_Position = vec4(v_pos, 0, 1);
             color = v_col;
         }
-    """,
-    fragment_shader="""
-        #version 330
         
+        #frag
         in vec3 color;
-        
         out vec4 frag;
         
         void main()

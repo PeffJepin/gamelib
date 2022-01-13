@@ -212,22 +212,14 @@ class TestShaderProgram:
 
     def test_loading_a_shader_with_source_string(self):
         program = shaders.ShaderProgram(
-            vertex_shader=self.simple_vertex_source,
+            vert=self.simple_vertex_source,
             varyings=["value"],
         )
         self.assert_simple_transform(program.gl.ctx, program.gl)
 
-    def test_loading_a_shader_with_source_file(self, tmpdir):
-        path = pathlib.Path(tmpdir) / "temporary_vertex_shader_source"
-        with open(path, "w") as f:
-            f.write(self.simple_vertex_source)
-
-        program = shaders.ShaderProgram(vertex_shader=path, varyings=["value"])
-        self.assert_simple_transform(program.gl.ctx, program.gl)
-
     def test_transform_given_vertices(self):
         program = shaders.ShaderProgram(
-            vertex_shader="""
+            vert="""
                 #version 330
                 
                 out int value;
@@ -246,7 +238,7 @@ class TestShaderProgram:
 
     def test_transform_multiple_outputs_given_vertices(self):
         program = shaders.ShaderProgram(
-            vertex_shader="""
+            vert="""
                 #version 330
                 
                 out int test_int_output;
@@ -270,7 +262,7 @@ class TestShaderProgram:
     def test_transform_must_calculate_result_buffer_size(self):
         in_values = np.array([(1, 2), (3, 4), (5, 6)])
         program = shaders.ShaderProgram(
-            vertex_shader="""
+            vert="""
                 #version 330
                 
                 in vec2 test_inputs;
@@ -293,7 +285,7 @@ class TestShaderProgram:
 
     def test_inspection(self):
         program = shaders.ShaderProgram(
-            vertex_shader="""
+            vert="""
                 #version 330
                 in vec2 v_pos;
                 void main() 
@@ -301,7 +293,7 @@ class TestShaderProgram:
                     gl_Position = vec4(v_pos, 0, 1);
                 } 
             """,
-            fragment_shader="""
+            frag="""
                 #version 330
                 uniform sampler2D atlas;
                 out vec4 frag;
@@ -324,7 +316,7 @@ class TestShaderProgram:
 
         uniform = np.array(input_value)
         program = shaders.ShaderProgram(
-            vertex_shader=f"""
+            vert=f"""
                 #version 330
                 
                 uniform {gl_type} test_input;
@@ -356,7 +348,7 @@ class TestShaderProgram:
         arr2 = arr1 + 7
         uniform = np.vstack((arr1, arr2))
         program = shaders.ShaderProgram(
-            vertex_shader=f"""
+            vert=f"""
                 #version 330
 
                 uniform {gl_type} test_input[2];
@@ -376,7 +368,7 @@ class TestShaderProgram:
 
     def test_use_uniforms_no_current_uniforms(self):
         program = shaders.ShaderProgram(
-            vertex_shader="""
+            vert="""
                 #version 330
 
                 uniform int input1;
@@ -401,7 +393,7 @@ class TestShaderProgram:
     def test_use_uniforms_with_existing_uniforms_in_place(self):
         uni1, uni2 = np.array([0], gl.int), np.array([100], gl.int)
         program = shaders.ShaderProgram(
-            vertex_shader="""
+            vert="""
                 #version 330
 
                 uniform int input1;
@@ -436,7 +428,7 @@ class TestShaderProgram:
         array = np.array(valid_input_value)
         buffer = np.vstack((array, array, array, array))
         program = shaders.ShaderProgram(
-            vertex_shader=f"""
+            vert=f"""
                 #version 330
                 in {gl_type} inval;
                 out {gl_type} outval;
@@ -453,7 +445,7 @@ class TestShaderProgram:
 
     def test_use_buffers_no_current_buffers(self):
         program = shaders.ShaderProgram(
-            vertex_shader="""
+            vert="""
                 #version 330
                 
                 in int input1;
@@ -481,7 +473,7 @@ class TestShaderProgram:
         array1 = np.arange(6, dtype=gl.int)
         array2 = np.arange(6, 12, dtype=gl.int)
         program = shaders.ShaderProgram(
-            vertex_shader="""
+            vert="""
                 #version 330
 
                 in int input1;
@@ -509,7 +501,7 @@ class TestShaderProgram:
 
     def test_max_entities(self):
         program = shaders.ShaderProgram(
-            vertex_shader="""
+            vert="""
                 #version 330
                  
                 in int input1;
@@ -536,7 +528,7 @@ class TestShaderProgram:
         array1 = np.arange(12)
         array2 = np.arange(12)
         program = shaders.ShaderProgram(
-            vertex_shader="""
+            vert="""
                 #version 330
                 
                 in int input1;
@@ -565,7 +557,7 @@ class TestShaderProgram:
         index_array = np.arange(8)
         array = np.arange(10)
         program = shaders.ShaderProgram(
-            vertex_shader="""
+            vert="""
                 #version 330
                 
                 in int input1;

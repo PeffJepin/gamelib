@@ -202,3 +202,22 @@ def glsl_dtype_and_input(request):
 def assert_approx(iter1, iter2, rel=1e-6):
     for v1, v2 in zip(iter1, iter2):
         assert v1 == pytest.approx(v2, rel=rel)
+
+
+def compare_glsl(src1, src2):
+    cleaned1 = "\n".join(
+        line.strip()
+        for line in src1.splitlines()
+        if line.strip() not in ("", "\n")
+    )
+    cleaned2 = "\n".join(
+        line.strip()
+        for line in src2.splitlines()
+        if line.strip() not in ("", "\n")
+    )
+    if cleaned1 != cleaned2:
+        import pprint
+        pprint.pprint(cleaned1)
+        pprint.pprint(cleaned2)
+    return cleaned1 == cleaned2
+
