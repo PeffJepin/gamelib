@@ -100,6 +100,8 @@ class AutoBuffer(Buffer):
         self,
         source,
         dtype,
+        *,
+        shrink=True
     ):
         """
         Parameters
@@ -108,10 +110,13 @@ class AutoBuffer(Buffer):
             The source can either be an array to read from continually or a
             callable that will provide access on demand to such an array.
         dtype : np.dtype
+        shrink : optional, bool
+            Should this buffer automatically shrink?
         """
 
         self.dtype = dtype if isinstance(dtype, np.dtype) else np.dtype(dtype)
         self._source = source
+        self._shrink = shrink
         super().__init__(self._source, dtype, True)
         self._num_elements = self._source.nbytes // self.dtype.itemsize
 
@@ -187,7 +192,9 @@ class AutoBuffer(Buffer):
         nbytes = len(data)
         self._num_elements = nbytes // self.dtype.itemsize
 
-        if self.gl is None or nbytes > self.size or nbytes < self.size/4:
+        if self.gl is None or nbytes > self.size:
+            self._make_opengl_buffer(nbytes)
+        if self._shrink and nbytes < self.size/4:
             self._make_opengl_buffer(nbytes)
 
         self.gl.write(data)
@@ -233,7 +240,7 @@ class OrderedIndexBuffer(AutoBuffer):
         index_offsets = np.array(np.arange(max_entities) * offset)
         index_offsets = np.repeat(index_offsets, len(order))
         indices = np.tile(order, max_entities) + index_offsets
-        super().__init__(indices, gl.uint)
+        super().__init__(indices, gl.uint, shrink=False)
 
         self.indices_per_entity = len(order)
         self._num_entities = 0

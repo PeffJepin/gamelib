@@ -369,17 +369,6 @@ class ShaderProgram:
                 f"or VertexBuffer. Instead got {type(buf)}"
             )
 
-        moderngl_attr = self.gl[name]
-        strtype = moderngl_attr.shape
-        if strtype == "I":
-            # conform to moderngl expected strfmt dtypes
-            # eventually I'd like to move towards doing
-            # all the shader source code inspection myself,
-            # as the moderngl api doesn't offer all the
-            # metadata I would like it to and weird issues
-            # like this one.
-            strtype = "u"
-        strfmt = f"{moderngl_attr.dimension}{strtype}"
         self._buffers_in_use[name] = buffer
 
     def _format_uniform(self, name, value):
@@ -411,7 +400,7 @@ class ShaderProgram:
 
         if self._index_buffer is not None:
             ibo = self._index_buffer.gl
-            element_size = self._index_buffer.element_size
+            element_size = self._index_buffer.dtype.itemsize
         else:
             ibo = None
             element_size = 4
