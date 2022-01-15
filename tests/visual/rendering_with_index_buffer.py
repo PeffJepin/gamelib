@@ -4,6 +4,7 @@ import time
 import numpy as np
 
 import gamelib
+import gamelib.rendering.buffers
 from gamelib.rendering import shaders
 
 gamelib.init()
@@ -23,7 +24,7 @@ for x in range(10):
             colors.append((random(), random(), random()))
 
 # create buffers
-index_buffer = shaders.OrderedIndexBuffer(
+index_buffer = gamelib.rendering.buffers.OrderedIndexBuffer(
     (0, 1, 2, 0, 2, 3), num_entities=1, max_entities=100
 )
 pos_buffer = np.array(positions)

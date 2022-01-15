@@ -71,7 +71,7 @@ dmat4x3 = np.dtype((double, (3, 4)))
 dmat4 = np.dtype((double, (4, 4)))
 
 
-def coerce_array(array, gl_type):
+def coerce_array(array, gl_type, copy=False):
     """Tries to coerce the given array into the dtype and shape of
     the given glsl type.
 
@@ -85,6 +85,8 @@ def coerce_array(array, gl_type):
     np.ndarray
     """
 
+    if copy:
+        array = array.copy()
     if isinstance(gl_type, str):
         try:
             dtype = eval(gl_type)
