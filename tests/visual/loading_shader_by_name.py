@@ -1,7 +1,7 @@
 import gamelib
-from gamelib.rendering import shaders
+from gamelib.rendering import gpu
 
 gamelib.init()
-shader = shaders.ShaderProgram("basic")
-gamelib.set_draw_commands(lambda: shader.render(3))
+instructions = gpu.Renderer("basic")
+gamelib.set_draw_commands(lambda: instructions.render(3))
 gamelib.run()

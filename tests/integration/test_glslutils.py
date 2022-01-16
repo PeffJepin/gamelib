@@ -161,8 +161,3 @@ def test_include_directive(vert, include_glsl):
         f.write(vert_src2)
     parsed = glslutils.ShaderData.read_file("test").code
     assert compare_glsl(parsed.vert, expected)
-
-    
-
-
-

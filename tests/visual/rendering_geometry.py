@@ -14,15 +14,13 @@ transform = geometry.Transform(
     scale=(5, 1, 1), pos=(0, 0, 0), axis=(0, 0, 1), theta=0
 )
 model_matrix = geometry.Mat4.identity()
-shader = rendering.ShaderProgram(
+instructions = rendering.Renderer(
     "simple_faceted",
-    buffers={"v_pos": cube.vertices},
-    uniforms={
-        "proj": camera.projection_matrix,
-        "view": camera.view_matrix,
-        "model": model_matrix,
-    },
-    index_buffer=cube.triangles,
+    v_pos=cube.vertices,
+    indices=cube.triangles,
+    proj=camera.projection_matrix,
+    view=camera.view_matrix,
+    model=model_matrix
 )
 
 waiting_for_input = False
@@ -63,7 +61,7 @@ while waiting_for_input:
     gamelib.clear()
     theta += 1
     model_matrix[:] = geometry.Mat4.rotate_about_z(theta)
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -73,7 +71,7 @@ while waiting_for_input:
     gamelib.clear()
     theta -= 1
     model_matrix[:] = geometry.Mat4.rotate_about_z(theta)
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -83,7 +81,7 @@ while waiting_for_input:
     gamelib.clear()
     theta += 1
     model_matrix[:] = geometry.Mat4.rotate_about_y(theta)
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -93,7 +91,7 @@ while waiting_for_input:
     gamelib.clear()
     theta -= 1
     model_matrix[:] = geometry.Mat4.rotate_about_y(theta)
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -103,7 +101,7 @@ while waiting_for_input:
     gamelib.clear()
     theta += 1
     model_matrix[:] = geometry.Mat4.rotate_about_x(theta)
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -113,7 +111,7 @@ while waiting_for_input:
     gamelib.clear()
     theta -= 1
     model_matrix[:] = geometry.Mat4.rotate_about_x(theta)
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -127,7 +125,7 @@ while waiting_for_input:
     gamelib.clear()
     theta += 1
     model_matrix[:] = geometry.Mat4.rotate_about_axis(camera.direction, theta)
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -137,7 +135,7 @@ while waiting_for_input:
     gamelib.clear()
     theta -= 1
     model_matrix[:] = geometry.Mat4.rotate_about_axis(camera.direction, theta)
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -151,7 +149,7 @@ while waiting_for_input:
     gamelib.clear()
     scale += 0.02
     model_matrix[:] = geometry.Mat4.scale((scale, 1, 1))
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -161,7 +159,7 @@ while waiting_for_input:
     gamelib.clear()
     scale += 0.02
     model_matrix[:] = geometry.Mat4.scale((1, 1, scale))
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -176,7 +174,7 @@ while waiting_for_input:
     gamelib.clear()
     scale += 0.02
     model_matrix[:] = geometry.Mat4.scale((1, scale, 1))
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -191,7 +189,7 @@ while waiting_for_input:
     gamelib.clear()
     offset += 0.02
     model_matrix[:] = geometry.Mat4.translation((-offset, 0, 0))
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -201,7 +199,7 @@ while waiting_for_input:
     gamelib.clear()
     offset += 0.02
     model_matrix[:] = geometry.Mat4.translation((offset, 0, 0))
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -211,7 +209,7 @@ while waiting_for_input:
     gamelib.clear()
     offset += 0.02
     model_matrix[:] = geometry.Mat4.translation((0, 0, offset))
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -221,7 +219,7 @@ while waiting_for_input:
     gamelib.clear()
     offset += 0.02
     model_matrix[:] = geometry.Mat4.translation((0, 0, -offset))
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -236,7 +234,7 @@ while waiting_for_input:
     gamelib.clear()
     offset += 0.02
     model_matrix[:] = geometry.Mat4.translation((0, offset, 0))
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -246,7 +244,7 @@ while waiting_for_input:
     gamelib.clear()
     offset += 0.02
     model_matrix[:] = geometry.Mat4.translation((0, -offset, 0))
-    shader.render()
+    instructions.render()
     gamelib.update()
 
 
@@ -267,7 +265,7 @@ while waiting_for_input:
         theta=i,
     )
     model_matrix[:] = t.matrix
-    shader.render()
+    instructions.render()
     gamelib.update()
     i += 1
 

@@ -1,3 +1,7 @@
+# TODO: In the future it would be great if the buffer interface was an
+#  extension of np.ndarray directly with added support for writing to and
+#  reading from an internal OpenGL buffer object.
+
 import numpy as np
 
 from gamelib import get_context, gl
@@ -47,7 +51,7 @@ class Buffer:
         """
 
         if isinstance(data, np.ndarray):
-            self._write_array(gl.coerce_array(data, self.dtype, copy=True))
+            self._write_array(data)
         elif isinstance(data, bytes):
             self._write_bytes(data)
 
@@ -76,9 +80,10 @@ class Buffer:
             f"size={self.size} dtype={self.dtype!r})>"
         )
 
-    def _write_array(self, array):
-        array = gl.coerce_array(array, self.dtype)
-        self._write_bytes(array.tobytes())
+    def _write_array(self, array, copy=True):
+        if copy:
+            array = array.copy()
+        self._write_bytes(gl.coerce_array(array, self.dtype).tobytes())
 
     def _write_bytes(self, data):
         if self.gl is None or self.size != len(data):
@@ -96,13 +101,7 @@ class AutoBuffer(Buffer):
     """A buffer than reads in data automatically from a source array and
     allocates itself dynamically as the size of is dataset changes."""
 
-    def __init__(
-        self,
-        source,
-        dtype,
-        *,
-        shrink=True
-    ):
+    def __init__(self, source, dtype, *, shrink=True):
         """
         Parameters
         ----------
@@ -184,9 +183,12 @@ class AutoBuffer(Buffer):
 
         data = super().read(bytes=bytes)
         if bytes:
-            return data[:self._num_elements*self.dtype.itemsize]
+            return data[: self._num_elements * self.dtype.itemsize]
         else:
-            return data[:self._num_elements]
+            return data[: self._num_elements]
+
+    def _write_array(self, array):
+        super()._write_array(array, copy=False)
 
     def _write_bytes(self, data):
         nbytes = len(data)
@@ -194,7 +196,7 @@ class AutoBuffer(Buffer):
 
         if self.gl is None or nbytes > self.size:
             self._make_opengl_buffer(nbytes)
-        if self._shrink and nbytes < self.size/4:
+        if self._shrink and nbytes < self.size / 4:
             self._make_opengl_buffer(nbytes)
 
         self.gl.write(data)

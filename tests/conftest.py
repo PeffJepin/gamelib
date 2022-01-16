@@ -217,7 +217,7 @@ def compare_glsl(src1, src2):
     )
     if cleaned1 != cleaned2:
         import pprint
+
         pprint.pprint(cleaned1)
         pprint.pprint(cleaned2)
     return cleaned1 == cleaned2
-

@@ -1,11 +1,12 @@
-import gamelib
 import numpy as np
 
-from gamelib.rendering import ShaderProgram
+import gamelib
+from gamelib.rendering import gpu
+
 
 gamelib.init()
-shader = ShaderProgram(
-    source="""
+instructions = gpu.Renderer(
+    shader="""
         #version 330
         
         #vert
@@ -29,11 +30,9 @@ shader = ShaderProgram(
             frag = vec4(color, 1);
         }
     """,
-    uniforms={"offset": np.array([0.1, -0.1])},
-    buffers={
-        "v_pos": np.array([(-1, -1), (0, 1), (1, -1)]),
-        "v_col": np.array([(1, 0, 0), (0, 1, 0), (0, 0, 1)]),
-    },
+    offset=np.array([0.1, -0.1]),
+    v_pos=np.array([(-1, -1), (0, 1), (1, -1)]),
+    v_col=np.array([(1, 0, 0), (0, 1, 0), (0, 0, 1)]),
 )
-gamelib.set_draw_commands(shader.render)
+gamelib.set_draw_commands(instructions.render)
 gamelib.run()

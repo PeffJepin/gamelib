@@ -123,10 +123,15 @@ def test_parsing_vertex_shader_data():
 
     meta = glslutils.ShaderData.read_string(src).meta
 
-    assert glslutils.TokenDesc("v_pos", gl.vec3, 1) in meta.attributes
-    assert glslutils.TokenDesc("scale", gl.float, 1) in meta.attributes
+    assert glslutils.TokenDesc("v_pos", gl.vec3, 1) in meta.attributes.values()
+    assert (
+        glslutils.TokenDesc("scale", gl.float, 1) in meta.attributes.values()
+    )
     assert len(meta.attributes) == 2
-    assert glslutils.TokenDesc("world_pos", gl.vec3, 1) in meta.vertex_outputs
+    assert (
+        glslutils.TokenDesc("world_pos", gl.vec3, 1)
+        in meta.vertex_outputs.values()
+    )
     assert len(meta.vertex_outputs) == 1
 
 
@@ -150,7 +155,9 @@ def test_parsing_uniforms():
     """
     meta = glslutils.ShaderData.read_string(src).meta
 
-    assert glslutils.TokenDesc("u_float", gl.float, 1) in meta.uniforms
-    assert glslutils.TokenDesc("u_vec4", gl.vec4, 1) in meta.uniforms
-    assert glslutils.TokenDesc("u_mat4", gl.mat4, 2) in meta.uniforms
+    assert (
+        glslutils.TokenDesc("u_float", gl.float, 1) in meta.uniforms.values()
+    )
+    assert glslutils.TokenDesc("u_vec4", gl.vec4, 1) in meta.uniforms.values()
+    assert glslutils.TokenDesc("u_mat4", gl.mat4, 2) in meta.uniforms.values()
     assert len(meta.uniforms) == 3

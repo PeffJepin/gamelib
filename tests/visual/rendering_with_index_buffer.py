@@ -4,8 +4,8 @@ import time
 import numpy as np
 
 import gamelib
-import gamelib.rendering.buffers
-from gamelib.rendering import shaders
+from gamelib.rendering import gpu
+from gamelib.rendering import buffers
 
 gamelib.init()
 
@@ -24,15 +24,15 @@ for x in range(10):
             colors.append((random(), random(), random()))
 
 # create buffers
-index_buffer = gamelib.rendering.buffers.OrderedIndexBuffer(
+index_buffer = buffers.OrderedIndexBuffer(
     (0, 1, 2, 0, 2, 3), num_entities=1, max_entities=100
 )
 pos_buffer = np.array(positions)
 col_buffer = np.array(colors)
 
 # create shader
-shader = shaders.ShaderProgram(
-    source="""
+shader = gpu.Renderer(
+    shader="""
         #version 330
         
         #vert
@@ -55,9 +55,9 @@ shader = shaders.ShaderProgram(
             frag = vec4(color, 1);
         }
     """,
-    index_buffer=index_buffer,
-    buffers={"v_pos": pos_buffer, "v_col": col_buffer},
-    max_entities=100,
+    v_pos=pos_buffer,
+    v_col=col_buffer,
+    indices=index_buffer
 )
 
 prev_time = time.time()

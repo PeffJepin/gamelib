@@ -91,7 +91,7 @@ This fragment shader would expand to:
 
 import dataclasses
 
-from typing import List
+from typing import Dict
 from typing import Optional
 
 import numpy as np
@@ -114,9 +114,9 @@ class ShaderMetaData:
     """A collection of metadata on tokens parsed from a single
     glsl source file."""
 
-    attributes: List[TokenDesc]
-    vertex_outputs: List[TokenDesc]
-    uniforms: List[TokenDesc]
+    attributes: Dict[str, TokenDesc]
+    vertex_outputs: Dict[str, TokenDesc]
+    uniforms: Dict[str, TokenDesc]
 
 
 @dataclasses.dataclass
@@ -369,18 +369,19 @@ class _ShaderPreProcessor:
 
 
 def _parse_metadata(src: ShaderSourceCode) -> ShaderMetaData:
-    meta = ShaderMetaData([], [], [])
+    meta = ShaderMetaData({}, {}, {})
 
     for line in src.vert.splitlines():
         first, *values = line.split(" ")
         if first == "in":
-            meta.attributes.append(_create_token_desc(values))
+            token = _create_token_desc(values)
+            meta.attributes[token.name] = token
         elif first == "out":
-            meta.vertex_outputs.append(_create_token_desc(values))
+            token = _create_token_desc(values)
+            meta.vertex_outputs[token.name] = token
         elif first == "uniform":
-            desc = _create_token_desc(values)
-            if desc not in meta.uniforms:
-                meta.uniforms.append(desc)
+            token = _create_token_desc(values)
+            meta.uniforms[token.name] = token
 
     for code in (src.tesc, src.tese, src.geom, src.frag):
         if not code:
@@ -388,9 +389,8 @@ def _parse_metadata(src: ShaderSourceCode) -> ShaderMetaData:
         for line in code.splitlines():
             first, *values = line.split(" ")
             if first == "uniform":
-                desc = _create_token_desc(values)
-                if desc not in meta.uniforms:
-                    meta.uniforms.append(desc)
+                token = _create_token_desc(values)
+                meta.uniforms[token.name] = token
 
     return meta
 

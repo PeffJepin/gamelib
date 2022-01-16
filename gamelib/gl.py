@@ -85,8 +85,6 @@ def coerce_array(array, gl_type, copy=False):
     np.ndarray
     """
 
-    if copy:
-        array = array.copy()
     if isinstance(gl_type, str):
         try:
             dtype = eval(gl_type)
@@ -100,8 +98,8 @@ def coerce_array(array, gl_type, copy=False):
     if array.dtype != dtype:
         if dtype.subdtype is not None:
             base_dtype, shape = dtype.subdtype
-            array = array.astype(base_dtype).reshape((-1, *shape))
+            array = array.astype(base_dtype, copy=copy).reshape((-1, *shape))
         else:
-            array = array.astype(dtype)
+            array = array.astype(dtype, copy=copy)
 
     return array

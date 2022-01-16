@@ -26,8 +26,8 @@ ortho = rendering.OrthogonalCamera(
     controller=True,
 )
 camera = perspective
-shader = rendering.ShaderProgram(
-    source="""
+instructions = rendering.Renderer(
+    shader="""
         #version 330
         
         #vert 
@@ -56,11 +56,10 @@ shader = rendering.ShaderProgram(
             frag = vec4(color, 1);
         }
     """,
-    buffers={"pos": mesh.vertices},
-    uniforms={"view": camera.view_matrix, "proj": camera.projection_matrix},
-    index_buffer=mesh.triangles,
+    pos=mesh.vertices,
+    indices=mesh.triangles,
+    view=camera.view_matrix,
+    proj=camera.projection_matrix,
 )
-
-
-gamelib.set_draw_commands(shader.render)
+gamelib.set_draw_commands(instructions.render)
 gamelib.run()
