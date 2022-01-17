@@ -130,9 +130,6 @@ class TestDynamicArrayManager:
 
         entries = [arrays.new_entry(i, i) for i in range(50)]
         for entry in entries[:-1]:
-            # print(f"{len(arrays)=}, {entry.id=}, {len(arrays.field1)=}")
-            print(arrays.field1)
-            print(arrays.get_index(49))
             del arrays[entry.id]
 
         # despite the array no longer being large enough for 50 entries,
