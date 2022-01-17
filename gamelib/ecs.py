@@ -84,6 +84,10 @@ class DynamicArrayManager:
     def __iter__(self):
         return (getattr(self, field) for field in self._arrays)
 
+    @property
+    def masked_length(self):
+        return self._length
+
     def new_entry(self, *args, **kwargs):
         if self._recycled_ids:
             id = self._recycled_ids.pop(0)
@@ -111,12 +115,18 @@ class DynamicArrayManager:
 
     def get_index(self, id):
         try:
-            return self._index_lookup[id]
+            index = self._index_lookup[id]
+            if index == -1:
+                return None
+            return index
         except IndexError:
             return None
 
     def get_raw_arrays(self):
         return self._arrays
+
+    def get_indices(self, ids):
+        return self._index_lookup[ids]
 
     def clear(self):
         self._reallocate_arrays(_STARTING_LENGTH)
@@ -167,6 +177,8 @@ class _DynamicArrayEntry:
     def __getattr__(self, attr):
         arrays = self._manager.get_raw_arrays()
         index = self._manager.get_index(self._id)
+        if index is None:
+            return None
         if attr not in arrays:
             raise AttributeError(f"{attr} not in {arrays.keys()!r}")
         return arrays[attr][index]
@@ -177,18 +189,27 @@ class _DynamicArrayEntry:
         else:
             arrays = self._manager.get_raw_arrays()
             index = self._manager.get_index(self._id)
+            if index is None:
+                return
             if attr not in arrays:
                 raise AttributeError(f"{attr} not in {arrays.keys()!r}")
             arrays[attr][index] = value
 
     def __iter__(self):
         index = self._manager.get_index(self._id)
+        if index is None:
+            return ()
         return iter(a[index] for a in self._manager.get_raw_arrays().values())
 
     def __eq__(self, other):
         if not isinstance(other, Iterable):
             return False
         return all(v1 == v2 for v1, v2 in zip(self, other))
+
+    def __repr__(self):
+        names = self._manager.get_raw_arrays().keys()
+        strdesc = ", ".join(f"{name}={val}" for name, val in zip(names, self))
+        return f"<ArrayEntry({strdesc})>"
 
 
 class _ComponentType(type):
@@ -202,7 +223,7 @@ class _ComponentType(type):
         """Get the underlying array if name is an annotated field."""
 
         if name in cls._fields:
-            return getattr(cls, "_" + name)[: cls.length]
+            return getattr(cls._arrays, name)
         raise AttributeError(f"{cls!r} has no attribute {name!r}")
 
     def __setattr__(cls, name, value):
@@ -213,6 +234,10 @@ class _ComponentType(type):
             # don't allow setting annotated fields as class attributes.
             return
         super().__setattr__(name, value)
+
+    @property
+    def length(cls):
+        return cls._arrays.masked_length
 
     def __enter__(cls):
         """Acquire a lock on the internal arrays."""
@@ -235,48 +260,21 @@ class Component(metaclass=_ComponentType):
     def __init_subclass__(cls, **kwargs):
         """Initialize the subclass based on what has been annotated."""
 
-        # __init_subclass__ can also be used to reset a component, so it
-        # needs to be reset to False here.
         cls._initialized = False
         cls._lock = threading.RLock()
-
-        # find annotated fields
         cls._fields = cls.__dict__.get("__annotations__", {})
         if not cls._fields:
             raise AttributeError("No attributes have been annotated.")
-
-        # keep an array of ids alongside the annotated fields
-        cls.ids = np.empty(_STARTING_LENGTH, int)
-        cls.ids[:] = -1
-
-        # keep a record of where to find data for a particular component id
-        cls.id_lookup = np.zeros(_STARTING_LENGTH, int)
-        cls.id_lookup[:] = -1
-
-        # maintain a standard way of assigning ids
-        cls._max_length = _STARTING_LENGTH
-        cls._counter = itertools.count(0)
-        cls._recycled_ids = []
-        cls.length = 0
-
-        # create the underlying component arrays and form an aggregate
-        # structured dtype allowing the individual arrays created from
-        # attribute annotation to be viewed as a single structured array
-        structure = []
-        for name, dtype in cls._fields.items():
-            if not isinstance(dtype, np.dtype):
-                dtype = np.dtype(dtype)
-            array = np.zeros(_STARTING_LENGTH, dtype)
-            setattr(cls, "_" + name, array)
-            structure.append((name, dtype))
-        cls._structured_dtype = np.dtype(structure)
+        cls._arrays = DynamicArrayManager(**cls._fields)
+        cls._structured_dtype = np.dtype([
+            (name, dtype) if isinstance(dtype, np.dtype) 
+            else (name, np.dtype(dtype))
+            for name, dtype in cls._fields.items()
+        ])
         cls.itemsize = cls._structured_dtype.itemsize
-
-        # effectively freezes the annotated attributes, disallowing
-        # the public-facing attributes to be set with new values.
         cls._initialized = True
 
-    def __new__(cls, *args, id=None, **kwargs):
+    def __new__(cls, *args, _id=None, **kwargs):
         """Create some new Component data. If id is given this will load
         access into existing data instead.
 
@@ -297,21 +295,17 @@ class Component(metaclass=_ComponentType):
             will be returned instead of a Component instance.
         """
 
-        if id is not None:
+        if _id is not None:
             # check if this id exists
-            if cls.id_lookup[id] == -1:
+            if cls._arrays[_id] is None:
                 return None
-
+            entry = cls._arrays[_id]
         else:
-            id = cls._get_new_id()
-            if id >= cls._max_length:
-                cls.reallocate(cls._max_length * 1.5)
-            cls.id_lookup[id] = cls.length
-            cls.ids[cls.length] = id
-            cls.length += 1
+            entry = cls._arrays.new_entry()
 
         instance = super().__new__(cls)
-        instance.id = id
+        instance.id = entry.id
+        instance._array_entry = entry
         return instance
 
     def __init__(self, *args, **kwargs):
@@ -328,16 +322,17 @@ class Component(metaclass=_ComponentType):
 
         if args:
             for name, arg in zip(self._fields, args):
-                setattr(self, name, arg)
+                setattr(self._array_entry, name, arg)
         else:
             for name, value in kwargs.items():
-                setattr(self, name, value)
+                if name in self._fields:
+                    setattr(self._array_entry, name, value)
 
     def __repr__(self):
         values = ", ".join(
             f"{name}={getattr(self, name)}" for name in self._fields
         )
-        return f"<{self.__class__.__name__}({values})>"
+        return f"<{self.__class__.__name__}(id={self.id}, {values})>"
 
     def __eq__(self, other):
         """A component compares for equality based on the values of it's
@@ -354,8 +349,7 @@ class Component(metaclass=_ComponentType):
         the instance as would normally happen."""
 
         if name in self._fields:
-            index = self.id_lookup[self.id]
-            getattr(self, "_" + name)[index] = value
+            setattr(self._array_entry, name, value)
         else:
             super().__setattr__(name, value)
 
@@ -365,9 +359,7 @@ class Component(metaclass=_ComponentType):
         appropriate value."""
 
         if name in self._fields:
-            index = self.id_lookup[self.id]
-            value = getattr(self, "_" + name)[index] if index >= 0 else None
-            return value
+            return getattr(self._array_entry, name)
         else:
             raise AttributeError(f"{self!r} has no attribute {name!r}")
 
@@ -401,7 +393,7 @@ class Component(metaclass=_ComponentType):
             Depending on if a component with this id is accounted for.
         """
 
-        return cls(id=id)
+        return cls(_id=id)
 
     @classmethod
     def get_raw_arrays(cls):
@@ -414,9 +406,9 @@ class Component(metaclass=_ComponentType):
             aggregate of all the annotated attributes of this component.
         """
 
-        combined = np.empty(cls._max_length, cls._structured_dtype)
+        combined = np.empty(len(cls._arrays), cls._structured_dtype)
         for name in cls._fields:
-            combined[name] = getattr(cls, "_" + name)
+            combined[name] = getattr(cls._arrays, name)
         return combined
 
     @classmethod
@@ -432,91 +424,19 @@ class Component(metaclass=_ComponentType):
         """
 
         id = target.id if isinstance(target, cls) else target
-        index = cls.id_lookup[id]
-
-        # component doesn't actually exist
-        if index == -1:
-            return
-
-        # swap the component to be deleted to the end of the array and
-        # decrement the length to delete the component without necessarily
-        # having to reallocate the entire array
-        last_index = cls.length - 1
-        if index != last_index:
-            id_of_last_component = cls.ids[last_index]
-            cls.id_lookup[id_of_last_component] = index
-            arrays = cls.get_raw_arrays()
-            for name in cls._fields:
-                arrays[name][index] = arrays[name][last_index]
-
-        cls.length -= 1
-        cls._recycled_ids.append(id)
-        cls.id_lookup[id] = -1
-        cls._consider_shrinking()
+        del cls._arrays[id]
 
     @classmethod
-    def reset(cls):
+    def clear(cls):
         """Resets the component to initial state."""
 
-        cls.__init_subclass__()
-
-    @classmethod
-    def reallocate(cls, new_length):
-        """Reallocates the internal arrays to the new length. When
-        automatically used internally, this will be sure not to delete entries.
-        If invoked manually it's possible to destroy data that still in use.
-
-        Parameters
-        ----------
-        new_length : int
-        """
-
-        new_length = max(int(new_length), _STARTING_LENGTH)
-        for name in cls._fields:
-            name = "_" + name
-            array = _reallocate_array(getattr(cls, name), new_length)
-            setattr(cls, name, array)
-        cls.ids = _reallocate_array(cls.ids, new_length, fill=-1)
-        cls._max_length = new_length
+        for id in cls._arrays.ids:
+            cls.destroy(id)
+        cls._arrays.clear()
 
     @classmethod
     def indices_from_ids(cls, ids):
-        return cls.id_lookup[ids]
-
-    @classmethod
-    def _get_new_id(cls):
-        """Requests an id to assign to a newly created component."""
-
-        if cls._recycled_ids:
-            id = cls._recycled_ids.pop(0)
-        else:
-            id = next(cls._counter)
-        if id >= len(cls.id_lookup):
-            cls.id_lookup = _reallocate_array(cls.id_lookup, id * 1.5, fill=-1)
-        return id
-
-    @classmethod
-    def _consider_shrinking(cls):
-        """Considers shrinking the internal arrays based on their current
-        size vs their max size."""
-
-        # consider shrinking id lookup
-        if len(cls.id_lookup) >= cls.length * 1.8 and cls.length > 0:
-            greatest_id_in_use = np.argwhere(cls.id_lookup != -1)[-1]
-            if greatest_id_in_use <= cls.length * 1.4:
-                cls.id_lookup = _reallocate_array(
-                    cls.id_lookup, greatest_id_in_use + 1, -1
-                )
-                cls._counter = itertools.count(greatest_id_in_use + 1)
-                cls._recycled_ids = list(
-                    filter(
-                        lambda id: id < greatest_id_in_use, cls._recycled_ids
-                    )
-                )
-
-        # consider shrinking component data arrays
-        if cls.length <= cls._max_length * 0.65:
-            cls.reallocate(cls.length)
+        return cls._arrays.get_indices(ids)
 
 
 class _EntityMeta(type):
@@ -624,6 +544,7 @@ class Entity(metaclass=_EntityMeta):
     def clear(cls):
         for id in cls._arrays.ids:
             cls.destroy(id)
+        cls._arrays.clear()
 
 
 def _reallocate_array(array, new_length, fill=0):

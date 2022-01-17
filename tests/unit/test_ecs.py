@@ -7,6 +7,12 @@ import time
 from gamelib import ecs
 
 
+@pytest.fixture(autouse=True)
+def cleanup():
+    for cls in (ExampleEntity, ExampleComponent, ExampleComponent2):
+        cls.clear()
+
+
 class TestDynamicArrayManager:
     def test_init(self):
         arrays = ecs.DynamicArrayManager(field1=float, field2=int)
@@ -36,6 +42,8 @@ class TestDynamicArrayManager:
         arrays = ecs.DynamicArrayManager(field1=float, field2=int)
 
         entry = arrays.new_entry()
+        entry.field1 = 1
+        entry.field2 = 2
 
         assert arrays[entry.id] == entry
 
@@ -167,10 +175,6 @@ class ExampleComponent2(ecs.Component):
 
 
 class TestComponent:
-    @pytest.fixture(autouse=True)
-    def cleanup(self):
-        ExampleComponent.reset()
-
     def test_creating_a_component(self):
         component = ExampleComponent(123, 124)
 
@@ -223,7 +227,7 @@ class TestComponent:
     def test_id_when_created(self):
         component = ExampleComponent(1234, 1234)
 
-        assert isinstance(component.id, int)
+        assert component.id is not None
         assert ExampleComponent.get(component.id) == (1234, 1234)
         assert ExampleComponent(1234, 1234).id == component.id + 1
 
@@ -238,7 +242,7 @@ class TestComponent:
     def test_ids_back_to_0_after_clear(self):
         for _ in range(10):
             ExampleComponent(0, 0)
-        ExampleComponent.reset()
+        ExampleComponent.clear()
 
         assert ExampleComponent(0, 0).id == 0
 
@@ -248,7 +252,7 @@ class TestComponent:
 
         assert ExampleComponent.length >= 10
 
-        ExampleComponent.reset()
+        ExampleComponent.clear()
 
         assert ExampleComponent.length == 0
         assert component.x is None
@@ -264,32 +268,6 @@ class TestComponent:
         assert ExampleComponent.get(component1.id) == component1
         assert ExampleComponent.get(component3.id) == component3
         assert ExampleComponent.length == 2
-
-    def test_allocating_space_manually(self):
-        max_length = len(ExampleComponent.get_raw_arrays())
-        ExampleComponent.reallocate(max_length + 5)
-        assert len(ExampleComponent.get_raw_arrays()) == max_length + 5
-
-    def test_allocating_space_automatically(self):
-        max_length = len(ExampleComponent.get_raw_arrays())
-        current_length = ExampleComponent.length
-
-        for i in range(max_length - current_length + 1):
-            ExampleComponent(i, i)
-
-        assert len(ExampleComponent.get_raw_arrays()) > max_length
-
-    def test_freeing_space_automatically(self):
-        starting_length = len(ExampleComponent.get_raw_arrays()) * 2
-
-        for i in range(starting_length):
-            ExampleComponent(i, i)
-
-        second_length = len(ExampleComponent.get_raw_arrays())
-        for i in reversed(range(starting_length - 1)):
-            ExampleComponent.destroy(i)
-
-        assert len(ExampleComponent.get_raw_arrays()) < second_length
 
     def test_mutating_data_by_an_instance(self):
         component = ExampleComponent(1, 2)
@@ -349,10 +327,6 @@ class ExampleEntity(ecs.Entity):
 
 
 class TestEntity:
-    @pytest.fixture(autouse=True)
-    def cleanup(self):
-        ExampleEntity.clear()
-
     def test_binding_components_with_entity(self):
         entity = ExampleEntity(
             comp1=ExampleComponent(1, 2), comp2=ExampleComponent2(3, 4)
