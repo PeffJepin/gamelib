@@ -20,7 +20,7 @@ instructions = rendering.Renderer(
     indices=cube.triangles,
     proj=camera.projection_matrix,
     view=camera.view_matrix,
-    model=model_matrix
+    model=model_matrix,
 )
 
 waiting_for_input = False

@@ -327,6 +327,7 @@ class TestComponent:
                     assert second_peek == (instance.x, instance.y)
         finally:
             running = False
+            t.join(1)
 
 
 class ExampleEntity(ecs.Entity):

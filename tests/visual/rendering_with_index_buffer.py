@@ -57,7 +57,7 @@ shader = gpu.Renderer(
     """,
     v_pos=pos_buffer,
     v_col=col_buffer,
-    indices=index_buffer
+    indices=index_buffer,
 )
 
 prev_time = time.time()

@@ -260,7 +260,7 @@ class TestVaoIntegration:
                 }
             """,
             input1=uni1,
-            input2=uni2
+            input2=uni2,
         )
         assert instructions.transform(1) == uni1 + uni2
 
@@ -312,7 +312,7 @@ class TestVaoIntegration:
                 }
             """,
             input1=array1,
-            input2=array2
+            input2=array2,
         )
         assert np.all(instructions.transform() == array1 + array2)
 

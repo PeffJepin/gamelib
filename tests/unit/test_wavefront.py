@@ -24,10 +24,12 @@ f 1 2 3
         f.write(source)
 
     vertices = np.array(
-        [0,    0,    0,
-         0,   -1.11, 0,
-         1.11, 0,    0], gl.float)
-    triangles = np.array([0, 1, 2], gl.uint)
+        [(0,    0,    0),
+         (0,   -1.11, 0),
+         (1.11, 0,    0)], 
+        dtype=gl.vec3
+    )
+    triangles = np.array((0, 1, 2), gl.uvec3)
     parsed = geometry.load_model(tmpfile)
 
     assert np.all(parsed.vertices == vertices)
@@ -51,20 +53,26 @@ f 1//1 3//3 4//4
         f.write(source)
 
     vertices = np.array(
-        [0,    0,    0, 
-         0,    1.11, 0, 
-         1.11, 1.11, 0, 
-         1.11, 0,    0], gl.float)
+        [(0,    0,    0), 
+         (0,    1.11, 0), 
+         (1.11, 1.11, 0), 
+         (1.11, 0,    0)], 
+        dtype=gl.vec3
+    )
 
     normals = np.array(
-        [0,  0, 1, 
-         0,  0, 1, 
-         1,  0, 0, 
-         0, -1, 0], gl.float)
+        [(0,  0, 1), 
+         (0,  0, 1), 
+         (1,  0, 0), 
+         (0, -1, 0)], 
+        dtype=gl.vec3
+    )
 
     triangles = np.array(
-        [0, 1, 2, 
-         0, 2, 3], gl.uint)
+        [(0, 1, 2), 
+         (0, 2, 3)],
+        dtype=gl.uvec3
+    )
 
     parsed = geometry.load_model(tmpfile)
     assert np.all(parsed.vertices == vertices)
@@ -89,20 +97,26 @@ f 1//3 3//1 4//2
         f.write(source)
 
     vertices = np.array(
-        [0,    0,    0, 
-         0,    1.11, 0, 
-         1.11, 1.11, 0, 
-         1.11, 0,    0], gl.float)
+        [(0,    0,    0), 
+         (0,    1.11, 0), 
+         (1.11, 1.11, 0), 
+         (1.11, 0,    0)], 
+        dtype=gl.vec3
+    )
 
     normals = np.array(
-        [1, 0,  0, 
-         0, 1,  0, 
-         0, 0,  1, 
-         0, 0, -1], gl.float)
+        [(1, 0,  0), 
+         (0, 1,  0), 
+         (0, 0,  1), 
+         (0, 0, -1)], 
+        dtype=gl.vec3
+    )
 
     triangles = np.array(
-        [0, 1, 2, 
-         0, 2, 3], gl.uint)
+        [(0, 1, 2), 
+         (0, 2, 3)], 
+        dtype=gl.uvec3
+    )
 
     parsed = geometry.load_model(tmpfile)
     assert np.all(parsed.vertices == vertices)
@@ -122,5 +136,4 @@ f 1 2 3 4
         f.write(source)
 
     parsed = geometry.load_model(tmpfile)
-    # should be 6 indices: 2 triangles
-    assert len(parsed.triangles) == 6
+    assert len(parsed.triangles) == 2

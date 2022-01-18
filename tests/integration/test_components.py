@@ -10,14 +10,16 @@ def cleanup():
     transforms.TransformComponent.clear()
 
 
-@pytest.fixture(params=[
-    ((1, 2, 3), (1, 1, 1), (1, 1, 1), 0),
-    ((1, 2, 3), (1, 2, 3), (1, 1, 1), 0),
-    ((0, 0, 0), (1, 2, 3), (1, 1, 1), 0),
-    ((1, 2, 3), (1, 2, 3), (1, 2, 3), 45),
-    ((1, 2, 3), (1, 1, 1), (1, 2, 3), 45),
-    ((0, 0, 0), (1, 1, 1), (1, 2, 3), 45),
-])
+@pytest.fixture(
+    params=[
+        ((1, 2, 3), (1, 1, 1), (1, 1, 1), 0),
+        ((1, 2, 3), (1, 2, 3), (1, 1, 1), 0),
+        ((0, 0, 0), (1, 2, 3), (1, 1, 1), 0),
+        ((1, 2, 3), (1, 2, 3), (1, 2, 3), 45),
+        ((1, 2, 3), (1, 1, 1), (1, 2, 3), 45),
+        ((0, 0, 0), (1, 1, 1), (1, 2, 3), 45),
+    ]
+)
 def transform_inputs(request):
     pos, scale, axis, theta = request.param
     return pos, scale, axis, theta
@@ -34,5 +36,3 @@ def test_transform_base_case(transform_inputs):
     component.apply(vertex2)
 
     assert_approx(vertex1, vertex2)
-
-

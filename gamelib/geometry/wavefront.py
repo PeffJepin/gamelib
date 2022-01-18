@@ -23,6 +23,13 @@ class _PreProcessorData:
     normal_lookup: dict
 
 
+@dataclasses.dataclass
+class _Arrays:
+    vertices: np.ndarray
+    triangles: np.ndarray
+    normals: np.ndarray
+
+
 def parse(path) -> base.Model:
     with open(path, "r") as f:
         lines = f.readlines()
@@ -31,38 +38,41 @@ def parse(path) -> base.Model:
         for line in lines:
             _preprocess_line(line, ppd)
 
-        model = _init_model(ppd)
-        _parse_lines(lines, model, ppd)
-        return model
+        arrays = _init_arrays(ppd)
+        _parse_lines(lines, arrays, ppd)
+        return base.Model(
+            vertices=arrays.vertices,
+            triangles=arrays.triangles,
+            normals=arrays.normals,
+        )
 
 
-def _init_model(ppd) -> base.Model:
-    vertices = np.zeros(ppd.nverts * 3, gl.float)
-    triangles = np.zeros(ppd.ntris * 3, gl.uint)
+def _init_arrays(ppd) -> base.Model:
+    vertices = np.zeros(ppd.nverts, gl.vec3)
+    triangles = np.zeros(ppd.ntris, gl.uvec3)
     if ppd.normal_lookup:
-        normals = np.zeros(ppd.nverts * 3, gl.float)
+        normals = np.zeros(ppd.nverts, gl.vec3)
     else:
         normals = None
-    return base.Model(vertices, normals, triangles)
+    return _Arrays(vertices, triangles, normals)
 
 
-def _parse_lines(lines, model, ppd) -> None:
+def _parse_lines(lines, arrays, ppd) -> None:
     triangles_pointer = 0
     vertices_pointer = 0
     normal_counter = 1
     for line in lines:
         spec, *data = line.split(" ")
         if spec == "v":
-            values = [float(d) for d in data if d != ""]
-            model.vertices[vertices_pointer : vertices_pointer + 3] = values
-            vertices_pointer += 3
+            values = tuple(float(d) for d in data if d != "")
+            arrays.vertices[vertices_pointer] = values
+            vertices_pointer += 1
 
         elif spec == "vn":
-            values = [float(d) for d in data if d != ""]
+            values = tuple(float(d) for d in data if d != "")
             normal = transforms.normalize(np.array(values, gl.float))
             index = ppd.normal_lookup[normal_counter] - 1
-            start = index * 3
-            model.normals[start : start + 3] = normal
+            arrays.normals[index] = normal
             normal_counter += 1
 
         elif spec == "f":
@@ -75,15 +85,13 @@ def _parse_lines(lines, model, ppd) -> None:
                     v = value
                 cleaned_values.append(int(v) - 1)
             for i in range(len(cleaned_values) - 2):
-                tri = [
+                tri = (
                     cleaned_values[0],
                     cleaned_values[i + 1],
                     cleaned_values[i + 2],
-                ]
-                model.triangles[
-                    triangles_pointer : triangles_pointer + 3
-                ] = tri
-                triangles_pointer += 3
+                )
+                arrays.triangles[triangles_pointer] = tri
+                triangles_pointer += 1
 
 
 def _preprocess_line(line, ppd) -> None:
