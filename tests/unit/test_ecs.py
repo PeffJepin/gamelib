@@ -5,11 +5,19 @@ import threading
 import time
 
 from gamelib import ecs
+from gamelib import gl
+
+from ..conftest import assert_approx
 
 
 @pytest.fixture(autouse=True)
 def cleanup():
-    for cls in (ExampleEntity, ExampleComponent, ExampleComponent2):
+    for cls in (
+        ExampleEntity,
+        ExampleComponent,
+        ExampleComponent2,
+        GlTypeComponent,
+    ):
         cls.clear()
 
 
@@ -394,3 +402,25 @@ class TestEntity:
         assert np.all(ExampleEntity.comp1.y == np.array([2, 4], float))
         assert np.all(ExampleEntity.comp2.z == np.array([101, 103], float))
         assert np.all(ExampleEntity.comp2.w == np.array([102, 104], float))
+
+
+class GlTypeComponent(ecs.Component):
+    v3: gl.vec3
+    m4: gl.mat4
+
+
+def test_component_arrays_with_multi_dimensional_dtype():
+    m4_1 = np.array(
+        ((1, 2, 3, 4), (2, 3, 4, 5), (3, 4, 5, 6), (4, 5, 6, 7)), gl.mat4
+    )
+    m4_2 = m4_1 + 1
+
+    print(m4_1)
+    instance1 = GlTypeComponent((1, 2, 3), m4_1)
+    instance2 = GlTypeComponent((2, 3, 4), m4_2)
+
+    assert_approx(instance1.v3, (1, 2, 3))
+    assert_approx(instance2.v3, (2, 3, 4))
+
+    assert_approx(instance1.m4, m4_1)
+    assert_approx(instance2.m4, m4_2)

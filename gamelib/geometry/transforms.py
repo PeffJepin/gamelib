@@ -3,6 +3,7 @@ from typing import Sequence
 import numpy as np
 
 from gamelib import gl
+from gamelib import ecs
 
 
 def _radians(theta):
@@ -294,10 +295,10 @@ class Mat4:
 
         # fmt: off
         return np.array((
-            (a, 0, 0, x), 
-            (0, b, 0, y), 
-            (0, 0, c, z), 
-            (0, 0, 0, 1)), 
+            (a, 0, 0, x),
+            (0, b, 0, y),
+            (0, 0, c, z),
+            (0, 0, 0, 1)),
             dtype
         ).T
         # fmt: on
@@ -398,10 +399,10 @@ class Mat4:
         x, y, z = scale_vector
         # fmt: off
         return np.array((
-            (x, 0, 0, 0), 
-            (0, y, 0, 0), 
-            (0, 0, z, 0), 
-            (0, 0, 0, 1)), 
+            (x, 0, 0, 0),
+            (0, y, 0, 0),
+            (0, 0, z, 0),
+            (0, 0, 0, 1)),
             dtype
         ).T
         # fmt: on
@@ -423,19 +424,22 @@ class Mat4:
         x, y, z = translation_vector
         # fmt: off
         return np.array((
-            (1, 0, 0, x), 
-            (0, 1, 0, y), 
-            (0, 0, 1, z), 
+            (1, 0, 0, x),
+            (0, 1, 0, y),
+            (0, 0, 1, z),
             (0, 0, 0, 1)),
             dtype
         ).T
         # fmt: on
 
     @classmethod
-    def transform(cls, translation, scale, axis, theta):
-        return cls.translation(translation).dot(
-            cls.rotate_about_axis(axis, theta).dot(cls.scale(scale))
-        )
+    def model_transform(
+        cls, translation=(0, 0, 0), scale=(1, 1, 1), axis=(0, 0, 1), theta=0
+    ):
+        scale = cls.scale(scale)
+        rotation = cls.rotate_about_axis(axis, theta)
+        translation = cls.translation(translation)
+        return scale.dot(rotation).dot(translation)
 
 
 class Transform:
@@ -591,46 +595,105 @@ class Transform:
         """
 
         matrix = self._get_transpose()
-        dtype = vertex.dtype
-        if len(vertex) == 3:
-            len4_temp = np.zeros(4, dtype)
-            len4_temp[0:3] = vertex
-            len4_temp[3] = 1
-            transformed = matrix.dot(len4_temp)[:3]
-            if np.issubdtype(dtype, np.integer):
-                transformed = np.rint(transformed)
-            vertex[:] = transformed
-            return vertex
-        elif len(vertex) == 4:
-            transformed = matrix.dot(vertex)
-            if np.issubdtype(dtype, np.integer):
-                transformed = np.rint(transformed)
-            vertex[:] = transformed
-            return vertex
-        else:
-            raise ValueError(
-                f"Expected vertex of length 3/4, instead got {len(vertex)}."
-            )
+        return _transform_vertex(matrix, vertex)
 
     def _update_matrix(self):
         """Updates the OpenGL matrix."""
 
-        self._matrix[:] = Mat4.translation(self.pos).dot(
-            Mat4.rotate_about_axis(self.axis, self.theta).dot(
-                Mat4.scale(self.scale)
-            )
-        )
-        self._matrix[:] = Mat4.scale(self.scale).dot(
-            Mat4.rotate_about_axis(self.axis, self.theta).dot(
-                Mat4.translation(self.pos)
-            )
+        self._matrix[:] = Mat4.model_transform(
+            self.pos, self.scale, self.axis, self.theta
         )
 
     def _get_transpose(self):
         """Constructs a transposed matrix for use against numpy ndarrays."""
 
-        return Mat4.translation(self.pos).T.dot(
-            Mat4.rotate_about_axis(self.axis, self.theta).T.dot(
-                Mat4.scale(self.scale).T
-            )
+        return self._matrix.T
+
+
+class TransformComponent(ecs.Component):
+    """Like Transform but implemented as an ecs Component. See Transform if
+    more documentation is needed."""
+
+    _pos: gl.vec3
+    _scale: gl.vec3
+    _axis: gl.vec3
+    _theta: gl.float
+    model_matrix: gl.mat4
+
+    def __init__(
+        self, pos=(0, 0, 0), scale=(1, 1, 1), axis=(0, 0, 1), theta=0
+    ):
+        self._pos = pos
+        self._scale = scale
+        self._axis = axis
+        self._update_matrix()
+        self._theta = theta
+
+    @property
+    def pos(self):
+        return self._pos
+
+    @pos.setter
+    def pos(self, value):
+        self._pos = value
+        self._update_matrix()
+
+    @property
+    def scale(self):
+        return self._scale
+
+    @scale.setter
+    def scale(self, value):
+        self._scale = value
+        self._update_matrix()
+
+    @property
+    def axis(self):
+        return self._axis
+
+    @axis.setter
+    def axis(self, value):
+        self._axis = value
+        self._update_matrix()
+
+    @property
+    def theta(self):
+        return self._theta
+
+    @theta.setter
+    def theta(self, value):
+        self._theta = value
+        self._update_matrix()
+
+    def apply(self, vertex):
+        return _transform_vertex(self.model_matrix.T, vertex)
+
+    def _update_matrix(self):
+        self.model_matrix = Mat4.model_transform(
+            self.pos, self.scale, self.axis, self.theta
+        )
+
+
+def _transform_vertex(matrix, vertex):
+    """Expecting a Mat4 matrix and a vec3/vec4 vertex."""
+
+    dtype = vertex.dtype
+    if len(vertex) == 3:
+        len4_temp = np.zeros(4, dtype)
+        len4_temp[0:3] = vertex
+        len4_temp[3] = 1
+        transformed = matrix.dot(len4_temp)[:3]
+        if np.issubdtype(dtype, np.integer):
+            transformed = np.rint(transformed)
+        vertex[:] = transformed
+        return vertex
+    elif len(vertex) == 4:
+        transformed = matrix.dot(vertex)
+        if np.issubdtype(dtype, np.integer):
+            transformed = np.rint(transformed)
+        vertex[:] = transformed
+        return vertex
+    else:
+        raise ValueError(
+            f"Expected vertex of length 3/4, instead got {len(vertex)}."
         )

@@ -393,11 +393,14 @@ class Component(metaclass=_ComponentType):
         if not cls._fields:
             raise AttributeError("No attributes have been annotated.")
         cls._arrays = DynamicArrayManager(**cls._fields)
-        cls._structured_dtype = np.dtype([
-            (name, dtype) if isinstance(dtype, np.dtype) 
-            else (name, np.dtype(dtype))
-            for name, dtype in cls._fields.items()
-        ])
+        cls._structured_dtype = np.dtype(
+            [
+                (name, dtype)
+                if isinstance(dtype, np.dtype)
+                else (name, np.dtype(dtype))
+                for name, dtype in cls._fields.items()
+            ]
+        )
         cls.itemsize = cls._structured_dtype.itemsize
         cls._initialized = True
 
@@ -795,7 +798,8 @@ def _reallocate_array(array, new_length, fill=0):
     the array. Empty space created will be filled with fill value."""
 
     new_length = max(int(new_length), _STARTING_LENGTH)
-    new_array = np.empty(new_length, array.dtype)
+    old_length, *dims = array.shape
+    new_array = np.empty((new_length, *dims), array.dtype)
     new_array[:] = fill
     if len(array) <= new_length:
         new_array[: len(array)] = array
