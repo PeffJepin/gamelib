@@ -201,6 +201,10 @@ def glsl_dtype_and_input(request):
 
 def assert_approx(iter1, iter2, rel=1e-6):
     for v1, v2 in zip(iter1, iter2):
+        # I've seen a test failure here saying relative tolerance
+        # can't be negative, but it's not reproducible.
+        # If this continues starts failing with any consistency
+        # something will have to change.
         assert v1 == pytest.approx(v2, rel=rel)
 
 
