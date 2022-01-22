@@ -21,7 +21,7 @@ class TestVectors:
         ),
     )
     def test_iter(self, vector, as_tuple):
-        assert tuple(iter(vector)) == as_tuple
+        assert tuple(vector) == as_tuple
 
     @pytest.mark.parametrize(
         "vector, compare_to",
@@ -33,12 +33,27 @@ class TestVectors:
     )
     def test_equality(self, vector, compare_to):
         assert vector == compare_to
-        vals = list(vector)
+        vals = tuple(vector)
         assert type(vector)(*reversed(vals)) != compare_to
 
     def test_negation(self):
         assert -Vec3(1, 1, 1) == Vec3(-1, -1, -1)
         assert -Vec3(-4, -2, 3) == Vec3(4, 2, -3)
+
+    def test_getitem(self):
+        assert Vec3(1, 2, 3)[0] == 1
+        assert Vec3(1, 2, 3)[1] == 2
+        assert Vec3(1, 2, 3)[2] == 3
+        assert Vec4(1, 2, 3, 6)[3] == 6
+
+        with pytest.raises(IndexError):
+            v = Vec3(1, 2, 3)[3]
+
+    def test_setitem(self, generic_vector):
+        generic_vector[0] = 111
+        assert generic_vector.x == 111
+        generic_vector[1] = 222
+        assert generic_vector.y == 222
 
     @pytest.mark.parametrize(
         "vector, other, expected",
@@ -51,11 +66,13 @@ class TestVectors:
         ),
     )
     def test_addition(self, vector, other, expected):
+        identity = id(vector)
         assert vector + other == expected
         assert other + vector == expected
 
         vector += other
         assert vector == expected
+        assert id(vector) == identity
 
     @pytest.mark.parametrize(
         "vector, other, expected",
@@ -68,11 +85,13 @@ class TestVectors:
         ),
     )
     def test_subtraction(self, vector, other, expected):
+        identity = id(vector)
         assert vector - other == expected
         assert other - vector == -type(vector)(*expected)
 
         vector -= other
         assert vector == expected
+        assert id(vector) == identity
 
     @pytest.mark.parametrize(
         "vector, other, expected",
@@ -85,11 +104,13 @@ class TestVectors:
         ),
     )
     def test_multiplication(self, vector, other, expected):
+        identity = id(vector)
         assert vector * other == expected
         assert other * vector == expected
 
         vector *= other
         assert vector == expected
+        assert id(vector) == identity
 
     @pytest.mark.parametrize(
         "vector, other, expected",
@@ -102,11 +123,13 @@ class TestVectors:
         ),
     )
     def test_division(self, vector, other, expected):
+        identity = id(vector)
         assert vector / other == expected
         assert other / vector == 1 / expected
 
         vector /= other
         assert vector == expected
+        assert id(vector) == identity
 
     @pytest.mark.parametrize(
         "vector, other, expected",
@@ -144,3 +167,10 @@ class TestVectors:
             before = tuple(v)
             v.normalize()
             assert v == before
+
+    def test_inverse(self):
+        assert Vec3(1, 2, 3).inverse() == Vec3(1 / 1, 1 / 2, 1 / 3)
+        assert Vec3(1, -2, 3).inverse() == Vec3(1 / 1, -1 / 2, 1 / 3)
+
+    def test_inverse_zero(self):
+        assert Vec3(0, 2, 0).inverse() == Vec3(math.inf, 1 / 2, math.inf)

@@ -42,5 +42,10 @@ from gamelib.core.input import MouseIsPressed
 from gamelib.core.input import MouseDrag
 from gamelib.core.input import MouseMotion
 
+from gamelib.core.datatypes import Vec2
+from gamelib.core.datatypes import Vec3
+from gamelib.core.datatypes import Vec4
+
 from gamelib.core.resources import get_file
+
 from gamelib.core.time import Timer
