@@ -130,6 +130,7 @@ class VertexArray:
         self._instanced_attibutes = set(instanced)
         self._buffers_in_use = dict()
         self._uniforms_in_use = dict()
+        self._buffer_ids = dict()
         self._generated_buffers = list()
 
         # TODO: At some point this needs to change so multiple vertex arrays
@@ -152,6 +153,9 @@ class VertexArray:
     def glo(self):
         """The underlying moderngl object."""
 
+        for k, buf in self._buffers_in_use.items():
+            if id(buf.gl) != self._buffer_ids[k]:
+                self._dirty = True
         if self._glo is None or self._dirty:
             self._make_glo()
         return self._glo
@@ -281,10 +285,12 @@ class VertexArray:
             dtype = self.shader.meta.attributes[attribute].dtype
             buffer = self._generate_buffer(source, dtype)
             self._buffers_in_use[attribute] = buffer
+            self._buffer_ids[attribute] = id(buffer.gl)
         else:
             if isinstance(source, buffers.Buffer):
                 self._remove_buffer(current_buffer)
                 self._buffers_in_use[attribute] = source
+                self._buffer_ids[attribute] = id(buffer.gl)
             elif isinstance(source, np.ndarray):
                 if isinstance(current_buffer, buffers.AutoBuffer):
                     current_buffer.use_array(source)

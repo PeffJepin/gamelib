@@ -72,6 +72,16 @@ class TestVertexArray:
 
         assert np.all(buffer.read() == array)
 
+    def test_creates_new_glo_if_buffer_glo_changes(self, shader):
+        array = gl.coerce_array(np.arange(18), gl.vec3)
+        buffer = buffers.Buffer(array, gl.vec3)
+        vao = gpu.VertexArray(shader, v_pos=buffer, f_color=np.arange(4))
+        identity = id(vao.glo)
+
+        buffer.write(np.arange(27))
+        # new buffer will require new moderngl vertex array object
+        assert id(vao.glo) != identity
+
     def test_num_entities_governed_by_smallest_buffer(self):
         array1 = np.arange(12)
         array2 = np.arange(12)
