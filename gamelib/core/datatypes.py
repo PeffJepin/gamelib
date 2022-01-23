@@ -19,10 +19,21 @@ class _Vector:
 
     __slots__ = ()
 
+    # make type checker happy
+    # slots enabled on subclasses
+    x: float
+    y: float
+    z: float
+    w: float
+
     def __init__(self, *args, **kwargs):
         if kwargs:
             for key, value in kwargs:
                 setattr(self, key, value)
+        if len(args) == 1 and not isinstance(args[0], Iterable):
+            value = args[0]
+            for slot in self.__slots__:
+                setattr(self, slot, value)
         else:
             for slot, value in zip(self.__slots__, args):
                 setattr(self, slot, value)
