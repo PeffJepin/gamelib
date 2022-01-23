@@ -10,9 +10,6 @@ from gamelib.core import events
 from gamelib.core import resources
 
 
-DEFAULT_MODELS_DIR = pathlib.Path(__file__).parent.parent / "models"
-
-
 @dataclasses.dataclass
 class _Config:
     """Global config variables.
@@ -53,7 +50,7 @@ config = _Config()
 schedule = time.Schedule()
 threaded_schedule = time.Schedule(threaded=True)
 
-_commands = _dummy_func
+_render_func = _dummy_func
 _update_timer = time.Timer()
 _render_timer = time.Timer()
 _initialized = False
@@ -79,6 +76,7 @@ def init(headless=False, **kwargs):
     window.create(headless=headless, **kwargs)
     ctx = window.get_context()
     ctx.enable(ctx.DEPTH_TEST)
+    ctx.enable(ctx.BLEND)
 
     _initialized = True
 
@@ -110,11 +108,12 @@ def update():
     if next_frame < next_update:
         _render_timer.tick(config.fps)
         window.swap_buffers()
+        _render_timer.tick(config.fps)
         update()
     else:
-        if _commands != _dummy_func:
+        if _render_func != _dummy_func:
             window.clear()
-            _commands()
+            _render_func()
         dt = _update_timer.tick(config.tps)
         window.poll_for_user_input(dt)
         events.post(events.Update(dt))
@@ -137,11 +136,11 @@ def run():
         init()
     while window.is_running():
         update()
-    exit()
+    window.close()
 
 
 def set_draw_commands(func):
     """This function will be called to issue draw commands to OpenGL."""
 
-    global _commands
-    _commands = func
+    global _render_func
+    _render_func = func

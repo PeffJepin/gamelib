@@ -36,5 +36,4 @@ class GridMesh(base.Model):
 
         vertices = gl.coerce_array(vertices, gl.vec3)
         triangles = gl.coerce_array(triangles, gl.uvec3)
-        print(vertices)
         super().__init__(vertices, triangles, **kwargs)

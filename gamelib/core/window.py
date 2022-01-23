@@ -271,6 +271,10 @@ def _hook_window_events():
         event = input.MouseScroll(dx, dy)
         _queued_input.append(event)
 
+    def _close_window(*args):
+        exit()
+
+    _window.close_func = _close_window
     _window.key_event_func = _broadcast_key_event
     _window.mouse_press_event_func = _broadcast_mouse_press_event
     _window.mouse_release_event_func = _broadcast_mouse_release_event

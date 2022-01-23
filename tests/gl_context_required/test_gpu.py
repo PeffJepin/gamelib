@@ -13,7 +13,6 @@ from ..conftest import assert_approx
 def init_ctx():
     gamelib.init(headless=True)
     yield gamelib.get_context()
-    gamelib.exit()
 
 
 class TestVertexArray:
