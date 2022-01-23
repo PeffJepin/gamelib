@@ -9,7 +9,7 @@ from gamelib.rendering import buffers
 class GPUInstructions:
     """Common functions for issuing commands to the gpu."""
 
-    def __init__(self, shader, **data_sources):
+    def __init__(self, shader, mode=gl.TRIANGLES, **data_sources):
         """Initialize a new instruction.
 
         Parameters
@@ -26,7 +26,8 @@ class GPUInstructions:
             self.shader = glslutils.ShaderData.read_string(shader)
         else:
             self.shader = glslutils.ShaderData.read_file(shader)
-        self.vao = VertexArray(self.shader, **data_sources)
+        self.vao = VertexArray(self.shader, mode=mode, **data_sources)
+        self._mode = mode
 
     def source(self, **data_sources):
         """Use these data sources."""
@@ -37,8 +38,8 @@ class GPUInstructions:
 class TransformFeedback(GPUInstructions):
     """Use the GPU to transform some data."""
 
-    def __init__(self, shader, **data_sources):
-        super().__init__(shader)
+    def __init__(self, shader, mode=gl.POINTS, **data_sources):
+        super().__init__(shader, mode)
         self.sources = data_sources
 
     def source(self, **data_sources):
@@ -89,7 +90,7 @@ class Renderer(GPUInstructions):
     def render(self, vertices=None):
         self.vao.update()
         vertices = vertices or self.vao.num_elements
-        self.vao.glo.render(vertices=vertices)
+        self.vao.glo.render(vertices=vertices, mode=self._mode)
 
 
 class VertexArray:
@@ -262,7 +263,7 @@ class VertexArray:
 
         Parameters
         ----------
-        uniform_sources : np.ndarray | tuple | int | float
+        **uniform_sources : np.ndarray | tuple | int | float
             If sourced with a np.ndarray, this uniform will continually be
             updated from that array.
             If sourced from a python value it will set the value just once.
@@ -295,8 +296,7 @@ class VertexArray:
             dtype = self.shader.meta.uniforms[name].dtype
             self._uniforms_in_use[name] = _AutoUniform(source, dtype, name)
         else:
-            self._shader_glo[name] = value
-            self.gl[name] = value
+            self._shader_glo[name] = source
 
     def _generate_buffer(self, source, dtype, auto=None):
         self._dirty = True
