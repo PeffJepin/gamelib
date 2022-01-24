@@ -50,6 +50,9 @@ class Buffer:
         data : np.ndarray | bytes
         """
 
+        if not len(data) > 0:
+            return
+
         if isinstance(data, np.ndarray):
             self._write_array(data)
         elif isinstance(data, bytes):

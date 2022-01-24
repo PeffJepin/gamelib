@@ -92,6 +92,9 @@ class Renderer(GPUInstructions):
         vertices = vertices or self.vao.num_elements
         self.vao.glo.render(vertices=vertices, mode=self._mode)
 
+    def source_indices(self, indices):
+        self.vao.source_indices(indices)
+
 
 class VertexArray:
     """Responsible for mapping data on the CPU side to shader inputs on the
@@ -261,6 +264,7 @@ class VertexArray:
             self._index_buffer = self._generate_buffer(
                 indices, gl.uint, auto=False
             )
+        self._dirty = True
 
     def source_uniforms(self, **uniform_sources):
         """Source uniform values.

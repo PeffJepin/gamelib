@@ -4,12 +4,15 @@ from gamelib.rendering.camera import PerspectiveCamera
 from tests.conftest import assert_approx
 
 
+ASPECT = 16 / 9
+
+
 @pytest.fixture(autouse=True, scope="module")
 def stub_aspect_ratio():
     import gamelib
 
     normal_implementation = gamelib.get_aspect_ratio
-    gamelib.get_aspect_ratio = lambda: 16 / 9
+    gamelib.get_aspect_ratio = lambda: ASPECT
     yield
     gamelib.get_aspect_ratio = normal_implementation
 
@@ -36,7 +39,6 @@ class TestPerspectiveCamera:
             ("near", 3, "proj"),
             ("far", 19, "proj"),
             ("fov_y", 100, "proj"),
-            ("fov_x", 95, "proj"),
         ),
     )
     def test_changing_properties(
@@ -87,3 +89,21 @@ class TestPerspectiveCamera:
         assert camera.projection_matrix.tobytes() == proj_bytes
         assert camera.view_matrix.tobytes() != view_bytes
         assert_approx(camera.direction, (-1, 0, 0))
+
+    def test_near_width(self):
+        camera = PerspectiveCamera((0, 0, 0), (1, 0, 0), near=1)
+        camera.fov_y = 90
+
+        assert camera.near_plane_width == pytest.approx(2 * ASPECT)
+
+    def test_near_height(self):
+        camera = PerspectiveCamera((0, 0, 0), (1, 0, 0), near=2)
+        camera.fov_y = 90
+
+        assert camera.near_plane_height == pytest.approx(4)
+
+    def test_near_size(self):
+        camera = PerspectiveCamera((0, 0, 0), (1, 0, 0), near=2)
+        camera.fov_y = 90
+
+        assert_approx(camera.near_plane_size, (4 * ASPECT, 4))

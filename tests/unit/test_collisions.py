@@ -4,25 +4,12 @@ import pytest
 import numpy as np
 
 from gamelib.geometry import collisions
+from gamelib.geometry import transforms
 from gamelib.geometry import base
+from gamelib.geometry import gridmesh
 from gamelib import gl
 
 from ..conftest import assert_approx
-
-
-@pytest.mark.parametrize(
-    "aabb, ray, intersects",
-    (
-        # fmt: off
-        (collisions.AABB((0, 0, 0), (1, 1, 1)), collisions.Ray((-1, -1, -1), (1, 1, 1)), True),
-        (collisions.AABB((0, 0, 0), (1, 1, 1)), collisions.Ray((0.5, 0.5, 0.5), (123, 321, 1000)), True),
-        (collisions.AABB((0, 0, 0), (1, 1, 1)), collisions.Ray((1.5, 1.5, 1.5), (123, 321, 1000)), False),
-        (collisions.AABB((0, 0, 0), (1, 1, 1)), collisions.Ray((-0.5, 0.5, 0.5), (1, 2, 0)), False),
-        # fmt: on
-    ),
-)
-def test_ray_aabb_intersection(aabb, ray, intersects):
-    assert ray.collides_aabb(aabb) is intersects
 
 
 @pytest.mark.parametrize(
@@ -65,7 +52,7 @@ def test_ray_triangles_intersection(
 )
 def test_ray_triangles_intersection_distance(ray_origin, ray_dir, distance):
     triangle = np.array([(0, 0, 0), (2, 0, 0), (1, 0, 2)], gl.vec3)
-    triangle = triangle.reshape(1, 3, 3)
+    triangle = triangle.reshape((1, 3, 3))
 
     result = collisions.ray_triangle_intersections(
         triangle, ray_origin, ray_dir
@@ -253,6 +240,14 @@ class TestBVH:
 
         assert node.triangles is None
 
+    def test_number_of_triangles(self):
+        vertices = gl.coerce_array(np.arange(180), gl.vec3)
+        indices = gl.coerce_array(np.arange(60), gl.uvec3)
+        model = base.Model(vertices, indices)
+        root = collisions.BVH.create_tree(model, target_density=16)
+
+        assert root.ntris == 20
+
 
 class TestAABB:
     def test_getting_the_center(self):
@@ -277,3 +272,103 @@ class TestAABB:
 
     def test_shape(self):
         assert collisions.AABB((3, 3, 3), (5, 5, 7)).shape == (2, 2, 4)
+
+
+class TestRay:
+    @pytest.mark.parametrize(
+        "aabb, ray, intersects",
+        (
+            # fmt: off
+            (collisions.AABB((0, 0, 0), (1, 1, 1)), collisions.Ray((-1, -1, -1), (1, 1, 1)), True),
+            (collisions.AABB((0, 0, 0), (1, 1, 1)), collisions.Ray((0.5, 0.5, 0.5), (123, 321, 1000)), True),
+            (collisions.AABB((0, 0, 0), (1, 1, 1)), collisions.Ray((1.5, 1.5, 1.5), (123, 321, 1000)), False),
+            (collisions.AABB((0, 0, 0), (1, 1, 1)), collisions.Ray((-0.5, 0.5, 0.5), (1, 2, 0)), False),
+            # fmt: on
+        ),
+    )
+    def test_aabb_intersections(self, aabb, ray, intersects):
+        assert ray.collides_aabb(aabb) is intersects
+
+    def test_bvh_intersection(self):
+        model = gridmesh.GridMesh(lod=20, scale=5)
+        bvh = collisions.BVH.create_tree(model, target_density=16)
+        ray = collisions.Ray((2, 2, 5), (-2, -3, -10))
+
+        assert ray.collides_bvh(bvh) > 0
+
+    def test_bvh_distance(self):
+        model = gridmesh.GridMesh(lod=20, scale=5)
+        bvh = collisions.BVH.create_tree(model, target_density=16)
+        ray = collisions.Ray((2, 2, 5), (0, 0, -10))
+
+        assert ray.collides_bvh(bvh) == pytest.approx(5)
+
+    def test_bvh_gets_nearest_hit(self):
+        # fmt: off
+        vertices = np.array([
+            (0, 0, 0), (2, 4, 0), (4, 0, 0),
+            (0, 0, 1), (2, 4, 1), (4, 0, 1),
+            (0, 0, -2.5), (2, 4, -2.5), (4, 0, -2.5),
+        ], gl.vec3)
+        # fmt: on
+        indices = np.array([(0, 1, 2), (3, 4, 5), (6, 7, 8)], gl.uvec3)
+        model = base.Model(vertices, indices)
+        bvh = collisions.BVH.create_tree(model, target_density=1)
+        ray = collisions.Ray((2, 2, 2), (0, 0, -1))
+
+        assert ray.collides_bvh(bvh) == pytest.approx(1)
+
+    def test_bvh_miss(self):
+        # fmt: off
+        vertices = np.array([
+            (0, 0, 0), (2, 4, 0), (4, 0, 0),
+            (0, 0, 1), (2, 4, 1), (4, 0, 1),
+            (0, 0, -2.5), (2, 4, -2.5), (4, 0, -2.5),
+        ], gl.vec3)
+        # fmt: on
+        indices = np.array([(0, 1, 2), (3, 4, 5), (6, 7, 8)], gl.uvec3)
+        model = base.Model(vertices, indices)
+        bvh = collisions.BVH.create_tree(model, target_density=1)
+        ray = collisions.Ray((100, 100, -1), (2, 2, -1))
+
+        assert ray.collides_bvh(bvh) is False
+
+    def test_transforming_a_ray_into_object_space(self):
+        transform = transforms.Transform(
+            (10, 20, 30), (4, 4, 8), (0, 0, 1), 90
+        )
+        ray = collisions.Ray((10, 0, 30), (0, 1, 0))
+
+        ray.to_object_space(transform)
+
+        assert_approx(ray.origin, (-5, 0, 0))
+        assert_approx(ray.direction, (1, 0, 0))
+
+    def test_transforming_multiple_times(self):
+        transform1 = transforms.Transform(
+            (10, 20, 30), (4, 4, 8), (0, 0, 1), 90
+        )
+        transform2 = transforms.Transform(
+            (10, 40, 30), (4, 4, 8), (0, 0, 1), 90
+        )
+        ray = collisions.Ray((10, 0, 30), (0, 1, 0))
+
+        ray.to_object_space(transform1)
+        ray.to_object_space(transform2)
+
+        # the second transform should still have access to the original ray
+        # data and transform according to that.
+        assert_approx(ray.origin, (-10, 0, 0))
+        assert_approx(ray.direction, (1, 0, 0))
+
+    def test_resetting_transform(self):
+        transform = transforms.Transform(
+            (10, 20, 30), (4, 4, 8), (0, 0, 1), 90
+        )
+        ray = collisions.Ray((10, 0, 30), (0, 1, 0))
+
+        ray.to_object_space(transform)
+        ray.reset_transform()
+
+        assert_approx(ray.origin, (10, 0, 30))
+        assert_approx(ray.direction, (0, 1, 0))

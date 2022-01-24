@@ -52,7 +52,7 @@ class _Vector:
 
     def __repr__(self):
         values_desc = ", ".join(
-            f"{slot}={getattr(self, slot)}" for slot in self.__slots__
+            f"{slot}={getattr(self, slot):.3f}" for slot in self.__slots__
         )
         return f"<{self.__class__.__name__}({values_desc})>"
 

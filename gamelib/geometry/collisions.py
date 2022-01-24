@@ -7,7 +7,6 @@ import numpy as np
 
 from gamelib import gl
 from gamelib import Vec3
-from gamelib.geometry import base
 
 
 class Ray:
@@ -18,7 +17,7 @@ class Ray:
 
         Parameters
         ----------
-        origin : Vec3 | Iterable[float]  
+        origin : Vec3 | Iterable[float]
         direction : Vec3 | Iterable[float]
         """
 
@@ -27,8 +26,72 @@ class Ray:
         if not isinstance(direction, Vec3):
             direction = Vec3(*direction).normalize()
         self._origin = origin
-        self._dir = direction
-        self._inv = self._dir.inverse()
+        self._direction = direction
+        self._inv = self._direction.inverse()
+        self._transformed_origin = None
+        self._transformed_direction = None
+        self._transformed_inverse = None
+
+    def __repr__(self):
+        return f"<Ray(origin={self.origin!r}, direction={self.direction!r})>"
+
+    @property
+    def origin(self):
+        """Get the origin point.
+
+        Returns
+        -------
+        Vec3
+        """
+
+        return self._transformed_origin or self._origin
+
+    @property
+    def direction(self):
+        """Get the direction vector.
+
+        Returns
+        -------
+        Vec3
+        """
+
+        return self._transformed_direction or self._direction
+
+    @property
+    def inverse(self):
+        """Get the inverse. Any 0 component will be set to math.inf.
+
+        Returns
+        -------
+        Vec3
+        """
+
+        return self._transformed_inverse or self._inv
+
+    def to_object_space(self, transform):
+        """Transform the origin and direction into an objects space given it's
+        transform.
+
+        Parameters
+        ----------
+        transform : transforms.Transform
+        """
+
+        origin = Vec3(*self._origin)
+        direction = Vec3(*self._direction)
+
+        self._transformed_origin = transform.apply_inverse(origin)
+        self._transformed_direction = transform.apply_inverse(
+            direction, normal=True
+        ).normalize()
+        self._transformed_inverse = self._transformed_direction.inverse()
+
+    def reset_transform(self):
+        """Reset the vector to it's world space coordinates."""
+
+        self._transformed_origin = None
+        self._transformed_direction = None
+        self._transformed_inverse = None
 
     def collides_aabb(self, aabb):
         """Check if this ray intersects with a bounding box with slabs method.
@@ -42,22 +105,103 @@ class Ray:
         bool
         """
 
-        tx1 = (aabb.min.x - self._origin.x) * self._inv.x
-        tx2 = (aabb.max.x - self._origin.x) * self._inv.x
+        tx1 = (aabb.min.x - self.origin.x) * self.inverse.x
+        tx2 = (aabb.max.x - self.origin.x) * self.inverse.x
         tmin = min(tx1, tx2)
         tmax = max(tx1, tx2)
 
-        ty1 = (aabb.min.y - self._origin.y) * self._inv.y
-        ty2 = (aabb.max.y - self._origin.y) * self._inv.y
+        ty1 = (aabb.min.y - self.origin.y) * self.inverse.y
+        ty2 = (aabb.max.y - self.origin.y) * self.inverse.y
         tmin = max(tmin, min(ty1, ty2))
         tmax = min(tmax, max(ty1, ty2))
 
-        tz1 = (aabb.min.z - self._origin.z) * self._inv.z
-        tz2 = (aabb.max.z - self._origin.z) * self._inv.z
+        tz1 = (aabb.min.z - self.origin.z) * self.inverse.z
+        tz2 = (aabb.max.z - self.origin.z) * self.inverse.z
         tmin = max(tmin, min(tz1, tz2))
         tmax = min(tmax, max(tz1, tz2))
 
         return tmax >= tmin
+
+    def collides_bvh(self, bvh, *, exit_early=False):
+        """Check if this ray collides with the geometry described by a given
+        BVH tree.
+
+        Parameters
+        ----------
+        bvh : BVH
+        exit_early : bool, optional
+            Should the ray exit early when it finds a collision at the expense
+            of getting an accurate distance measurment?
+
+        Returns
+        -------
+        bool | float:
+            Returns False if there was no collision. Returns the distance to
+            the nearest triangle intersection found.
+        """
+
+        if not self.collides_aabb(bvh.aabb):
+            return False
+
+        maximum = np.finfo(gl.float).max
+
+        def choose_order(node):
+            """Choose which branches to prioritize."""
+            # ignore dead end nodes
+            if node.left is None:
+                if node.right is None:
+                    return ()
+                return (node.right,)
+            elif node.right is None:
+                return (node.left,)
+
+            # check leaf nodes first
+            if node.left.indices is not None:
+                if node.right.indices is None:
+                    return (node.left, node.right)
+            elif node.right.indices is not None:
+                return node.right, node.left
+
+            # else check closest first
+            center = node.aabb.center
+            dl = (center - node.left.aabb.center).magnitude
+            dr = (center - node.left.aabb.center).magnitude
+            if dl < dr:
+                return (node.left, node.right)
+            return (node.right, node.left)
+
+        def check_collisions(node, minimum=maximum):
+            """Recursively check for collisions."""
+            if node is None:
+                return minimum
+            if not self.collides_aabb(node.aabb):
+                return minimum
+            if node.vertices is not None:
+                intersection_data = ray_triangle_intersections(
+                    node.triangles, self.origin, self.direction
+                )
+                detected = np.where(intersection_data != -1)[0]
+                if len(detected) > 0:
+                    minimum = min(
+                        minimum,
+                        np.min(intersection_data[detected]),
+                    )
+                return minimum
+
+            if exit_early:
+                order = choose_order(node)
+            else:
+                order = (node.left, node.right)
+
+            for node in order:
+                minimum = check_collisions(node, minimum)
+                if exit_early and minimum < maximum:
+                    return minimum
+
+            return minimum
+
+        dist = check_collisions(bvh)
+        return dist if dist < maximum else False
 
 
 class AABB:
@@ -190,6 +334,8 @@ class BVH:
     collisions.
     """
 
+    ntris: int  # only on the root
+
     def __init__(self, aabb, vertices=None, indices=None):
         """Initialize a node. A node is considered a leaf node if it contains
         vertices and indices. If a node has no children and no vertices/indices
@@ -248,6 +394,7 @@ class BVH:
         BVH_Helper.divide(
             root, model.vertices, model.triangles, target_density
         )
+        root.ntris = len(model.triangles)
         return root
 
     def __iter__(self):
@@ -382,9 +529,7 @@ class BVH_Helper:
     def _clamp_new_split(cls, split) -> None:
         """Given a fresh split, clamp it to be as small as permitted."""
 
-        indices = cls.clamp_aabb(
-            split.aabb, split.vertices, split.indices
-        )
+        indices = cls.clamp_aabb(split.aabb, split.vertices, split.indices)
         split.indices = indices
 
     @classmethod
@@ -394,6 +539,8 @@ class BVH_Helper:
         spl1, spl2 = splits
         length1, length2 = len(spl1.indices), len(spl2.indices)
         length_parent = len(parent.indices)
+        parent_shape = parent.aabb.shape
+        volume_parent = parent_shape.x * parent_shape.y * parent_shape.z
 
         # discard splits and opt to make parent a leaf node
 
@@ -402,7 +549,7 @@ class BVH_Helper:
             # some overlap is going to happen, since any triangle along the
             # split plane is bound to fall in both splits.
             return -1
-        if length1 == 0 and length2 == 0:
+        if (length1 == 0 and length2 == 0) or volume_parent == 0:
             # don't subdivide empty space
             return -1
         elif length1 == 0 or length2 == 0:
@@ -417,9 +564,7 @@ class BVH_Helper:
         distribution_weight = 1
 
         # reward score for minimizing contained volume
-        shape = parent.aabb.max - parent.aabb.min
-        vp = shape.x * shape.y * shape.z
-        expected = vp / 2
+        expected = volume_parent / 2
         for spl in splits:
             shape = spl.aabb.max - spl.aabb.min
             v = shape.x * shape.y * shape.z
@@ -630,8 +775,7 @@ def aabb_triangle_intersections(aabb, triangles):
 
 
 def _test_axis_for_separation(half_extents, test_axis, v1, v2, v3):
-    """Test an axis to see if we can rule out this triangle for intersection.
-    """
+    """Test an axis to see if we can rule out this triangle for intersection."""
 
     proj1 = np.sum(test_axis * v1, axis=1)
     proj2 = np.sum(test_axis * v2, axis=1)

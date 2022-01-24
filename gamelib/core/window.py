@@ -16,6 +16,7 @@ from moderngl_window.conf import settings
 
 from gamelib.core import input
 from gamelib.core import events
+from gamelib.core.datatypes import Vec2
 
 Window = mglw.BaseWindow
 Context = moderngl.Context
@@ -250,24 +251,31 @@ def _hook_window_events():
         _queued_input.append(event)
 
     def _broadcast_mouse_press_event(x, y, button):
+        x, y = _transform_to_viewport_space(x, y)
         event = input.MouseDown(x, y, _button_type_lookup[button])
         _queued_input.append(event)
 
     def _broadcast_mouse_release_event(x, y, button):
+        x, y = _transform_to_viewport_space(x, y)
         event = input.MouseUp(x, y, _button_type_lookup[button])
         _queued_input.append(event)
 
     def _broadcast_mouse_motion_event(x, y, dx, dy):
+        x, y = _transform_to_viewport_space(x, y)
+        dy *= -1
         _mouse_position[0], _mouse_position[1] = x, y
         event = input.MouseMotion(x, y, dx, dy)
         _queued_input.append(event)
 
     def _broadcast_mouse_drag_event(x, y, dx, dy):
+        x, y = _transform_to_viewport_space(x, y)
+        dy *= -1
         _mouse_position[0], _mouse_position[1] = x, y
         event = input.MouseDrag(x, y, dx, dy, buttons=_get_buttons())
         _queued_input.append(event)
 
     def _broadcast_mouse_wheel_event(dx, dy):
+        dy *= -1
         event = input.MouseScroll(dx, dy)
         _queued_input.append(event)
 
@@ -283,6 +291,13 @@ def _hook_window_events():
     _window.mouse_scroll_event_func = _broadcast_mouse_wheel_event
 
 
+def _transform_to_viewport_space(x, y):
+    x = x - _window.viewport[0]
+    y = y - _window.viewport[1]
+    y = _window.viewport_height - y
+    return x, y
+
+
 def get_context():
     return context
 
@@ -292,8 +307,13 @@ def get_aspect_ratio():
 
 
 def get_width():
-    return _window.width
+    return _window.viewport_width
 
 
 def get_height():
-    return _window.height
+    return _window.viewport_height
+
+
+def get_cursor():
+    # 0, 0 is bottom left in this coordinate space
+    return Vec2(*_mouse_position)

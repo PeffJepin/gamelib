@@ -20,6 +20,7 @@ from gamelib.core.window import get_context
 from gamelib.core.window import get_width
 from gamelib.core.window import get_height
 from gamelib.core.window import get_aspect_ratio
+from gamelib.core.window import get_cursor
 
 from gamelib.core.events import post as post_event
 from gamelib.core.events import subscribe

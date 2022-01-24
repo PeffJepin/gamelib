@@ -1,4 +1,5 @@
 from typing import Sequence
+from gamelib import Vec3
 
 import numpy as np
 
@@ -476,6 +477,10 @@ class Transform:
         return f"<Transform(pos={self.pos}, scale={self.scale}, axis={self.axis}, theta={self.theta})>"
 
     @property
+    def _inverse_matrix(self):
+        return np.linalg.inv(self.matrix.T)
+
+    @property
     def pos(self):
         """Gets the current translation vector.
 
@@ -580,7 +585,7 @@ class Transform:
 
         return self._matrix
 
-    def apply(self, vertex):
+    def apply(self, vertex, *, normal=False):
         """Apply a Transform to a particular vertex.
 
         Parameters
@@ -594,8 +599,11 @@ class Transform:
             Returns the input vertex, having been transformed.
         """
 
-        matrix = self._get_transpose()
-        return _transform_vertex(matrix, vertex)
+        return _transform_vertex(self.matrix.T, vertex, normal)
+
+    def apply_inverse(self, vertex, *, normal=False):
+
+        return _transform_vertex(self._inverse_matrix, vertex, normal)
 
     def _update_matrix(self):
         """Updates the OpenGL matrix."""
@@ -603,11 +611,6 @@ class Transform:
         self._matrix[:] = Mat4.model_transform(
             self.pos, self.scale, self.axis, self.theta
         )
-
-    def _get_transpose(self):
-        """Constructs a transposed matrix for use against numpy ndarrays."""
-
-        return self._matrix.T
 
 
 class TransformComponent(ecs.Component):
@@ -628,6 +631,10 @@ class TransformComponent(ecs.Component):
         self._axis = axis
         self._update_matrix()
         self._theta = theta
+
+    @property
+    def _inverse_matrix(self):
+        return np.linalg.inv(self.model_matrix.T)
 
     @property
     def pos(self):
@@ -665,8 +672,11 @@ class TransformComponent(ecs.Component):
         self._theta = value
         self._update_matrix()
 
-    def apply(self, vertex):
-        return _transform_vertex(self.model_matrix.T, vertex)
+    def apply(self, vertex, *, normal=False):
+        return _transform_vertex(self.model_matrix.T, vertex, normal)
+
+    def apply_inverse(self, vertex, *, normal=False):
+        return _transform_vertex(self._inverse_matrix, vertex, normal)
 
     def _update_matrix(self):
         self.model_matrix = Mat4.model_transform(
@@ -674,14 +684,19 @@ class TransformComponent(ecs.Component):
         )
 
 
-def _transform_vertex(matrix, vertex):
+def _transform_vertex(matrix, vertex, normal):
     """Expecting a Mat4 matrix and a vec3/vec4 vertex."""
+
+    if isinstance(vertex, Vec3):
+        arr = np.asarray(tuple(vertex), float)
+        transformed = _transform_vertex(matrix, arr, normal)
+        return Vec3(*transformed)
 
     dtype = vertex.dtype
     if len(vertex) == 3:
         len4_temp = np.zeros(4, dtype)
         len4_temp[0:3] = vertex
-        len4_temp[3] = 1
+        len4_temp[3] = 0 if normal else 1
         transformed = matrix.dot(len4_temp)[:3]
         if np.issubdtype(dtype, np.integer):
             transformed = np.rint(transformed)

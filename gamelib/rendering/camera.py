@@ -1,3 +1,4 @@
+import math
 import numpy as np
 
 import gamelib
@@ -5,6 +6,7 @@ import gamelib
 from gamelib import gl
 from gamelib.core import input
 from gamelib.geometry import transforms
+from gamelib.geometry import collisions
 
 
 class BaseCamera:
@@ -173,7 +175,7 @@ class BaseCamera:
 
     @up.setter
     def up(self, value):
-        """Sets and transforms.normalizes the up vector and updates the view matrix.
+        """Sets and normalizes the up vector and updates the view matrix.
 
         Parameters
         ----------
@@ -369,28 +371,16 @@ class PerspectiveCamera(BaseCamera):
         self._update_proj()
 
     @property
-    def fov_x(self):
-        """Calculates the x field of view of the camera.
+    def near_plane_width(self):
+        return self.near_plane_height * self._aspect_ratio
 
-        Returns
-        -------
-        float:
-            Fov given in degrees.
-        """
+    @property
+    def near_plane_height(self):
+        return 2 * math.tan(math.radians(self.fov_y / 2)) * self.near
 
-        return self.fov_y * self._aspect_ratio
-
-    @fov_x.setter
-    def fov_x(self, value):
-        """Updates fov_y given this value as fov_x.
-
-        Parameters
-        ----------
-        value : float
-            Fov given in degrees.
-        """
-
-        self.fov_y = value / self._aspect_ratio
+    @property
+    def near_plane_size(self):
+        return self.near_plane_width, self.near_plane_height
 
     def rotate(self, axis=None, theta=None):
         """Rotate the cameras direction vector.
@@ -406,6 +396,20 @@ class PerspectiveCamera(BaseCamera):
 
         matrix = transforms.Mat3.rotate_about_axis(axis, theta)
         self.direction = matrix.dot(self.direction)
+
+    def screen_to_ray(self, x, y):
+        vec_to_near_plane = transforms.normalize(self.direction) * self.near
+        near_plane_center = self.pos + vec_to_near_plane
+        near_w, near_h = self.near_plane_size
+        dx = (-0.5 + (x / gamelib.get_width())) * near_w
+        dy = (-0.5 + (y / gamelib.get_height())) * near_h
+        n_right = transforms.normalize(self.right)
+        n_up = -transforms.normalize(np.cross(self.direction, n_right))
+        x_y_to_near_plane = near_plane_center + n_up * dy + n_right * dx
+        return collisions.Ray(self.pos, x_y_to_near_plane - self.pos)
+
+    def cursor_to_ray(self):
+        return self.screen_to_ray(*gamelib.get_cursor())
 
     def _update_view(self):
         self.view_matrix = transforms.Mat4.look_at_transform(
@@ -548,7 +552,12 @@ class _FreePerspectiveController:
     def _rotate_camera(self, event):
         if event.dx != 0:
             # z rotation for left/right
-            theta = event.dx / gamelib.get_width() * self.camera.fov_x
+            theta = (
+                event.dx
+                / gamelib.get_width()
+                * self.camera.fov_y
+                * self.camera._aspect_ratio
+            )
             self.camera.rotate((0, 0, 1), theta)
         if event.dy != 0:
             # rotate along the left/right axis for up/down

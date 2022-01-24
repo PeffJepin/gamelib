@@ -51,10 +51,14 @@ def test_mat4():
     # fmt: on
 )
 def test_transform(transform, expected):
-    vertex = np.array((1, 1, 1))
-    transform.apply(vertex)
+    vertex0 = np.array((1, 1, 1))
+    vertex = vertex0.copy()
 
+    transform.apply(vertex)
     assert_approx(expected, vertex)
+
+    transform.apply_inverse(vertex)
+    assert_approx(vertex, vertex0)
 
     # also test that fiddling with the attributes gets the expected
     # results against these inputs
