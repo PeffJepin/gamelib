@@ -1,6 +1,7 @@
 import math
 
 import pytest
+import numpy as np
 from gamelib.core.datatypes import Vec2, Vec3, Vec4
 
 from ..conftest import assert_approx
@@ -34,7 +35,8 @@ class TestVectors:
     def test_equality(self, vector, compare_to):
         assert vector == compare_to
         vals = tuple(vector)
-        assert type(vector)(*reversed(vals)) != compare_to
+        vector = type(vector)(*reversed(vals))
+        assert vector != compare_to
 
     def test_negation(self):
         assert -Vec3(1, 1, 1) == Vec3(-1, -1, -1)
@@ -66,13 +68,19 @@ class TestVectors:
         ),
     )
     def test_addition(self, vector, other, expected):
-        identity = id(vector)
-        assert vector + other == expected
-        assert other + vector == expected
+        vec_type = type(vector)
+
+        result = vector + other
+        assert result == expected
+        assert isinstance(result, vec_type)
+
+        result = other + vector
+        assert result == expected
+        assert isinstance(result, vec_type)
 
         vector += other
         assert vector == expected
-        assert id(vector) == identity
+        assert isinstance(vector, vec_type)
 
     @pytest.mark.parametrize(
         "vector, other, expected",
@@ -85,13 +93,19 @@ class TestVectors:
         ),
     )
     def test_subtraction(self, vector, other, expected):
-        identity = id(vector)
-        assert vector - other == expected
-        assert other - vector == -type(vector)(*expected)
+        vec_type = type(vector)
+
+        result = vector - other
+        assert result == expected
+        assert isinstance(result, vec_type)
+
+        result = other - vector
+        assert result == -type(vector)(*expected)
+        assert isinstance(result, vec_type)
 
         vector -= other
         assert vector == expected
-        assert id(vector) == identity
+        assert isinstance(vector, vec_type)
 
     @pytest.mark.parametrize(
         "vector, other, expected",
@@ -104,13 +118,19 @@ class TestVectors:
         ),
     )
     def test_multiplication(self, vector, other, expected):
-        identity = id(vector)
-        assert vector * other == expected
-        assert other * vector == expected
+        vec_type = type(vector)
+
+        result = vector * other
+        assert result == expected
+        assert isinstance(result, vec_type)
+
+        result = other * vector
+        assert result == expected
+        assert isinstance(result, vec_type)
 
         vector *= other
         assert vector == expected
-        assert id(vector) == identity
+        assert isinstance(vector, vec_type)
 
     @pytest.mark.parametrize(
         "vector, other, expected",
@@ -123,13 +143,19 @@ class TestVectors:
         ),
     )
     def test_division(self, vector, other, expected):
-        identity = id(vector)
-        assert vector / other == expected
-        assert other / vector == 1 / expected
+        vec_type = type(vector)
+
+        result = vector / other
+        assert result == expected
+        assert isinstance(result, vec_type)
+
+        result = other / vector
+        assert result == 1 / expected
+        assert isinstance(result, vec_type)
 
         vector /= other
         assert vector == expected
-        assert id(vector) == identity
+        assert isinstance(vector, vec_type)
 
     @pytest.mark.parametrize(
         "vector, other, expected",
@@ -144,8 +170,17 @@ class TestVectors:
         assert vector.dot(other) == expected
 
     def test_cross(self):
-        assert Vec3(2, 3, 4).cross(Vec3(5, 6, 7)) == (-3, 6, -3)
-        assert Vec3(2, 3, 4).cross((5, 6, 7)) == (-3, 6, -3)
+        vector = Vec3(2, 3, 4)
+        vec_type = type(vector)
+        expected = (-3, 6, -3)
+
+        result = vector.cross(Vec3(5, 6, 7))
+        assert result == expected
+        assert isinstance(result, vec_type)
+
+        result = vector.cross((5, 6, 7))
+        assert result == expected
+        assert isinstance(result, vec_type)
 
     def test_magnitude(self):
         assert Vec3(1, 0, 0).magnitude == pytest.approx(1)
@@ -169,8 +204,19 @@ class TestVectors:
             assert v == before
 
     def test_inverse(self):
-        assert Vec3(1, 2, 3).inverse() == Vec3(1 / 1, 1 / 2, 1 / 3)
-        assert Vec3(1, -2, 3).inverse() == Vec3(1 / 1, -1 / 2, 1 / 3)
+        result = Vec3(1, -2, 3).inverse()
+        assert result == (1 / 1, -1 / 2, 1 / 3)
+        assert isinstance(result, Vec3)
 
     def test_inverse_zero(self):
-        assert Vec3(0, 2, 0).inverse() == Vec3(math.inf, 1 / 2, math.inf)
+        result = Vec3(0, 2, 0).inverse()
+        assert result == (math.inf, 1 / 2, math.inf)
+        assert isinstance(result, Vec3)
+
+    def test_multiplying_across_an_array_doesnt_pollute_array_type(self):
+        array = np.arange(15).reshape(-1, 3)
+        array = array * Vec3(1, 1, 1)
+        assert not isinstance(array, Vec3)
+
+        array = Vec3(1, 1, 1) * array
+        assert not isinstance(array, Vec3)

@@ -24,17 +24,17 @@ def camera():
 
 class TestPerspectiveCamera:
     def test_init_direction(self):
-        cam = PerspectiveCamera((0, 0, 0), dir=(1, 0, 0))
-        assert all(cam.direction == (1, 0, 0))
+        cam = PerspectiveCamera((0, 0, 0), direction=(1, 0, 0))
+        assert cam.direction == (1, 0, 0)
 
     def test_init_position(self):
         cam = PerspectiveCamera((1, 2, 3), (1, 1, 1))
-        assert all(cam.pos == (1.0, 2.0, 3))
+        assert cam.position == (1.0, 2.0, 3)
 
     @pytest.mark.parametrize(
         "attr, value, expected_to_change",
         (
-            ("pos", (1, 2, 3), "view"),
+            ("position", (1, 2, 3), "view"),
             ("direction", (1, 2, 3), "view"),
             ("near", 3, "proj"),
             ("far", 19, "proj"),
@@ -57,19 +57,19 @@ class TestPerspectiveCamera:
             assert camera.projection_matrix.tobytes() != proj_bytes
 
     def test_relative_directions(self, camera):
-        camera.pos = (0, 0, 0)
+        camera.position = (0, 0, 0)
         camera.direction = (1, 0, 0)
 
-        assert all(camera.right == (0, -1, 0))
-        assert all(camera.left == (0, 1, 0))
+        assert camera.right == (0, -1, 0)
+        assert camera.left == (0, 1, 0)
 
     def test_up_is_not_relative(self, camera):
-        camera.pos = (0, 0, 10)
+        camera.position = (0, 0, 10)
         camera.target = (1, 1, 0)
-        assert all(camera.up == (0, 0, 1))
+        assert camera.up == (0, 0, 1)
 
     def test_move(self, camera):
-        camera.pos = (1, 2, 3)
+        camera.position = (1, 2, 3)
         proj_bytes = camera.projection_matrix.tobytes()
         view_bytes = camera.view_matrix.tobytes()
 
@@ -77,7 +77,7 @@ class TestPerspectiveCamera:
 
         assert camera.projection_matrix.tobytes() == proj_bytes
         assert camera.view_matrix.tobytes() != view_bytes
-        assert all(camera.pos == (4, 4, 4))
+        assert camera.position == (4, 4, 4)
 
     def test_rotate(self, camera):
         camera.direction = (0, 1, 0)

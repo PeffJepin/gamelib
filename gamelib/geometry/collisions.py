@@ -12,6 +12,8 @@ from gamelib import Vec3
 class Ray:
     """Used to check for ray collisions."""
 
+    _MAX_DISTANCE = np.finfo(gl.float).max
+
     def __init__(self, origin, direction):
         """Set initial values and cache the inverse direction.
 
@@ -24,9 +26,9 @@ class Ray:
         if not isinstance(origin, Vec3):
             origin = Vec3(*origin)
         if not isinstance(direction, Vec3):
-            direction = Vec3(*direction).normalize()
+            direction = Vec3(*direction)
         self._origin = origin
-        self._direction = direction
+        self._direction = direction.normalize()
         self._inv = self._direction.inverse()
         self._transformed_origin = None
         self._transformed_direction = None
@@ -44,7 +46,11 @@ class Ray:
         Vec3
         """
 
-        return self._transformed_origin or self._origin
+        return (
+            self._transformed_origin
+            if self._transformed_origin is not None
+            else self._origin
+        )
 
     @property
     def direction(self):
@@ -55,7 +61,11 @@ class Ray:
         Vec3
         """
 
-        return self._transformed_direction or self._direction
+        return (
+            self._transformed_direction
+            if self._transformed_direction is not None
+            else self._direction
+        )
 
     @property
     def inverse(self):
@@ -66,7 +76,11 @@ class Ray:
         Vec3
         """
 
-        return self._transformed_inverse or self._inv
+        return (
+            self._transformed_inverse
+            if self._transformed_inverse is not None
+            else self._inv
+        )
 
     def to_object_space(self, transform):
         """Transform the origin and direction into an objects space given it's
@@ -93,45 +107,54 @@ class Ray:
         self._transformed_direction = None
         self._transformed_inverse = None
 
-    def collides_aabb(self, aabb):
+    def collides_aabb(self, aabb=None, bmin=None, bmax=None):
         """Check if this ray intersects with a bounding box with slabs method.
 
         Parameters
         ----------
-        aabb : AABB
+        aabb : AABB, optional
+            aabb can be provided to check a single box
+        bmin : np.ndarray, optional
+            bmin and bmax arrays can be given to check batches of aabbs
+        bmax : np.ndarray, optional
+            bmin and bmax arrays can be given to check batches of aabbs
 
         Returns
         -------
-        bool
+        bool | np.ndarray:
+            A single bool or vector of bools, depending on what args are given.
         """
 
-        tx1 = (aabb.min.x - self.origin.x) * self.inverse.x
-        tx2 = (aabb.max.x - self.origin.x) * self.inverse.x
-        tmin = min(tx1, tx2)
-        tmax = max(tx1, tx2)
+        if bmin is not None:
+            axis = 1
+            mn = bmin
+            mx = bmax
+        else:
+            axis = 0
+            mn = aabb.min
+            mx = aabb.max
 
-        ty1 = (aabb.min.y - self.origin.y) * self.inverse.y
-        ty2 = (aabb.max.y - self.origin.y) * self.inverse.y
-        tmin = max(tmin, min(ty1, ty2))
-        tmax = min(tmax, max(ty1, ty2))
+        tmin = (mn[:] - self.origin) * self.inverse
+        tmax = (mx[:] - self.origin) * self.inverse
 
-        tz1 = (aabb.min.z - self.origin.z) * self.inverse.z
-        tz2 = (aabb.max.z - self.origin.z) * self.inverse.z
-        tmin = max(tmin, min(tz1, tz2))
-        tmax = min(tmax, max(tz1, tz2))
+        max_min = np.max(np.minimum(tmin, tmax), axis=axis)
+        min_max = np.min(np.maximum(tmin, tmax), axis=axis)
 
-        return tmax >= tmin
+        return min_max >= max_min
 
-    def collides_bvh(self, bvh, *, exit_early=False):
+    def collides_bvh(self, bvh, *, _exit_early=False):
         """Check if this ray collides with the geometry described by a given
         BVH tree.
 
         Parameters
         ----------
         bvh : BVH
-        exit_early : bool, optional
-            Should the ray exit early when it finds a collision at the expense
-            of getting an accurate distance measurment?
+        _exit_early : bool, optional
+            for most situations the default method of checking collisions
+            will probably be faster because it will check all the leaf node
+            aabb intersections in a batch with numpy, though this
+            implementation is working, in most cases it's probably not
+            recommended.
 
         Returns
         -------
@@ -143,8 +166,30 @@ class Ray:
         if not self.collides_aabb(bvh.aabb):
             return False
 
-        maximum = np.finfo(gl.float).max
+        if _exit_early:
+            dist = self._recursive_check_bvh(bvh)
+            return dist if dist < self._MAX_DISTANCE else False
 
+        bmin = bvh.leaf_bmin_vectors
+        bmax = bvh.leaf_bmax_vectors
+        intersecting_leaves = bvh.leaves[
+            self.collides_aabb(bmin=bmin, bmax=bmax)
+        ]
+        if not len(intersecting_leaves) > 0:
+            return False
+        triangles = np.concatenate(
+            [node.triangles for node in intersecting_leaves]
+        )
+        intersection_distances = ray_triangle_intersections(
+            triangles, self.origin, self.direction
+        )
+        indices = np.where(intersection_distances != -1)[0]
+        if len(indices) > 0:
+            return np.min(intersection_distances[indices])
+        else:
+            return False
+
+    def _recursive_check_bvh(self, bvh_node, minimum=_MAX_DISTANCE):
         def choose_order(node):
             """Choose which branches to prioritize."""
             # ignore dead end nodes
@@ -170,38 +215,30 @@ class Ray:
                 return (node.left, node.right)
             return (node.right, node.left)
 
-        def check_collisions(node, minimum=maximum):
-            """Recursively check for collisions."""
-            if node is None:
-                return minimum
-            if not self.collides_aabb(node.aabb):
-                return minimum
-            if node.vertices is not None:
-                intersection_data = ray_triangle_intersections(
-                    node.triangles, self.origin, self.direction
+        if bvh_node is None:
+            return minimum
+        if not self.collides_aabb(bvh_node.aabb):
+            return minimum
+        if bvh_node.vertices is not None:
+            intersection_data = ray_triangle_intersections(
+                bvh_node.triangles, self.origin, self.direction
+            )
+            detected = np.where(intersection_data != -1)[0]
+            if len(detected) > 0:
+                minimum = min(
+                    minimum,
+                    np.min(intersection_data[detected]),
                 )
-                detected = np.where(intersection_data != -1)[0]
-                if len(detected) > 0:
-                    minimum = min(
-                        minimum,
-                        np.min(intersection_data[detected]),
-                    )
-                return minimum
-
-            if exit_early:
-                order = choose_order(node)
-            else:
-                order = (node.left, node.right)
-
-            for node in order:
-                minimum = check_collisions(node, minimum)
-                if exit_early and minimum < maximum:
-                    return minimum
-
             return minimum
 
-        dist = check_collisions(bvh)
-        return dist if dist < maximum else False
+        order = choose_order(bvh_node)
+
+        for bvh_node in order:
+            minimum = self._recursive_check_bvh(bvh_node, minimum)
+            if minimum < self._MAX_DISTANCE:
+                return minimum
+
+        return minimum
 
 
 class AABB:
@@ -334,7 +371,11 @@ class BVH:
     collisions.
     """
 
-    ntris: int  # only on the root
+    # only on the root
+    ntris: int
+    leaves: np.ndarray
+    leaf_bmin_vectors: np.ndarray
+    leaf_bmax_vectors: np.ndarray
 
     def __init__(self, aabb, vertices=None, indices=None):
         """Initialize a node. A node is considered a leaf node if it contains
@@ -394,6 +435,18 @@ class BVH:
         BVH_Helper.divide(
             root, model.vertices, model.triangles, target_density
         )
+        bmin_vectors = []
+        bmax_vectors = []
+        leaves = []
+        for node in root:
+            if node.indices is not None:
+                bmin_vectors.append(node.aabb.min)
+                bmax_vectors.append(node.aabb.max)
+                leaves.append(node)
+
+        root.leaf_bmin_vectors = np.stack(bmin_vectors)
+        root.leaf_bmax_vectors = np.stack(bmax_vectors)
+        root.leaves = np.array(leaves, object)
         root.ntris = len(model.triangles)
         return root
 

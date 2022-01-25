@@ -248,6 +248,27 @@ class TestBVH:
 
         assert root.ntris == 20
 
+    def test_aabb_leaf_vectors(self):
+        vertices = gl.coerce_array(np.arange(180), gl.vec3)
+        indices = gl.coerce_array(np.arange(60), gl.uvec3)
+        model = base.Model(vertices, indices)
+        root = collisions.BVH.create_tree(model, target_density=4)
+
+        bmin = root.leaf_bmin_vectors
+        bmax = root.leaf_bmax_vectors
+
+        for node in root:
+            if node.triangles is not None:
+                assert node in root.leaves
+                expected = True
+            else:
+                assert node not in root.leaves
+                expected = False
+
+            equal_min = np.all(np.isclose(node.aabb.min, bmin), axis=1)
+            equal_max = np.all(np.isclose(node.aabb.max, bmax), axis=1)
+            assert np.any(equal_min & equal_max) == expected
+
 
 class TestAABB:
     def test_getting_the_center(self):
@@ -287,7 +308,15 @@ class TestRay:
         ),
     )
     def test_aabb_intersections(self, aabb, ray, intersects):
-        assert ray.collides_aabb(aabb) is intersects
+        assert ray.collides_aabb(aabb) == intersects
+
+    def test_aabb_batch_intersections(self):
+        bmin = np.array([(0, 0, 0), (0.5, 0.5, 0.5), (1, 1, 1)])
+        bmax = np.array([(1, 1, 1), (1.5, 1.5, 1.5), (2, 2, 2)])
+        ray = collisions.Ray((0.75, -1, 0.75), (0, 1, 0))
+
+        expected = (True, True, False)
+        assert np.all(ray.collides_aabb(bmin=bmin, bmax=bmax) == expected)
 
     def test_bvh_intersection(self):
         model = gridmesh.GridMesh(lod=20, scale=5)

@@ -20,10 +20,10 @@ gamelib.init()
 
 model = gamelib.geometry.load_model(model_to_load)
 model.anchor((0.5, 0.5, 0))
-transform = transforms.Transform((2, 3, 4), (10, 10, 10), (1, 1, 1), 0)
+transform = transforms.Transform((2, 3, 4), (1, 1, 1), (1, 1, 1), 0)
 bvh = collisions.BVH.create_tree(model, target_density=bvh_density)
 camera = gamelib.rendering.PerspectiveCamera(
-    (-10, -10, 20), (12, 13, -16), controller=True
+    (-100, -100, 100), (12, 13, -16), controller=True
 )
 
 NUM_MODES = 3
@@ -134,7 +134,6 @@ def convert_node_to_vertices(node, color):
 
 
 def convert_ray_to_vertices(ray, color):
-    colors = np.array([color, color], gamelib.gl.vec4)
     p1 = tuple(ray.origin + 1_000 * ray.direction)
     p2 = tuple(ray.origin + -1_000 * ray.direction)
     vertices = np.array([p1, p2], gamelib.gl.vec3)
@@ -231,7 +230,7 @@ def cast_ray():
     ms = f"{(te-ts)*1_000:.3f} ms"
     print(f"\t[FULL BVH]   : result = {regular:.3f}, time = {ms}")
     ts = time.time()
-    exit_early = state.ray.collides_bvh(bvh, exit_early=True)
+    exit_early = state.ray.collides_bvh(bvh, _exit_early=True)
     te = time.time()
     ms = f"{(te-ts)*1_000:.3f} ms"
     print(f"\t[EARLY EXIT] : result = {exit_early:.3f}, time = {ms}")

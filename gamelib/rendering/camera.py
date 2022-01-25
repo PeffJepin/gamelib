@@ -13,18 +13,18 @@ class BaseCamera:
     """A base class for cameras. Subclasses must implement _update_view and
     _update_proj for updating the view and projection matrices."""
 
-    def __init__(self, pos, up, dir, near, far, controller=None):
+    def __init__(self, position, up, direction, near, far, controller=None):
         """Initialize a camera. When a subclass calls super().__init__()
         _update_proj and _update_view will be called, so be sure the self
         object has the required attributes bound.
 
         Parameters
         ----------
-        pos : Sequence
+        position : gamelib.Vec3 | Iterable
             xyz coordinate where the camera is located in world space.
-        up : Sequence
+        up : gamelib.Vec3 | Iterable
             xyz up vector for world space.
-        dir : Sequence
+        direction : gamelib.Vec3 | Iterable
             xyz vector indicate the direction the camera is looking.
         near : float
             Distance to the near clipping plane.
@@ -36,18 +36,20 @@ class BaseCamera:
             be toggled with the enable_controller/disable_controller methods.
         """
 
+        self._initialized = False
         self._view = np.empty(1, gl.mat4)
         self._proj = np.empty(1, gl.mat4)
-        self._pos = np.asarray(pos, gl.vec3)
-        self._up = transforms.normalize(np.asarray(up, gl.vec3))
-        self._dir = transforms.normalize(np.asarray(dir, gl.vec3))
-        self._near = near
-        self._far = far
+        self.position = position
+        self.up = up
+        self.direction = direction
+        self.near = near
+        self.far = far
         if controller:
             self._controller = controller(self)
             self.enable_controller()
         else:
             self._controller = None
+        self._initialized = True
         self._update_view()
         self._update_proj()
 
@@ -84,7 +86,8 @@ class BaseCamera:
         """
 
         self._near = value
-        self._update_proj()
+        if self._initialized:
+            self._update_proj()
 
     @property
     def far(self):
@@ -108,31 +111,37 @@ class BaseCamera:
         """
 
         self._far = value
-        self._update_proj()
+        if self._initialized:
+            self._update_proj()
 
     @property
-    def pos(self):
+    def position(self):
         """Gets a copy of the camera position.
 
         Returns
         -------
-        np.ndarray
+        gamelib.Vec3
         """
 
         return self._pos.copy()
 
-    @pos.setter
-    def pos(self, value):
+    @position.setter
+    def position(self, value):
         """Sets the camera position and updates the view matrix.
 
         Parameters
         ----------
-        value : Sequence
-            xyz coordinate
+        value : gamelib.Vec3 | Iterable
         """
 
-        self._pos[:] = value
-        self._update_view()
+        if isinstance(value, gamelib.Vec3):
+            self._pos = value
+        elif isinstance(value, np.ndarray):
+            self._pos = value.view(gamelib.Vec3)
+        else:
+            self._pos = gamelib.Vec3(*value)
+        if self._initialized:
+            self._update_view()
 
     @property
     def direction(self):
@@ -140,8 +149,7 @@ class BaseCamera:
 
         Returns
         -------
-        np.ndarray:
-            xyz vector
+        gamelib.Vec3
         """
 
         return self._dir.copy()
@@ -153,13 +161,17 @@ class BaseCamera:
 
         Parameters
         ----------
-        value : Sequence
-            xyz vector for the camera to look towards.
+        value : gamelib.Vec3 | Iterable
         """
 
-        self._dir[:] = value
-        transforms.normalize(self._dir)
-        self._update_view()
+        if isinstance(value, gamelib.Vec3):
+            self._dir = value.normalize()
+        elif isinstance(value, np.ndarray):
+            self._dir = value.view(gamelib.Vec3).normalize()
+        else:
+            self._dir = gamelib.Vec3(*value).normalize()
+        if self._initialized:
+            self._update_view()
 
     @property
     def up(self):
@@ -167,8 +179,7 @@ class BaseCamera:
 
         Returns
         -------
-        np.ndarray:
-            xyz vector
+        gamelib.Vec3
         """
 
         return self._up.copy()
@@ -179,13 +190,17 @@ class BaseCamera:
 
         Parameters
         ----------
-        value : Sequence
-            xyz vector
+        value : gamelib.Vec3 | Iterable
         """
 
-        self._up[:] = value
-        transforms.normalize(self._up)
-        self._update_view()
+        if isinstance(value, gamelib.Vec3):
+            self._up = value.normalize()
+        elif isinstance(value, np.ndarray):
+            self._up = value.view(gamelib.Vec3).normalize()
+        else:
+            self._up = gamelib.Vec3(*value).normalize()
+        if self._initialized:
+            self._update_view()
 
     @property
     def down(self):
@@ -193,8 +208,7 @@ class BaseCamera:
 
         Returns
         -------
-        np.ndarray:
-            xyz vector
+        gamelib.Vec3
         """
 
         return -self.up
@@ -205,11 +219,10 @@ class BaseCamera:
 
         Returns
         -------
-        np.ndarray:
-            xyz vector
+        gamelib.Vec3
         """
 
-        return np.cross(self.direction, self.up)
+        return self.direction.cross(self.up)
 
     @property
     def left(self):
@@ -217,8 +230,7 @@ class BaseCamera:
 
         Returns
         -------
-        np.ndarray
-            xyz vector
+        gamelib.Vec3
         """
 
         return -self.right
@@ -276,11 +288,10 @@ class BaseCamera:
 
         Parameters
         ----------
-        translation : Sequence
+        translation : gamelib.Vec3 | Iterable
             xyz translation vector
         """
 
-        translation = np.asarray(translation, self._pos.dtype)
         self._pos += translation
         self._update_view()
 
@@ -312,39 +323,39 @@ class PerspectiveCamera(BaseCamera):
 
     def __init__(
         self,
-        pos,
-        dir,
-        fovy=60,
+        position,
+        direction,
+        up=(0, 0, 1),
+        fov_y=60,
         near=1,
         far=1000,
-        up=(0, 0, 1),
         controller=None,
     ):
         """Initialize the camera.
 
         Parameters
         ----------
-        pos : Sequence
+        position : gamelib.Vec3 | Iterable
             xyz position in world space.
-        dir : Sequence
+        direction : gamelib.Vec3 | Iterable
             xyz vector the camera is facing - applied locally at the camera.
-        fovy : float
+        up : gamelib.Vec3 | Iterable
+            xyz vector pointing to up in world space.
+        fov_y : float
             y field of view, given in degrees.
         near : float
             Distance to the near clipping plane.
         far : float
             Distance to the far clipping plane.
-        up : Sequence
-            xyz vector pointing to up in world space.
         controller : type | bool
             Can be `True` to activate a default controller. See BaseCamera for
             more details otherwise.
         """
 
-        self._fov_y = fovy
+        self._fov_y = fov_y
         if controller is True:
             controller = _FreePerspectiveController
-        super().__init__(pos, up, dir, near, far, controller)
+        super().__init__(position, up, direction, near, far, controller)
 
     @property
     def fov_y(self):
@@ -372,22 +383,43 @@ class PerspectiveCamera(BaseCamera):
 
     @property
     def near_plane_width(self):
+        """Get the near plane width in world units.
+
+        Returns
+        -------
+        float
+        """
+
         return self.near_plane_height * self._aspect_ratio
 
     @property
     def near_plane_height(self):
+        """Get the near plane height in world units.
+
+        Returns
+        -------
+        float
+        """
+
         return 2 * math.tan(math.radians(self.fov_y / 2)) * self.near
 
     @property
     def near_plane_size(self):
+        """Gets the near width and height in world units.
+
+        Returns
+        -------
+        tuple[float, float]
+        """
+
         return self.near_plane_width, self.near_plane_height
 
-    def rotate(self, axis=None, theta=None):
+    def rotate(self, axis, theta):
         """Rotate the cameras direction vector.
 
         Parameters
         ----------
-        axis : Sequence, optional
+        axis : Vec3 | Iterable
             xyz vector representing the axis of rotation.
         theta : float
             The rotation angle given in degrees.
@@ -398,22 +430,43 @@ class PerspectiveCamera(BaseCamera):
         self.direction = matrix.dot(self.direction)
 
     def screen_to_ray(self, x, y):
+        """Convert screen space into a ray fired from the camera. Assumes a
+        coordinate space for the screen where (0, 0) is the bottom left.
+
+        Parameters
+        ----------
+        x : int
+        y : int
+
+        Returns
+        -------
+        collisions.Ray
+        """
+
         vec_to_near_plane = transforms.normalize(self.direction) * self.near
-        near_plane_center = self.pos + vec_to_near_plane
+        near_plane_center = self.position + vec_to_near_plane
         near_w, near_h = self.near_plane_size
         dx = (-0.5 + (x / gamelib.get_width())) * near_w
         dy = (-0.5 + (y / gamelib.get_height())) * near_h
         n_right = transforms.normalize(self.right)
         n_up = -transforms.normalize(np.cross(self.direction, n_right))
         x_y_to_near_plane = near_plane_center + n_up * dy + n_right * dx
-        return collisions.Ray(self.pos, x_y_to_near_plane - self.pos)
+        return collisions.Ray(self.position, x_y_to_near_plane - self.position)
 
     def cursor_to_ray(self):
+        """Convenience method. Returns a ray from camera position towards the
+        current cursor position.
+
+        Returns
+        -------
+        collisions.Ray
+        """
+
         return self.screen_to_ray(*gamelib.get_cursor())
 
     def _update_view(self):
         self.view_matrix = transforms.Mat4.look_at_transform(
-            self.pos, self.pos + self.direction, self.up
+            self.position, self.position + self.direction, self.up
         )
 
     def _update_proj(self):
@@ -428,9 +481,9 @@ class OrthogonalCamera(BaseCamera):
     def __init__(
         self,
         px_per_unit,
-        pos=(0, 0, 10),
+        position=(0, 0, 10),
         up=(0, 1, 0),
-        dir=(0, 0, -1),
+        direction=(0, 0, -1),
         controller=None,
     ):
         """Initialize the camera.
@@ -440,11 +493,11 @@ class OrthogonalCamera(BaseCamera):
         px_per_unit : float
             Ratio of screen pixels per world unit. This effectively controls
             the "zoom" of the camera.
-        pos : Sequence
+        position : gamelib.Vec3 | Iterable
             xyz camera position in world space.
-        up : Sequence
+        up : gamelib.Vec3 | Iterable
             xyz vector pointing up in world space.
-        dir : Sequence
+        direction : gamelib.Vec3 | Iterable
             xyz vector the camera is looking.
         controller : type | bool
             Can be `True` to activate a default controller. See BaseCamera for
@@ -457,7 +510,7 @@ class OrthogonalCamera(BaseCamera):
         self._top = 1
         if controller is True:
             controller = _FreeOrthogonalController
-        super().__init__(pos, up, dir, 1, 20, controller)
+        super().__init__(position, up, direction, 1, 20, controller)
         self.px_per_unit = px_per_unit
 
     @property
@@ -516,7 +569,7 @@ class OrthogonalCamera(BaseCamera):
 
     def _update_view(self):
         self.view_matrix = transforms.Mat4.look_at_transform(
-            self.pos, self.pos + self.direction, self.up
+            self.position, self.position + self.direction, self.up
         )
 
 
@@ -540,7 +593,7 @@ class _FreePerspectiveController:
 
         # don't handle z axis movement here
         vector[2] = 0
-        transforms.normalize(vector)
+        vector.normalize()
 
         # move fast with shift being held
         multiplier = 2 if event.modifiers.shift else 1
@@ -592,7 +645,7 @@ class _FreeOrthogonalController:
 
         # eliminate z axis motion. scroll wheel handles this
         vector[2] = 0
-        transforms.normalize(vector)
+        vector.normalize()
 
         # move fast when shift is held
         multiplier = 2 if event.modifiers.shift else 1

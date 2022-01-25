@@ -1,163 +1,115 @@
-import math
-
 from typing import Iterable
 
+import numpy as np
 
-class _Vector:
-    """Base class for element-wise vector operations.
 
-    Note that using this is probably going to come with a performance hit from
-    all the getattr/setattr dynamic attribute access. This could be optimized
-    in the future, but is not high on my list of things to do. When I later get
-    to optimizations I'd rather focus on particularly hot code paths to be
-    implemented in C.
+class VectorComponent:
+    """Descriptor to add a named field corresponding to an index in an array
+    of data."""
 
-    If the performance of this does present itself as an issue I imagine just
-    trying to set/access attributes by x, y, z, w within a try except block
-    and stopping when you hit an AttributeError could be a good place to start.
-    """
+    def __init__(self, index):
+        self._index = index
 
-    __slots__ = ()
+    def __get__(self, obj, objtype=None):
+        return obj[self._index]
 
-    # make type checker happy
-    # slots enabled on subclasses
-    x: float
-    y: float
-    z: float
-    w: float
+    def __set__(self, obj, value):
+        obj[self._index] = value
 
-    def __init__(self, *args, **kwargs):
-        if kwargs:
-            for key, value in kwargs:
-                setattr(self, key, value)
-        if len(args) == 1 and not isinstance(args[0], Iterable):
-            value = args[0]
-            for slot in self.__slots__:
-                setattr(self, slot, value)
-        else:
-            for slot, value in zip(self.__slots__, args):
-                setattr(self, slot, value)
-
-    def __getitem__(self, index):
-        return getattr(self, self.__slots__[index])
-
-    def __setitem__(self, index, value):
-        setattr(self, self.__slots__[index], value)
-
-    def __iter__(self):
-        return (getattr(self, slot) for slot in self.__slots__)
-
-    def __eq__(self, other):
-        return all(v1 == v2 for v1, v2 in zip(self, other))
+    def __set_name__(self, owner, name):
+        self._owner = owner
+        self._name = name
 
     def __repr__(self):
-        values_desc = ", ".join(
-            f"{slot}={getattr(self, slot):.3f}" for slot in self.__slots__
+        return (
+            f"<VectorComponent("
+            f"owner={self._owner!r}, "
+            f"name={self._name!r}, "
+            f"index={self._index})>"
         )
-        return f"<{self.__class__.__name__}({values_desc})>"
 
-    def __neg__(self):
-        for slot in self.__slots__:
-            setattr(self, slot, getattr(self, slot) * -1)
-        return self
 
-    def __add__(self, other):
-        if not isinstance(other, Iterable):
-            return type(self)(*(val + other for val in self))
-        return type(self)(*(v1 + v2 for v1, v2 in zip(self, other)))
+class _VectorType(np.ndarray):
+    """Base vector type. Subclasses should specify _DTYPE if the default float
+    is undesirable. VectorComponents should be added to subclasses."""
 
-    def __radd__(self, other):
-        return self + other
+    _LENGTH: int
+    _FIELDS: tuple
 
-    def __iadd__(self, other):
-        if not isinstance(other, Iterable):
-            for s in self.__slots__:
-                setattr(self, s, getattr(self, s) + other)
-            return self
-        for s, v in zip(self.__slots__, other):
-            setattr(self, s, getattr(self, s) + v)
-        return self
+    _DTYPE = float
 
-    def __sub__(self, other):
-        if not isinstance(other, Iterable):
-            return type(self)(*(val - other for val in self))
-        return type(self)(*(v1 - v2 for v1, v2 in zip(self, other)))
+    def __init_subclass__(cls):
+        """Checks what fields have been marked with VectorComponents."""
 
-    def __rsub__(self, other):
-        if isinstance(other, Iterable):
-            return type(self)(*other) - self
-        else:
-            return type(self)(*(other for _ in self.__slots__)) - self
+        fields = []
+        for k, v in cls.__dict__.items():
+            if isinstance(v, VectorComponent):
+                fields.append(k)
+        assert len(fields) > 1
+        cls._LENGTH = len(fields)
+        cls._FIELDS = tuple(fields)
 
-    def __isub__(self, other):
-        if not isinstance(other, Iterable):
-            for s in self.__slots__:
-                setattr(self, s, getattr(self, s) - other)
-            return self
+    def __new__(cls, *args, **kwargs):
+        """Create the underlying array."""
 
-        for s, v in zip(self.__slots__, other):
-            setattr(self, s, getattr(self, s) - v)
-        return self
+        return np.zeros(cls._LENGTH, cls._DTYPE).view(cls)
 
-    def __mul__(self, other):
-        if not isinstance(other, Iterable):
-            return type(self)(*(val * other for val in self))
-        return type(self)(*(v1 * v2 for v1, v2 in zip(self, other)))
+    def __array_ufunc__(self, ufunc, method, *inputs, out=None, **kwargs):
+        """Special treatment for certain numpy ufuncs."""
 
-    def __rmul__(self, other):
-        return self * other
+        args = []
+        for arg in inputs:
+            if isinstance(arg, _VectorType):
+                # view vectors as regular arrays for ufunc operations
+                args.append(arg.view(np.ndarray))
+            else:
+                args.append(arg)
 
-    def __imul__(self, other):
-        if not isinstance(other, Iterable):
-            for s in self.__slots__:
-                setattr(self, s, getattr(self, s) * other)
-            return self
+        result = getattr(ufunc, method)(*args, **kwargs)
+        if ufunc == np.not_equal:
+            # convert inequality checks to bool
+            return np.any(result)
+        elif ufunc == np.equal:
+            # convert equality checks to bool
+            return np.all(result)
+        if result.shape == self.shape:
+            # if an array involved in ufunc ops with this array conforms
+            # to this vectors shape then view array as the vector type.
+            return result.view(type(self))
+        return result
 
-        for s, v in zip(self.__slots__, other):
-            setattr(self, s, getattr(self, s) * v)
-        return self
+    def __init__(self, *args, **kwargs):
+        """Initialize a new vector. *args and **kwargs are mutually exclusive.
 
-    def __truediv__(self, other):
-        if not isinstance(other, Iterable):
-            return type(self)(*(val / other for val in self))
-        return type(self)(*(v1 / v2 for v1, v2 in zip(self, other)))
+        Parameters
+        ----------
+        *args: Any
+            Should be given in order described by VectorComponents.
+        **kwargs : Any
+            Keys should match VectorComponent names.
+        """
 
-    def __rtruediv__(self, other):
-        if isinstance(other, Iterable):
-            return type(self)(*other) / self
-        else:
-            return type(self)(*(other for _ in self.__slots__)) / self
+        if kwargs:
+            for name, value in kwargs.items():
+                setattr(self, name, value)
+        elif args:
+            self._parse_args(args)
 
-    def __itruediv__(self, other):
-        if not isinstance(other, Iterable):
-            for s in self.__slots__:
-                setattr(self, s, getattr(self, s) / other)
-            return self
+    def _parse_args(self, args):
+        if len(args) == 0:
+            # defaults to zeros
+            return
+        elif len(args) == 1:
+            # args might be a single iterable
+            if isinstance(args[0], Iterable):
+                self._parse_iter(args[0])
+        # else iterate over args
+        self._parse_iter(args)
 
-        for s, v in zip(self.__slots__, other):
-            setattr(self, s, getattr(self, s) / v)
-        return self
-
-    def __floordiv__(self, other):
-        if not isinstance(other, Iterable):
-            return type(self)(*(val // other for val in self))
-        return type(self)(*(v1 // v2 for v1, v2 in zip(self, other)))
-
-    def __rfloordiv__(self, other):
-        if isinstance(other, Iterable):
-            return type(self)(*other) // self
-        else:
-            return type(self)(*(other for _ in self.__slots__)) // self
-
-    def __ifloordiv__(self, other):
-        if not isinstance(other, Iterable):
-            for s in self.__slots__:
-                setattr(self, s, getattr(self, s) // other)
-            return self
-
-        for s, v in zip(self.__slots__, other):
-            setattr(self, s, getattr(self, s) // v)
-        return self
+    def _parse_iter(self, iterable):
+        # raises index error if iterable is too long
+        for i, v in enumerate(iterable):
+            self[i] = v
 
     @property
     def magnitude(self):
@@ -168,23 +120,7 @@ class _Vector:
         float
         """
 
-        return math.sqrt(abs(self.dot(self)))
-
-    def dot(self, other):
-        """Compute a vector dot product.
-
-        Parameters
-        ----------
-        other : Iterable
-            Should be an iterable of scalars with the same length as this
-            vector.
-
-        Returns
-        -------
-        float
-        """
-
-        return sum(self * other)
+        return np.sqrt(self.dot(self))
 
     def normalize(self):
         """Normalize the vector to length 1.
@@ -197,9 +133,8 @@ class _Vector:
 
         magnitude = self.magnitude
         if magnitude == 0:
-            return
-        for slot in self.__slots__:
-            setattr(self, slot, getattr(self, slot) / magnitude)
+            return self
+        self[:] /= magnitude
         return self
 
     def inverse(self):
@@ -211,44 +146,26 @@ class _Vector:
         _Vector
         """
 
-        inv = []
-        for v in self:
-            try:
-                component = 1 / v
-            except ZeroDivisionError:
-                component = math.inf
-            inv.append(component)
-        return type(self)(*inv)
+        with np.errstate(divide="ignore"):
+            return 1 / self
 
 
-class Vec2(_Vector):
-    __slots__ = ("x", "y")
+class Vec2(_VectorType):
+    x = VectorComponent(0)
+    y = VectorComponent(1)
 
 
-class Vec3(_Vector):
-    __slots__ = ("x", "y", "z")
+class Vec3(_VectorType):
+    x = VectorComponent(0)
+    y = VectorComponent(1)
+    z = VectorComponent(2)
 
     def cross(self, other):
-        """Compute the vector cross product.
-
-        Parameters
-        ----------
-        other : Iterable
-            Should be an iterable made up of 3 scalar values.
-
-        Returns
-        -------
-        Vec3
-        """
-
-        if not isinstance(other, Vec3):
-            other = Vec3(*other)
-        return Vec3(
-            self.y * other.z - self.z * other.y,
-            self.z * other.x - self.x * other.z,
-            self.x * other.y - self.y * other.x,
-        )
+        return np.cross(self, other).view(Vec3)
 
 
-class Vec4(_Vector):
-    __slots__ = ("x", "y", "z", "w")
+class Vec4(_VectorType):
+    x = VectorComponent(0)
+    y = VectorComponent(1)
+    z = VectorComponent(2)
+    w = VectorComponent(3)

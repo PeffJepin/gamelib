@@ -11,18 +11,18 @@ scale = 1000
 lod = 100
 mesh = geometry.GridMesh(lod=lod, scale=scale)
 perspective = rendering.PerspectiveCamera(
-    pos=(-33, -33, 100),
-    dir=(500, 500, 1),
+    position=(-33, -33, 100),
+    direction=(500, 500, 1),
     up=(0, 0, 1),
-    fovy=50,
+    fov_y=50,
     far=10_000,
     controller=True,
 )
 ortho = rendering.OrthogonalCamera(
     px_per_unit=1,
-    pos=(scale / 2, scale / 2, -5),
+    position=(scale / 2, scale / 2, -5),
     up=(0, 1, 0),
-    dir=(0, 0, -1),
+    direction=(0, 0, -1),
     controller=True,
 )
 camera = perspective

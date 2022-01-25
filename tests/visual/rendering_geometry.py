@@ -7,7 +7,7 @@ from gamelib import geometry
 
 gamelib.init()
 camera = rendering.PerspectiveCamera(
-    pos=(0, -2, 0), dir=(0, 1, 0), controller=True
+    position=(0, -2, 0), direction=(0, 1, 0), controller=True
 )
 cube = geometry.Cube()
 transform = geometry.Transform(

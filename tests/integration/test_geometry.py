@@ -20,7 +20,7 @@ def stub_gamelib_window_stats():
 
 def test_screen_to_ray():
     camera = rendering.PerspectiveCamera(
-        pos=(0, -1, 0), dir=(0, 1, 0), fovy=90, near=1
+        position=(0, -1, 0), direction=(0, 1, 0), fov_y=90, near=1
     )
 
     ray = camera.screen_to_ray(WIDTH // 2, HEIGHT)
