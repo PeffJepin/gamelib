@@ -50,3 +50,7 @@ from gamelib.core.datatypes import Vec4
 from gamelib.core.resources import get_file
 
 from gamelib.core.time import Timer
+
+from gamelib import rendering
+from gamelib import geometry
+
