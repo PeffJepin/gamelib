@@ -4,7 +4,7 @@ import pytest
 import threading
 import time
 
-from gamelib import ecs
+from gamelib.ecs import base
 from gamelib import gl
 
 from ..conftest import assert_approx
@@ -12,19 +12,19 @@ from ..conftest import assert_approx
 
 @pytest.fixture(autouse=True)
 def cleanup():
-    ecs.Entity.clear()
+    base.Entity.clear()
 
 
 class TestIdGenerator:
     def test_ids_are_given_sequentially(self):
-        gen = ecs.IdGenerator()
+        gen = base.IdGenerator()
 
         assert next(gen) == 0
         assert next(gen) == 1
         assert next(gen) == 2
 
     def test_ids_can_be_recycled(self):
-        gen = ecs.IdGenerator()
+        gen = base.IdGenerator()
 
         for _ in range(2):
             next(gen)
@@ -34,7 +34,7 @@ class TestIdGenerator:
         assert next(gen) == 0
 
     def test_always_lowest_possible_id(self):
-        gen = ecs.IdGenerator()
+        gen = base.IdGenerator()
 
         for _ in range(5):
             # 0, 1, 2, 3, 4
@@ -50,7 +50,7 @@ class TestIdGenerator:
         assert next(gen) == 5
 
     def test_knows_largest_id_in_use(self):
-        gen = ecs.IdGenerator()
+        gen = base.IdGenerator()
         for _ in range(5):
             next(gen)
 
@@ -62,7 +62,7 @@ class TestIdGenerator:
         assert gen.largest_active == 2
 
     def test_set_state_stops_recycling_irrelevant_ids(self):
-        gen = ecs.IdGenerator()
+        gen = base.IdGenerator()
         for _ in range(5):
             next(gen)
 
@@ -76,7 +76,7 @@ class TestIdGenerator:
         assert next(gen) == 5
 
     def test_set_state_does_not_discard_relevant_ids(self):
-        gen = ecs.IdGenerator()
+        gen = base.IdGenerator()
         for _ in range(5):
             next(gen)
 
@@ -89,12 +89,12 @@ class TestIdGenerator:
         assert next(gen) == 4
 
 
-class Component1(ecs.Component):
+class Component1(base.Component):
     x: float
     y: float
 
 
-class Component2(ecs.Component):
+class Component2(base.Component):
     z: float
     w: float
 
@@ -306,12 +306,12 @@ class TestComponent:
         assert comp.y == 2
 
 
-class Entity1(ecs.Entity):
+class Entity1(base.Entity):
     comp1: Component1
     comp2: Component2
 
 
-class Entity2(ecs.Entity):
+class Entity2(base.Entity):
     comp1: Component1
     comp2: Component2
 
@@ -331,11 +331,11 @@ class TestEntity:
         entity1 = Entity2(comp1=Component1(3, 4), comp2=Component2(5, 6))
         entity2 = Entity1(comp1=Component1(5, 6), comp2=Component2(7, 8))
 
-        get0 = ecs.Entity.get(0)
+        get0 = base.Entity.get(0)
         assert isinstance(get0, Entity1)
         assert get0 == entity0
 
-        get1 = ecs.Entity.get(1)
+        get1 = base.Entity.get(1)
         assert isinstance(get1, Entity2)
         assert get1 == entity1
 
@@ -382,12 +382,12 @@ class TestEntity:
     def test_destroy_entity_with_only_id(self):
         entity = Entity1(comp1=Component1(1, 2), comp2=Component2(3, 4))
 
-        ecs.Entity.destroy(entity.id)
+        base.Entity.destroy(entity.id)
 
         assert Entity1.get(entity.id) is None
 
     def test_safe_to_destroy_entity_that_does_not_exist(self):
-        ecs.Entity.destroy(1_000_000)
+        base.Entity.destroy(1_000_000)
         Entity1.destroy(1_000_000)
         assert True  # should not exit early from exception
 
@@ -454,7 +454,7 @@ class TestEntity:
         assert grown_length > length
 
         for inst in instances:
-            ecs.Entity.destroy(inst)
+            base.Entity.destroy(inst)
 
         assert len(Entity1) < grown_length
 
@@ -475,12 +475,12 @@ class TestEntity:
         Entity2.clear()
 
         for e in entities1:
-            assert ecs.Entity.get(e.id) == e
+            assert base.Entity.get(e.id) == e
         for c in components1:
             assert type(c).get(c.id) == c
 
         for e in entities2:
-            assert ecs.Entity.get(e.id) is None
+            assert base.Entity.get(e.id) is None
             assert e.comp1 is None
             assert e.comp2 is None
         for c in components2:
@@ -501,10 +501,10 @@ class TestEntity:
             components.extend((comp1, comp2))
             entities.append(Entity2(comp1, comp2))
 
-        ecs.Entity.clear()
+        base.Entity.clear()
 
         for e in entities:
-            assert ecs.Entity.get(e.id) is None
+            assert base.Entity.get(e.id) is None
         for c in components:
             assert type(c).get(c.id) is None
             assert c.values == (None, None)
@@ -520,7 +520,7 @@ class TestEntity:
         assert entity.comp2 == c2
 
 
-class GlTypeComponent(ecs.Component):
+class GlTypeComponent(base.Component):
     v3: gl.vec3
     m4: gl.mat4
 
