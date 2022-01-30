@@ -297,6 +297,14 @@ class TestComponent:
             running = False
             t.join(1)
 
+    def test_component_inheritance(self):
+        class C(Component1):
+            pass
+
+        comp = C(x=1, y=2)
+        assert comp.x == 1
+        assert comp.y == 2
+
 
 class Entity1(ecs.Entity):
     comp1: Component1
@@ -500,6 +508,16 @@ class TestEntity:
         for c in components:
             assert type(c).get(c.id) is None
             assert c.values == (None, None)
+
+    def test_entity_inheritance(self):
+        class E(Entity1):
+            pass
+
+        c1 = Component1(1, 2)
+        c2 = Component2(3, 4)
+        entity = E(comp1=c1, comp2=c2)
+        assert entity.comp1 == c1
+        assert entity.comp2 == c2
 
 
 class GlTypeComponent(ecs.Component):

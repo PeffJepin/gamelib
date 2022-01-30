@@ -484,7 +484,11 @@ class Component(metaclass=_ComponentType):
 
         cls._initialized = False
         cls._lock = threading.RLock()
-        cls._fields = cls.__dict__.get("__annotations__", {})
+        annotations = cls.__dict__.get("__annotations__", {})
+        if getattr(cls, "_fields", None):
+            cls._fields.update(annotations)
+        else:
+            cls._fields = annotations
         if not cls._fields:
             raise AttributeError("No attributes have been annotated.")
         for field in cls._fields:
@@ -868,7 +872,11 @@ class Entity(metaclass=_EntityType):
 
         cls._entity_number = next(Entity._global.entity_number_counter)
         cls._global.subclass_lookup[cls._entity_number] = cls
-        cls._fields = cls.__dict__.get("__annotations__", {})
+        annotations = cls.__dict__.get("__annotations__", {})
+        if getattr(cls, "_fields", None):
+            cls._fields.update(annotations)
+        else:
+            cls._fields = annotations
         if not cls._fields:
             raise AttributeError("No attributes have been annotated.")
         for field, component_type in cls._fields.items():
