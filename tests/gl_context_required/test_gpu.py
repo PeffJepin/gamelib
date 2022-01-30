@@ -42,6 +42,16 @@ class TestVertexArray:
 
         assert vao.glo is not None
 
+    def test_same_internal_shader_object(self, shader):
+        vao1 = gpu.VertexArray(
+            shader, v_pos=np.arange(9), f_color=np.array([1.0, 1.0, 1.0, 1.0])
+        )
+        vao2 = gpu.VertexArray(
+            shader, v_pos=np.arange(9), f_color=np.array([1.0, 1.0, 1.0, 1.0])
+        )
+
+        assert vao1.shader_glo is vao2.shader_glo
+
     def test_sourcing_an_attached_buffer_with_an_array(self, shader):
         buffer = buffers.Buffer(np.arange(9), gl.vec3)
         vao = gpu.VertexArray(shader, v_pos=buffer, f_color=np.arange(4))

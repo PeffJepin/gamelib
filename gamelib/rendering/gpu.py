@@ -6,6 +6,9 @@ from gamelib.rendering import glslutils
 from gamelib.rendering import buffers
 
 
+_cached_shaders = dict()
+
+
 class GPUInstructions:
     """Common functions for issuing commands to the gpu."""
 
@@ -164,20 +167,20 @@ class VertexArray:
         self._uniforms_in_use = dict()
         self._buffer_ids = dict()
         self._generated_buffers = list()
-
-        # TODO: At some point this needs to change so multiple vertex arrays
-        #   can use the same OpenGL shader object. ShaderData could make a
-        #   hash and the OpenGL shader objects can come from one global
-        #   that will cache the shaders for each unique ShaderData hash.
         self.shader = shader
-        self._shader_glo = gamelib.get_context().program(
-            vertex_shader=shader.code.vert,
-            tess_control_shader=shader.code.tesc,
-            tess_evaluation_shader=shader.code.tese,
-            geometry_shader=shader.code.geom,
-            fragment_shader=shader.code.frag,
-            varyings=shader.meta.vertex_outputs,
-        )
+        cached = _cached_shaders.get(shader, None)
+        if cached:
+            self.shader_glo = cached
+        else:
+            self.shader_glo = gamelib.get_context().program(
+                vertex_shader=shader.code.vert,
+                tess_control_shader=shader.code.tesc,
+                tess_evaluation_shader=shader.code.tese,
+                geometry_shader=shader.code.geom,
+                fragment_shader=shader.code.frag,
+                varyings=shader.meta.vertex_outputs,
+            )
+            _cached_shaders[shader] = self.shader_glo
         self.use_sources(**data_sources)
         self.source_indices(indices)
 
@@ -239,7 +242,7 @@ class VertexArray:
 
         format_tuples = []
         for name, buffer in self._buffers_in_use.items():
-            moderngl_attr = self._shader_glo[name]
+            moderngl_attr = self.shader_glo[name]
             strtype = moderngl_attr.shape
             if strtype == "I":
                 # conform to moderngl expected strfmt dtypes
@@ -262,7 +265,7 @@ class VertexArray:
             if isinstance(buffer, buffers.AutoBuffer):
                 buffer.update()
         for uniform in self._uniforms_in_use.values():
-            uniform.update(self._shader_glo)
+            uniform.update(self.shader_glo)
 
     def use_source(self, name, source):
         """Set a source uniform/buffer.
@@ -361,7 +364,7 @@ class VertexArray:
             dtype = self.shader.meta.uniforms[name].dtype
             self._uniforms_in_use[name] = _AutoUniform(source, dtype, name)
         else:
-            self._shader_glo[name] = source
+            self.shader_glo[name] = source
 
     def _generate_buffer(self, source, dtype, auto=None):
         self._dirty = True
@@ -385,7 +388,7 @@ class VertexArray:
             self._glo.release()
         ibo = self._index_buffer.gl if self._index_buffer else None
         self._glo = gamelib.get_context().vertex_array(
-            self._shader_glo,
+            self.shader_glo,
             self._buffer_format_tuples,
             index_buffer=ibo,
             index_element_size=4,

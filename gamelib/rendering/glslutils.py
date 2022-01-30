@@ -119,7 +119,7 @@ class ShaderMetaData:
     uniforms: Dict[str, TokenDesc]
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True, eq=True)
 class ShaderSourceCode:
     """Source code strings for an OpenGl program."""
 
@@ -136,6 +136,9 @@ class ShaderData:
 
     code: ShaderSourceCode
     meta: ShaderMetaData
+
+    def __hash__(self):
+        return hash(self.code)
 
     @classmethod
     def read_string(cls, code):

@@ -161,3 +161,18 @@ def test_parsing_uniforms():
     assert glslutils.TokenDesc("u_vec4", gl.vec4, 1) in meta.uniforms.values()
     assert glslutils.TokenDesc("u_mat4", gl.mat4, 2) in meta.uniforms.values()
     assert len(meta.uniforms) == 3
+
+
+def test_shader_source_code_hash():
+    src = """
+        #version 330
+        #vert
+        in vec3 v_pos;
+        void main(){}
+    """
+    shader1 = glslutils.ShaderData.read_string(src)
+    shader2 = glslutils.ShaderData.read_string(src)
+    shader3 = glslutils.ShaderData.read_string(src + "some difference")
+
+    assert hash(shader1) == hash(shader2)
+    assert hash(shader1) != hash(shader3)
