@@ -5,6 +5,7 @@ import numpy as np
 
 from gamelib import gl
 from gamelib import ecs
+from gamelib.geometry import base
 
 
 def _radians(theta):
@@ -25,6 +26,15 @@ def normalize(vector):
     np.ndarray:
         Returns vector for convenience.
     """
+
+    length, *shape = vector.shape
+    if shape:
+        magnitudes = np.sqrt(np.sum(vector * vector, axis=1))
+        not0 = magnitudes != 0
+        copy = vector.copy().T
+        copy[not0] /= magnitudes[not0]
+        vector[:] = copy.T
+        return vector
 
     magnitude = np.sqrt(np.sum(vector ** 2))
     if magnitude == 0:
@@ -585,25 +595,26 @@ class Transform:
 
         return self._matrix
 
-    def apply(self, vertex, *, normal=False):
+    def apply(self, target, *, normal=False):
         """Apply a Transform to a particular vertex.
 
         Parameters
         ----------
-        vertex : np.ndarray
+        target : np.ndarray | base.Model
             Length 3 or 4 supported.
 
         Returns
         -------
-        np.ndarray:
+        np.ndarray | None:
             Returns the input vertex, having been transformed.
+            Returns None if transform target is a Model.
         """
 
-        return _transform_vertex(self.matrix.T, vertex, normal)
+        return apply_transform(self.matrix.T, target, normal)
 
-    def apply_inverse(self, vertex, *, normal=False):
+    def apply_inverse(self, target, *, normal=False):
 
-        return _transform_vertex(self._inverse_matrix, vertex, normal)
+        return apply_transform(self._inverse_matrix, target, normal)
 
     def _update_matrix(self):
         """Updates the OpenGL matrix."""
@@ -672,16 +683,36 @@ class TransformComponent(ecs.Component):
         self._theta = value
         self._update_matrix()
 
-    def apply(self, vertex, *, normal=False):
-        return _transform_vertex(self.model_matrix.T, vertex, normal)
+    def apply(self, target, *, normal=False):
+        return apply_transform(self.model_matrix.T, target, normal)
 
-    def apply_inverse(self, vertex, *, normal=False):
-        return _transform_vertex(self._inverse_matrix, vertex, normal)
+    def apply_inverse(self, target, *, normal=False):
+        return apply_transform(self._inverse_matrix, target, normal)
 
     def _update_matrix(self):
         self.model_matrix = Mat4.model_transform(
             self.pos, self.scale, self.axis, self.theta
         )
+
+
+def apply_transform(matrix, target, normal=False):
+    if isinstance(target, base.Model):
+        _transform_model(matrix, target)
+    else:
+        return _transform_vertex(matrix, target, normal)
+
+
+def _transform_model(matrix, model):
+    vcopy = model.vertices.copy()
+    vpad = np.ones((len(vcopy), 1), vcopy.dtype)
+    transformed = np.hstack((vcopy, vpad)).dot(matrix.T)
+    model.vertices[:] = np.delete(transformed, 3, 1)
+
+    ncopy = model.normals.copy()
+    npad = np.zeros((len(ncopy), 1), ncopy.dtype)
+    transformed = np.hstack((ncopy, npad)).dot(matrix.T)
+    model.normals[:] = np.delete(transformed, 3, 1)
+    normalize(model.normals)
 
 
 def _transform_vertex(matrix, vertex, normal):
@@ -700,12 +731,16 @@ def _transform_vertex(matrix, vertex, normal):
         transformed = matrix.dot(len4_temp)[:3]
         if np.issubdtype(dtype, np.integer):
             transformed = np.rint(transformed)
+        if normal:
+            transformed = normalize(transformed)
         vertex[:] = transformed
         return vertex
     elif len(vertex) == 4:
         transformed = matrix.dot(vertex)
         if np.issubdtype(dtype, np.integer):
             transformed = np.rint(transformed)
+        if normal:
+            transformed = normalize(transformed)
         vertex[:] = transformed
         return vertex
     else:
