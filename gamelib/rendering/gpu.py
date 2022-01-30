@@ -9,7 +9,9 @@ from gamelib.rendering import buffers
 class GPUInstructions:
     """Common functions for issuing commands to the gpu."""
 
-    def __init__(self, shader, mode=gl.TRIANGLES, **data_sources):
+    def __init__(
+        self, shader, mode=gl.TRIANGLES, instanced=(), **data_sources
+    ):
         """Initialize a new instruction.
 
         Parameters
@@ -17,6 +19,10 @@ class GPUInstructions:
         shader : Any
             This should either be a single source string or a filename for the
             shader to be used. See glslutils.py docstring for more info.
+        mode : int, optional
+            OpenGL constant mode for rendering.
+        instanced : tuple, optional
+            The names of vertex attributes that should be instanced attributes.
         **data_sources : Any
             The keys should map to inputs for the specified shader and the
             values can be either np.ndarrays or buffers.Buffer instances.
@@ -26,7 +32,9 @@ class GPUInstructions:
             self.shader = glslutils.ShaderData.read_string(shader)
         else:
             self.shader = glslutils.ShaderData.read_file(shader)
-        self.vao = VertexArray(self.shader, mode=mode, **data_sources)
+        self.vao = VertexArray(
+            self.shader, mode=mode, instanced=instanced, **data_sources
+        )
         self._mode = mode
 
     def source(self, **data_sources):
@@ -87,12 +95,33 @@ class TransformFeedback(GPUInstructions):
 class Renderer(GPUInstructions):
     """Issues draw calls."""
 
-    def render(self, vertices=None):
+    def render(self, vertices=None, instances=None):
+        """Issue a draw call to OpenGL. The module will try to detect the
+        correct number of vertices/indices if they are not given.
+
+        Parameters
+        ----------
+        vertices : int, optional
+            Override the number of vertices to be rendered.
+        instances : int, optional
+            Override the number of instances to be rendered.
+        """
+
         self.vao.update()
         vertices = vertices or self.vao.num_elements
-        self.vao.glo.render(vertices=vertices, mode=self._mode)
+        instances = instances or self.vao.num_instances
+        self.vao.glo.render(
+            vertices=vertices, instances=instances, mode=self._mode
+        )
 
     def source_indices(self, indices):
+        """Shortcut to source an index buffer.
+
+        Parameters
+        ----------
+        indices : np.ndarray
+        """
+
         self.vao.source_indices(indices)
 
 
@@ -176,9 +205,33 @@ class VertexArray:
 
         if self._index_buffer:
             return len(self._index_buffer)
-        else:
-            lengths = [len(vbo) for vbo in self._buffers_in_use.values()]
-            return min(lengths)
+
+        lengths = [
+            len(vbo)
+            for name, vbo in self._buffers_in_use.items()
+            if name not in self._instanced_attibutes
+        ]
+        return min(lengths)
+
+    @property
+    def num_instances(self):
+        """Autodetect the number of instances that are represented through the
+        attached buffers.
+
+        Returns
+        -------
+        int
+        """
+
+        if not self._instanced_attibutes:
+            return -1
+
+        lengths = [
+            len(vbo)
+            for name, vbo in self._buffers_in_use.items()
+            if name in self._instanced_attibutes
+        ]
+        return min(lengths)
 
     @property
     def _buffer_format_tuples(self):
@@ -197,6 +250,8 @@ class VertexArray:
                 # like this one.
                 strtype = "u"
             strfmt = f"{moderngl_attr.dimension}{strtype}"
+            if name in self._instanced_attibutes:
+                strfmt += " /i"
             format_tuples.append((buffer.gl, strfmt, name))
         return format_tuples
 
@@ -294,7 +349,7 @@ class VertexArray:
             if isinstance(source, buffers.Buffer):
                 self._remove_buffer(current_buffer)
                 self._buffers_in_use[attribute] = source
-                self._buffer_ids[attribute] = id(buffer.gl)
+                self._buffer_ids[attribute] = id(source.gl)
             elif isinstance(source, np.ndarray):
                 if isinstance(current_buffer, buffers.AutoBuffer):
                     current_buffer.use_array(source)

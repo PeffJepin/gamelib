@@ -135,6 +135,35 @@ class TestVertexArray:
         program.source_buffers(test_in=np.arange(4))
         assert program.num_elements == 8
 
+    def test_num_instances(self):
+        shader = glslutils.ShaderData.read_string(
+            """
+            #version 330
+            #vert
+            in vec3 v_pos;
+            in float scale;
+
+            void main() {
+                gl_Position = vec4(v_pos * scale, 1);
+            }
+
+            #frag
+            out vec4 frag;
+            void main() {
+                frag = vec4(1, 1, 1, 1);
+            }
+        """
+        )
+        vao = gpu.VertexArray(
+            shader,
+            v_pos=np.array([(0, 1, 2), (0, 2, 3), (1, 2, 3)]),
+            scale=np.array([1, 2, 3, 4, 5]),
+            instanced=("scale",),
+        )
+
+        assert vao.num_instances == 5
+        assert vao.num_elements == 3
+
 
 class TestTransformFeedback:
     def test_base_case(self):
