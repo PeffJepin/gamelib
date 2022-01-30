@@ -53,4 +53,4 @@ from gamelib.core.time import Timer
 
 from gamelib import rendering
 from gamelib import geometry
-
+from gamelib import core

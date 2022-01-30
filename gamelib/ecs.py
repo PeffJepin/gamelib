@@ -1,26 +1,311 @@
-# TODO: Some way to get a proxy to a component attribute such that another
-#   module could keep reference to the proxy and call it on demand to get
-#   to the internal data. Since the internal array is subject to reallocation,
-#   simply getting a reference to the underlying array is insufficient.
+"""This module defines the base classes for an ECS framework.
 
-# TODO: An option to allocate the internal arrays using the structured dtype
-#   instead of individual arrays. Using a decorator approach like dataclass
-#   uses might offer a more suitable API for optional features like this.
+Examples
+--------
 
-# TODO: A module docstrings with examples after this module is fleshed out a
-#   bit more.
+Components are used to create contiguous arrays of memory and offer convenient
+access to both the elements in the internal arrays and the arrays themselves.
 
-# TODO: Eventually I will want the option to allocate the arrays using
-#   shared memory. Since they are regularly reallocated this will probably
-#   require a new shared memory module so other processes can easily find the
-#   internal array after it has been reallocated.
+Components should be annotated in the same way dataclasses would be annotated.
+They support the VectorType datatypes found in gamelib.core.datatypes and also
+support the OpenGL datatypes defined in gamelib.gl.
+
+>>> class Physical(Component):
+...     pos: gamelib.Vec2
+...     mass: float
+
+>>> for i in range(3):
+...     Physical((i, i), (1 + i))
+
+
+Access to the internal arrays can be made through the type object.
+
+>>> Physical.pos
+array([[0., 0.],
+       [1., 1.],
+       [2., 2.]])
+
+>>> Physical.mass
+array([1., 2., 3.])
+
+>>> Physical.ids
+array([0, 1, 2])
+
+
+Access to individual elements into the array can be made through an instances
+interface.
+
+>>> obj = Physical((10, 10), 5)
+>>> obj
+<Physical(id=3, pos=[10. 10.], mass=5.0)>
+
+>>> obj.pos = (123, 123)
+>>> obj
+<Physical(id=3, pos=[123. 123.], mass=5.0)>
+
+>>> Physical.pos
+array([[  0.,   0.],
+       [  1.,   1.],
+       [  2.,   2.],
+       [123., 123.]])
+
+>>> obj.mass += 25
+>>> Physical.mass
+array([ 1.,  2.,  3., 30.])
+
+
+The data can also be manipulated through either the array or instance interface
+and will remain in sync, as they are both using the same data store.
+
+>>> Physical.mass *= 10
+>>> Physical.mass
+array([ 10.,  20.,  30., 300.])
+
+>>> obj.mass
+300.0
+
+>>> Physical.pos -= (50, 50)
+>>> Physical.pos
+array([[-50., -50.],
+       [-49., -49.],
+       [-48., -48.],
+       [ 73.,  73.]])
+
+
+Data can be accessed and destroyed by the Component ids. Note that when 
+component data is destroyed, the original order of the data is NOT preserved.
+
+>>> Physical.ids
+array([0, 1, 2, 3])
+
+>>> obj1 = Physical.get(1)
+>>> obj1
+<Physical(id=1, pos=[-49. -49.], mass=20.0)>
+
+>>> Physical.destroy(1)
+>>> Physical.ids
+array([0, 3, 2])
+
+>>> obj1.pos
+None
+>>> obj1.mass
+None
+>>> Physical.get(1)
+None
+
+
+The internal allocation and deallocation of memory is handled internally by the
+component.
+
+>>> Physical.internal_length
+10
+>>> len(Physical)
+3
+
+>>> for _ in range(10):
+...     Physical((0, 0), 0)
+>>> Physical.internal_length
+16
+>>> len(Physical)
+13
+
+>>> for i in range(10):
+...     Physical.destroy(i)
+>>> Physical.internal_length
+10
+>>> len(Physical)
+3
+
+>>> Physical.clear()
+>>> Physical.ids
+array([], dtype=int64)
+>>> len(Physical)
+0
+
+
+Entities are used to bind component data together underneath a single identity.
+The following examples will use this set of simple example classes:
+
+>>> class Physical(Component):
+...     pos: gamelib.Vec2
+...     mass: float
+
+>>> class Motion(Component):
+...     vel: gamelib.Vec2
+...     acc: gamelib.Vec2
+
+>>> class MovingObject(Entity):
+...     physical: Physical
+...     motion: Motion
+
+>>> class StaticObject(Entity):
+...     physical: Physical
+
+
+Entities are very similar to components in that they are just meant to organize
+and facilitate access to data. One important difference to note is that Entity
+instances share a global unique id pool. Note below how the StaticObject and 
+MovingObject don't share any ids, while Physical and Motion do.
+
+>>> for i in range(5):
+...     MovingObject(Physical((i, i), i), Motion((i, i), (-i, -i)))
+
+>>> for i in range(5):
+...     StaticObject(Physical((100 * i, 100 * i), 100 * i))
+
+>>> Physical.ids
+array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+>>> Motion.ids
+array([0, 1, 2, 3, 4])
+>>> MovingObject.ids
+array([0, 1, 2, 3, 4])
+>>> StaticObject.ids
+array([5, 6, 7, 8, 9])
+>>> Entity.ids
+array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+
+
+This distinction means you can load access to an entity from the Entity base 
+class with only an id value. 
+
+>>> Entity.get(0)
+<MovingObject(id=0, physical=<Physical(id=0, pos=[0. 0.], mass=0.0)>, motion=<Motion(id=0, vel=[0. 0.], acc=[0. 0.])>)>
+>>> Entity.get(5)
+<StaticObject(id=5, physical=<Physical(id=5, pos=[0. 0.], mass=0.0)>)>
+
+
+Like with Component, access into individual elements of the data arrays can 
+be made through an instance of an EntityType, while array access is available
+through the type objects themselves.
+
+The following is an example of direct array element manipulation.
+
+>>> obj1 = Entity.get(1)
+>>> obj1.physical
+<Physical(id=1, pos=[1. 1.], mass=1.0)>
+>>> obj1.motion
+<Motion(id=1, vel=[1. 1.], acc=[-1. -1.])>
+>>> obj1.physical.mass += 100
+>>> obj1
+<MovingObject(id=1, physical=<Physical(id=1, pos=[1. 1.], mass=101.0)>, motion=<Motion(id=1, vel=[1. 1.], acc=[-1. -1.])>)>
+
+Access to the component arrays through an entity is a little more complex than
+just getting access to the array, since it needs to be masked, as can be seen
+by the return types of the following. 
+
+>>> StaticObject.physical
+<gamelib.ecs._EntityMask at 0x7f875e6c46a0>
+>>> MovingObject.motion
+<gamelib.ecs._EntityMask at 0x7f875e5bddb0>
+>>> MovingObject.physical.pos
+<gamelib.ecs._MaskedArrayProxy at 0x7f87364d7340>
+
+
+These mask/proxy objects allow for array manipulation as follows:
+
+>>> Physical.pos
+array([[  0.,   0.],
+       [  1.,   1.],
+       [  2.,   2.],
+       [  3.,   3.],
+       [  4.,   4.],
+       [  0.,   0.],
+       [100., 100.],
+       [200., 200.],
+       [300., 300.],
+       [400., 400.]])
+
+>>> MovingObject.physical.pos += MovingObject.motion.vel
+>>> Physical.pos
+array([[  0.,   0.],
+       [  2.,   2.],
+       [  4.,   4.],
+       [  6.,   6.],
+       [  8.,   8.],
+       [  0.,   0.],
+       [100., 100.],
+       [200., 200.],
+       [300., 300.],
+       [400., 400.]])
+
+
+Like with Component, Entity data does not preserve it's order through instances
+being destroyed. The mask/proxy objects take care of this complexity for you.
+(Also note that destroying an entity has destroyed it's bound components.)
+
+>>> Entity.destroy(0)
+>>> Entity.destroy(3)
+>>> MovingObject.ids
+array([4, 1, 2])
+
+>>> Physical.pos
+array([[400., 400.],
+       [  2.,   2.],
+       [  4.,   4.],
+       [300., 300.],
+       [  8.,   8.],
+       [  0.,   0.],
+       [100., 100.],
+       [200., 200.]])
+
+>>> MovingObject.physical.pos += 1_000
+>>> Physical.pos
+array([[ 400.,  400.],
+       [1002., 1002.],
+       [1004., 1004.],
+       [ 300.,  300.],
+       [1008., 1008.],
+       [   0.,    0.],
+       [ 100.,  100.],
+       [ 200.,  200.]])
+
+
+Finally there is a distiction to be made between clearing Entity and clearing a 
+subclass of entity. 
+
+>>> Motion.ids
+array([4, 1, 2])
+>>> MovingObject.clear()
+>>> Motion.ids
+array([], dtype=int64)
+>>> Physical.ids
+array([9, 6, 5, 8, 7])
+>>> Entity.ids
+array([5, 6, 7, 8, 9])
+
+
+Above we see that clearing MovingObject left StaticObject data untouched. If we
+recreate another MovingObject for demonstration purposes, note that 
+Entity.clear() will clear the entire Entity-Component framework.
+
+>>> MovingObject(Physical((0, 0), 1), Motion((1, 1), (-1, -1)))
+>>> MovingObject.ids
+array([0])
+>>> StaticObject.ids
+array([5, 6, 7, 8, 9])
+
+>>> Entity.clear()
+>>> Entity.ids
+array([], dtype=int64)
+>>> StaticObject.ids
+array([], dtype=int64)
+>>> MovingObject.ids
+array([], dtype=int64)
+>>> Physical.ids
+array([], dtype=int64)
+>>> Motion.ids
+array([], dtype=int64)
+"""
 
 import itertools
 import threading
 
 from typing import Dict
+from typing import Any
 
 import numpy as np
+
+from gamelib.core import datatypes
 
 
 _STARTING_LENGTH = 10
@@ -143,28 +428,35 @@ class _ComponentType(type):
     specific indices into that array.
     """
 
-    _length: int
+    _active_length: int
     _initialized: bool = False
-    _fields: dict
-    _arrays: dict
+    _fields: Dict[str, Any]  # any numpy compatible dtype
+    _arrays: Dict[str, np.ndarray]  # field -> internal array mapping
     _lock: threading.RLock
 
     @property
-    def num_elements(cls):
-        return cls._length
+    def ids(cls):
+        """A masked view of the active ids."""
 
-    def __setattr__(cls, name, attr):
-        """Don't let the descriptors be overridden after initialization."""
+        return cls._arrays["id"][: cls._active_length]
 
-        if cls._initialized and name in cls._fields:
-            return
-        else:
-            super().__setattr__(name, attr)
-
-    def __len__(cls):
+    @property
+    def internal_length(cls):
         """Get the full length of the internal data arrays."""
 
         return len(cls._arrays["id"])
+
+    def __len__(cls):
+        return cls._active_length
+
+    def __setattr__(cls, name, value):
+        """Annotated attribute access from the type object represents the whole
+        array, so this should set the value for the entire internal array."""
+
+        if cls._initialized and name in cls._fields:
+            cls._arrays[name][: cls._active_length] = value
+        else:
+            super().__setattr__(name, value)
 
     def __enter__(cls):
         """Acquire a lock on the internal arrays."""
@@ -197,19 +489,21 @@ class Component(metaclass=_ComponentType):
             raise AttributeError("No attributes have been annotated.")
         for field in cls._fields:
             setattr(cls, field, _ComponentElement(cls, field))
-        cls._length = 0
+        cls._active_length = 0
         cls._id_gen = IdGenerator()
         cls._init_arrays()
         cls._data_index = np.zeros(_STARTING_LENGTH, int)
         cls._data_index[:] = -1
-        cls._structured_dtype = np.dtype(
-            [
-                (name, dtype)
-                if isinstance(dtype, np.dtype)
-                else (name, np.dtype(dtype))
-                for name, dtype in cls._fields.items()
-            ]
-        )
+        dtypes = []
+        for name, dtype in cls._fields.items():
+            if dtype in datatypes.VectorType.__subclasses__():
+                dtypes.append((name, dtype.as_dtype()))
+            elif isinstance(dtype, np.dtype):
+                dtypes.append((name, dtype))
+            else:
+                dtypes.append((name, np.dtype(dtype)))
+        dtypes.append(("id", int))
+        cls._structured_dtype = np.dtype(dtypes)
         cls.itemsize = cls._structured_dtype.itemsize
         cls._initialized = True
 
@@ -320,7 +614,7 @@ class Component(metaclass=_ComponentType):
         return cls(_id=id)
 
     @classmethod
-    def get_raw_arrays(cls):
+    def view_raw_arrays(cls):
         """Gets the raw internal arrays (unmasked).
 
         Returns
@@ -330,9 +624,10 @@ class Component(metaclass=_ComponentType):
             aggregate of all the annotated attributes of this component.
         """
 
-        combined = np.empty(len(cls), cls._structured_dtype)
+        combined = np.empty(cls.internal_length, cls._structured_dtype)
         for name in cls._fields:
             combined[name] = cls._arrays[name]
+        combined["id"] = cls._arrays["id"]
         return combined
 
     @classmethod
@@ -349,17 +644,22 @@ class Component(metaclass=_ComponentType):
 
         id = target.id if isinstance(target, cls) else target
         if id >= len(cls._data_index):
+            # out of range, not a real component
+            return
+
+        index = cls._data_index[id]
+        if index == -1:
+            # not an active component
             return
 
         # swap good data on the end of the arrays into this data slot
-        index = cls._data_index[id]
-        swapped_id = cls._arrays["id"][cls._length]
+        cls._active_length -= 1
+        swapped_id = cls._arrays["id"][cls._active_length]
         for array in cls._arrays.values():
-            array[index] = array[cls._length]
+            array[index] = array[cls._active_length]
         cls._data_index[swapped_id] = index
         cls._data_index[id] = -1
-        cls._length -= 1
-        
+
         # maybe shrink arrays
         cls._consider_shrinking()
         cls._id_gen.recycle(id)
@@ -388,9 +688,12 @@ class Component(metaclass=_ComponentType):
     @classmethod
     def _consider_shrinking(cls):
         # shrink internal data arrays
-        if len(cls) > 1.7 * cls._length:
-            new_length = max(int(cls._length * 1.3), _STARTING_LENGTH)
-            if new_length == len(cls):
+        current_active_length = len(cls)
+        if cls.internal_length > 1.7 * current_active_length:
+            new_length = max(
+                int(current_active_length * 1.3), _STARTING_LENGTH
+            )
+            if new_length == cls.internal_length:
                 return
             for field, array in cls._arrays.items():
                 array = cls._arrays[field]
@@ -399,9 +702,7 @@ class Component(metaclass=_ComponentType):
         # shrink the index
         necessary_length = cls._id_gen.largest_active + 1
         actual_length = len(cls._data_index)
-        if (
-            actual_length >= 1.7 * necessary_length >= _STARTING_LENGTH
-        ):
+        if actual_length >= 1.7 * necessary_length >= _STARTING_LENGTH:
             cls._data_index = _reallocate_array(
                 cls._data_index, necessary_length + 1, -1
             )
@@ -411,10 +712,13 @@ class Component(metaclass=_ComponentType):
     def _init_arrays(cls):
         """Allocate the initial internal arrays."""
 
-        cls._arrays = {
-            field: np.zeros(_STARTING_LENGTH, dtype)
-            for field, dtype in cls._fields.items()
-        }
+        cls._arrays = dict()
+        for field, dtype in cls._fields.items():
+            if isinstance(dtype, type) and issubclass(
+                dtype, datatypes.VectorType
+            ):
+                dtype = dtype.as_dtype()
+            cls._arrays[field] = np.zeros(_STARTING_LENGTH, dtype)
         cls._arrays["id"] = np.zeros(_STARTING_LENGTH, int)
 
     @classmethod
@@ -426,10 +730,16 @@ class Component(metaclass=_ComponentType):
         index_length = len(cls._data_index)
         if index_length <= id:
             new_length = index_length * 1.4
-            cls._data_index = _reallocate_array(cls._data_index, new_length, -1)
+            cls._data_index = _reallocate_array(
+                cls._data_index, new_length, -1
+            )
 
-        index = cls._length
-        cls._length += 1
+        index = cls._active_length
+        if index >= len(cls):
+            new_length = index * 1.4
+            for field, arr in cls._arrays.items():
+                cls._arrays[field] = _reallocate_array(arr, new_length, -1)
+        cls._active_length += 1
         cls._data_index[id] = index
         cls._arrays["id"][index] = id
         return id
@@ -441,6 +751,10 @@ class _ComponentElement:
     def __init__(self, owner, field):
         self._owner = owner
         self._field = field
+        self._dtype = owner._fields[field]
+        self._should_view = False
+        if self._dtype in datatypes.VectorType.__subclasses__():
+            self._should_view = True
 
     def __get__(self, obj, objtype=None):
         """Returns a value from the internal array when access is attempted
@@ -448,18 +762,25 @@ class _ComponentElement:
         entire array."""
 
         if obj is None:
-            return self._owner._arrays[self._field][:self._owner._length]
+            return self._owner._arrays[self._field][
+                : self._owner._active_length
+            ]
+
         data_index = self._owner._data_index[obj.id]
         if data_index == -1:
             return None
-        return self._owner._arrays[self._field][data_index]
-    
+
+        value = self._owner._arrays[self._field][data_index]
+        if self._should_view:
+            return value.view(self._dtype)
+        return value
+
     def __set__(self, obj, value):
         """Sets a single value into the internal array."""
 
         data_index = self._owner._data_index[obj.id]
         if data_index == -1:
-            return 
+            return
         self._owner._arrays[self._field][data_index] = value
 
 
@@ -475,14 +796,14 @@ class _EntityGlobalState:
     data_index: np.ndarray
     type_index: np.ndarray
     id_counter: itertools.count
-    recycled_ids: list
     existing: int
 
     def __init__(self):
         self.data_index = np.zeros(_STARTING_LENGTH, int)
         self.type_index = np.zeros(_STARTING_LENGTH, int)
+        self.data_index[:] = -1
+        self.type_index[:] = -1
         self.id_gen = IdGenerator()
-        self.recycled_ids = list()
         self.existing = 0
 
     def grow_index(self):
@@ -501,6 +822,12 @@ class _EntityType(type):
     def __len__(cls):
         """Gets the length of the internal data arrays."""
         return len(cls._arrays["id"])
+
+    @property
+    def ids(cls):
+        if cls == Entity:
+            return np.where(Entity._global.data_index != -1)[0]
+        return cls._arrays["id"][: cls._length]
 
     @property
     def existing(cls):
@@ -545,9 +872,7 @@ class Entity(metaclass=_EntityType):
         if not cls._fields:
             raise AttributeError("No attributes have been annotated.")
         for field, component_type in cls._fields.items():
-            setattr(
-                cls, field, _BoundComponent(cls, field, component_type)
-            )
+            setattr(cls, field, _BoundComponent(cls, field, component_type))
         cls._init_arrays()
         cls._length = 0
 
@@ -594,7 +919,10 @@ class Entity(metaclass=_EntityType):
                 setattr(self, field, arg)
 
     def __repr__(self):
-        return f"<{self.__class__.__name__}(id={self._id})>"
+        components = ", ".join(
+            f"{name}={getattr(self, name)}" for name in self._fields
+        )
+        return f"<{self.__class__.__name__}(id={self._id}, {components})>"
 
     def __eq__(self, other):
         """Elementwise comparison of each of this instance's components to the
@@ -662,6 +990,8 @@ class Entity(metaclass=_EntityType):
             return None
         if cls == Entity:
             entity_num = cls._global.type_index[id]
+            if entity_num == -1:
+                return None
             entity_type = cls._global.subclass_lookup[entity_num]
         else:
             entity_type = cls
@@ -710,6 +1040,7 @@ class Entity(metaclass=_EntityType):
         cls._global.data_index[id] = -1
         cls._global.type_index[id] = -1
         cls._global.existing -= 1
+        cls._global.id_gen.recycle(id)
         entity_type._consider_shrinking()
 
     @classmethod
@@ -727,6 +1058,10 @@ class Entity(metaclass=_EntityType):
             for field, comp_type in cls._fields.items():
                 for id in cls._arrays[field][: cls._length]:
                     comp_type.destroy(id)
+            for id in cls.ids:
+                Entity._global.id_gen.recycle(id)
+            Entity._global.data_index[cls.ids] = -1
+            Entity._global.type_index[cls.ids] = -1
             cls._init_arrays()
             cls._length = 0
 
@@ -745,10 +1080,7 @@ class Entity(metaclass=_EntityType):
         bookkeeping for creating a new instance."""
 
         assert cls != Entity, "should be a subclass"
-        if cls._global.recycled_ids:
-            id_ = Entity._global.recycled_ids.pop(0)
-        else:
-            id_ = next(Entity._global.id_gen)
+        id_ = next(Entity._global.id_gen)
 
         if id_ >= len(Entity._global.data_index):
             Entity._global.grow_index()
@@ -787,9 +1119,7 @@ class Entity(metaclass=_EntityType):
         # shrink the index
         necessary_length = cls._global.id_gen.largest_active + 1
         actual_length = len(cls._global.data_index)
-        if (
-                actual_length >= 1.7 * necessary_length >= _STARTING_LENGTH
-        ):
+        if actual_length >= 1.7 * necessary_length >= _STARTING_LENGTH:
             cls._global.data_index = _reallocate_array(
                 cls._global.data_index, necessary_length + 1, -1
             )
@@ -801,11 +1131,14 @@ class _EntityMask:
     which are associated with a certain Entity type. This is a barebones
     implementation for now."""
 
+    _initialized = False
+
     def __init__(self, entity_type, component_type):
         """The component and entity types this mask should act upon."""
 
         self._entity = entity_type
         self._component = component_type
+        self._initialized = True
 
     def __getattr__(self, name):
         """Retrieve the array from the component type specified in __init__,
@@ -815,9 +1148,87 @@ class _EntityMask:
         a copy of the array, not a view. In the future this class may help to
         get around this problem by implementing mathematical dunder methods."""
 
+        if name not in self._component._fields:
+            raise AttributeError()
         ids = self._entity.get_component_ids(self._component)
         indices = self._component.indices_from_ids(ids)
-        return getattr(self._component, name)[indices]
+        proxy = _MaskedArrayProxy(getattr(self._component, name), indices)
+        return proxy
+
+    def __setattr__(self, name, value):
+        if not self._initialized:
+            super().__setattr__(name, value)
+        elif name in self._component._fields:
+            if isinstance(value, _MaskedArrayProxy):
+                # the only time an array proxy is passed in here
+                # is when is has been called like the following:
+                #   _EntityMask.some_component_attribute += 1_000
+                # The proxy takes care of the += operation and is
+                # trying to be rebound the the _EntityMask object,
+                # which we don't want
+                return
+
+            # otherwise we might be trying to set the entity mask something
+            # like so:
+            #   _EntityMask.attr1 = _EntityMask.attr2 + 100
+            # Here we are passing in an array like to replace the current
+            # array so we can overwrite the storage directly
+            ids = self._entity.get_component_ids(self._component)
+            indices = self._component.indices_from_ids(ids)
+            getattr(self._component, name)[indices] = value
+        else:
+            super().__setattr__(name, value)
+
+
+class _MaskedArrayProxy:
+    def __init__(self, raw_array, indices):
+        self._array = raw_array
+        self._indices = indices
+
+    def __array_ufunc__(self, ufunc, method, *inputs, out=None, **kwargs):
+        args = []
+        for arg in inputs:
+            if isinstance(arg, type(self)):
+                args.append(arg._array[arg._indices])
+            else:
+                args.append(arg)
+
+        return getattr(ufunc, method)(*args, **kwargs)
+
+    def __add__(self, other):
+        return self._array[self._indices] + other
+
+    def __iadd__(self, other):
+        self._array[self._indices] += other
+        return self
+
+    def __sub__(self, other):
+        return self._array[self._indices] - other
+
+    def __isub__(self, other):
+        self._array[self._indices] -= other
+        return self
+
+    def __mul__(self, other):
+        return self._array[self._indices] * other
+
+    def __imul__(self, other):
+        self._array[self._indices] *= other
+        return self
+
+    def __truediv__(self, other):
+        return self._array[self._indices] / other
+
+    def __itruediv__(self, other):
+        self._array[self._indices] /= other
+        return self
+
+    def __floordiv__(self, other):
+        return self._array[self._indices] // other
+
+    def __ifloordiv__(self, other):
+        self._array[self._indices] //= other
+        return self
 
 
 class _BoundComponent:
@@ -874,3 +1285,18 @@ def _reallocate_array(array, new_length, fill=0):
     else:
         new_array[:] = array[:new_length]
     return new_array
+
+
+# TODO: Some way to get a proxy to a component attribute such that another
+#   module could keep reference to the proxy and call it on demand to get
+#   to the internal data. Since the internal array is subject to reallocation,
+#   simply getting a reference to the underlying array is insufficient.
+
+# TODO: An option to allocate the internal arrays using the structured dtype
+#   instead of individual arrays. Using a decorator approach like dataclass
+#   uses might offer a more suitable API for optional features like this.
+
+# TODO: Eventually I will want the option to allocate the arrays using
+#   shared memory. Since they are regularly reallocated this will probably
+#   require a new shared memory module so other processes can easily find the
+#   internal array after it has been reallocated.

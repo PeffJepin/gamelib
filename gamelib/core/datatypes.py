@@ -29,7 +29,7 @@ class VectorComponent:
         )
 
 
-class _VectorType(np.ndarray):
+class VectorType(np.ndarray):
     """Base vector type. Subclasses should specify _DTYPE if the default float
     is undesirable. VectorComponents should be added to subclasses."""
 
@@ -59,7 +59,7 @@ class _VectorType(np.ndarray):
 
         args = []
         for arg in inputs:
-            if isinstance(arg, _VectorType):
+            if isinstance(arg, VectorType):
                 # view vectors as regular arrays for ufunc operations
                 args.append(arg.view(np.ndarray))
             else:
@@ -149,13 +149,17 @@ class _VectorType(np.ndarray):
         with np.errstate(divide="ignore"):
             return 1 / self
 
+    @classmethod
+    def as_dtype(cls):
+        return np.dtype((cls._DTYPE, cls._LENGTH))
 
-class Vec2(_VectorType):
+
+class Vec2(VectorType):
     x = VectorComponent(0)
     y = VectorComponent(1)
 
 
-class Vec3(_VectorType):
+class Vec3(VectorType):
     x = VectorComponent(0)
     y = VectorComponent(1)
     z = VectorComponent(2)
@@ -164,7 +168,7 @@ class Vec3(_VectorType):
         return np.cross(self, other).view(Vec3)
 
 
-class Vec4(_VectorType):
+class Vec4(VectorType):
     x = VectorComponent(0)
     y = VectorComponent(1)
     z = VectorComponent(2)
