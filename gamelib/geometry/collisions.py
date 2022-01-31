@@ -12,7 +12,7 @@ from gamelib import Vec3
 class Ray:
     """Used to check for ray collisions."""
 
-    _MAX_DISTANCE = np.finfo(gl.float).max
+    MAX_DISTANCE = np.finfo(gl.float).max
 
     def __init__(self, origin, direction):
         """Set initial values and cache the inverse direction.
@@ -168,7 +168,7 @@ class Ray:
 
         if _exit_early:
             dist = self._recursive_check_bvh(bvh)
-            return dist if dist < self._MAX_DISTANCE else False
+            return dist if dist < self.MAX_DISTANCE else False
 
         bmin = bvh.leaf_bmin_vectors
         bmax = bvh.leaf_bmax_vectors
@@ -189,7 +189,7 @@ class Ray:
         else:
             return False
 
-    def _recursive_check_bvh(self, bvh_node, minimum=_MAX_DISTANCE):
+    def _recursive_check_bvh(self, bvh_node, minimum=MAX_DISTANCE):
         def choose_order(node):
             """Choose which branches to prioritize."""
             # ignore dead end nodes
@@ -235,7 +235,7 @@ class Ray:
 
         for bvh_node in order:
             minimum = self._recursive_check_bvh(bvh_node, minimum)
-            if minimum < self._MAX_DISTANCE:
+            if minimum < self.MAX_DISTANCE:
                 return minimum
 
         return minimum

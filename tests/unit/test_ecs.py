@@ -523,21 +523,62 @@ class TestEntity:
         class E(Entity1):
             pass
 
-        subclasses = [e for e in base.Entity]
+        all_subclasses = base.Entity.get_subclasses()
 
-        assert Entity1 in subclasses
-        assert Entity2 in subclasses
-        assert E in subclasses
+        assert Entity1 in all_subclasses
+        assert Entity2 in all_subclasses
+        assert E in all_subclasses
+
+        e1_subclasses = Entity1.get_subclasses()
+        assert E in e1_subclasses
+        assert Entity2 not in e1_subclasses
+
+    def test_iterating_over_only_entities_with_given_components(self):
+        class E1(base.Entity):
+            c1: Component1
+
+        class E2(base.Entity):
+            c2: Component2
+
+        result = base.Entity.get_subclasses(
+            components=(Component1, Component2)
+        )
+        assert E1 not in result
+        assert E2 not in result
+        assert Entity1 in result
+        assert Entity2 in result
+
+        result = base.Entity.get_subclasses(components=(Component1))
+        assert E1 in result
+        assert E2 not in result
+        assert Entity1 in result
+        assert Entity2 in result
 
     def test_getting_a_component_by_type(self):
         class C(Component2):
             pass
+
         c1 = Component1(1, 2)
         c2 = Component2(3, 4)
         entity = Entity1(c1, c2)
 
         assert entity.get_component(Component1) == c1
         assert entity.get_component(C) is None
+
+    def testing_if_an_entity_type_has_a_component_type_field(self):
+        class C(Component2):
+            pass
+
+        assert Entity1.has_field(Component1)
+        assert Entity1.has_field(Component2)
+        assert not Entity1.has_field(C)
+
+    def test_getting_access_to_component_entity_mask(self):
+        Entity1(Component1(1, 2), Component2(3, 4))
+        Entity1(Component1(5, 6), Component2(7, 8))
+
+        assert np.all(Entity1.get_mask(Component1).x == (1, 5))
+        assert np.all(Entity1.get_mask(Component1).y == (2, 6))
 
 
 class GlTypeComponent(base.Component):

@@ -15,15 +15,14 @@ class Transform(base.Component):
     _theta: gl.float
     model_matrix: gl.mat4
 
-    def __init__(
-            self, pos=(0, 0, 0), scale=(1, 1, 1), axis=(0, 0, 1), theta=0
-    ):
-        super().__init__()
-        self._pos = pos
-        self._scale = scale
-        self._axis = axis
-        self._update_matrix()
-        self._theta = theta
+    @classmethod
+    def create(cls, pos=(0, 0, 0), scale=(1, 1, 1), axis=(0, 0, 1), theta=0):
+        # TODO: I might want to change ecs to use a create method instead of init.
+        # the use of __new__ and __init__ seems to collide to much with
+        # subclass usage.
+        inst = cls(_pos=pos, _scale=scale, _axis=axis, _theta=theta)
+        inst._update_matrix()
+        return inst
 
     @property
     def _inverse_matrix(self):

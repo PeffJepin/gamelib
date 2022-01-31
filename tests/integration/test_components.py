@@ -30,7 +30,7 @@ def transform_inputs(request):
 def test_transform_base_case(transform_inputs):
     # assert that TransformComponent behaves in the same manner as Transform.
     regular = transforms.Transform(*transform_inputs)
-    component = ecs.Transform(*transform_inputs)
+    component = ecs.Transform.create(*transform_inputs)
 
     vertex1 = np.array((1, 1, 1))
     vertex2 = np.array((1, 1, 1))

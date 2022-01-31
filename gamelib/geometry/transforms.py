@@ -1,10 +1,8 @@
-from typing import Sequence
 from gamelib import Vec3
 
 import numpy as np
 
 from gamelib import gl
-from gamelib import ecs
 from gamelib.geometry import base
 
 

@@ -297,10 +297,12 @@ array([], dtype=int64)
 array([], dtype=int64)
 """
 
+import collections
 import itertools
 import threading
 
 from typing import Dict
+from typing import Iterable
 from typing import Any
 
 import numpy as np
@@ -795,6 +797,8 @@ class _EntityGlobalState:
     # class attributes
     entity_number_counter = itertools.count(0)
     subclass_lookup: Dict[int, "_EntityType"] = dict()
+    # keeps a set of entity numbers that can be looked up in subclass lookup
+    subclasses_by_component_type = collections.defaultdict(set)
 
     # instance attributes
     data_index: np.ndarray
@@ -827,9 +831,49 @@ class _EntityType(type):
         """Gets the length of the internal data arrays."""
         return len(cls._arrays["id"])
 
-    def __iter__(cls):
-        for subclass in cls._global.subclass_lookup.values():
-            yield subclass
+    def get_subclasses(cls, components=None):
+        """Gets all of the subclasses of Entity if called globally on Entity,
+        or just the subclasses for the particular Entity if called on a
+        subclass
+
+        Parameters
+        ----------
+        components : Iterable, optional
+            Optionally, you can filter for only entities that have the provided
+            component types as fields.
+
+        Returns
+        -------
+        tuple | list
+        """
+
+        if components is not None:
+            if not isinstance(components, Iterable):
+                components = (components,)
+            return cls._get_subclasses_by_contained_components(components)
+        if cls == Entity:
+            return cls._global.subclass_lookup.values()
+        else:
+            return cls.__subclasses__()
+
+    def _get_subclasses_by_contained_components(cls, components):
+        if cls == Entity:
+            predicate = lambda e: True
+        else:
+            predicate = lambda e: issubclass(e, cls)
+
+        first, *the_rest = components
+        if predicate(first):
+            entity_nums = cls._global.subclasses_by_component_type[first]
+        else:
+            entity_nums = set()
+
+        for c in the_rest:
+            if not predicate(c):
+                continue
+            these_nums = cls._global.subclasses_by_component_type[c]
+            entity_nums = set.intersection(these_nums, entity_nums)
+        return tuple(cls._global.subclass_lookup[n] for n in entity_nums)
 
     @property
     def ids(cls):
@@ -885,6 +929,9 @@ class Entity(metaclass=_EntityType):
             raise AttributeError("No attributes have been annotated.")
         cls._field_by_type = dict()
         for field, component_type in cls._fields.items():
+            cls._global.subclasses_by_component_type[component_type].add(
+                cls._entity_number
+            )
             cls._field_by_type[component_type] = field
             setattr(cls, field, _BoundComponent(cls, field, component_type))
         cls._init_arrays()
@@ -985,6 +1032,42 @@ class Entity(metaclass=_EntityType):
         if field is None:
             return None
         return getattr(self, field)
+
+    @classmethod
+    def has_field(cls, component_type):
+        """Check if an entity type has a field of a particular type of
+        component.
+
+        Parameters
+        ----------
+        component_type: Type[Component]
+
+        Returns
+        -------
+        bool
+        """
+
+        return component_type in cls._field_by_type
+
+    @classmethod
+    def get_mask(cls, component_type):
+        """Gets an annotated field based on component type. Useful when you
+        have an entity type you're unsure about and want a particular type of
+        component from it.
+
+        Parameters
+        ----------
+        component_type : Type[Component]
+
+        Returns
+        -------
+        _EntityMask
+        """
+
+        field = cls._field_by_type.get(component_type, None)
+        if not field:
+            return None
+        return getattr(cls, field)
 
     @classmethod
     def get_component_ids(cls, component_type):
@@ -1181,9 +1264,11 @@ class _EntityMask:
         a copy of the array, not a view. In the future this class may help to
         get around this problem by implementing mathematical dunder methods."""
 
-        if name not in self._component._fields:
-            raise AttributeError()
+        if name not in self._component._fields and name != "ids":
+            raise AttributeError(f"name not in {self._component._fields!r}.")
         ids = self._entity.get_component_ids(self._component)
+        if name == "ids":
+            return ids
         indices = self._component.indices_from_ids(ids)
         proxy = _MaskedArrayProxy(getattr(self._component, name), indices)
         return proxy
@@ -1262,6 +1347,12 @@ class _MaskedArrayProxy:
     def __ifloordiv__(self, other):
         self._array[self._indices] //= other
         return self
+
+    def __eq__(self, other):
+        return self._array[self._indices] == other
+
+    def __iter__(self):
+        return iter(self._array[self._indices])
 
 
 class _BoundComponent:
