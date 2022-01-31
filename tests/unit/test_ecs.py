@@ -519,6 +519,26 @@ class TestEntity:
         assert entity.comp1 == c1
         assert entity.comp2 == c2
 
+    def test_iterating_entity_subclasses(self):
+        class E(Entity1):
+            pass
+
+        subclasses = [e for e in base.Entity]
+
+        assert Entity1 in subclasses
+        assert Entity2 in subclasses
+        assert E in subclasses
+
+    def test_getting_a_component_by_type(self):
+        class C(Component2):
+            pass
+        c1 = Component1(1, 2)
+        c2 = Component2(3, 4)
+        entity = Entity1(c1, c2)
+
+        assert entity.get_component(Component1) == c1
+        assert entity.get_component(C) is None
+
 
 class GlTypeComponent(base.Component):
     v3: gl.vec3

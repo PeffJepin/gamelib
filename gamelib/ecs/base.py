@@ -827,6 +827,10 @@ class _EntityType(type):
         """Gets the length of the internal data arrays."""
         return len(cls._arrays["id"])
 
+    def __iter__(cls):
+        for subclass in cls._global.subclass_lookup.values():
+            yield subclass
+
     @property
     def ids(cls):
         if cls == Entity:
@@ -879,7 +883,9 @@ class Entity(metaclass=_EntityType):
             cls._fields = annotations
         if not cls._fields:
             raise AttributeError("No attributes have been annotated.")
+        cls._field_by_type = dict()
         for field, component_type in cls._fields.items():
+            cls._field_by_type[component_type] = field
             setattr(cls, field, _BoundComponent(cls, field, component_type))
         cls._init_arrays()
         cls._length = 0
@@ -960,6 +966,25 @@ class Entity(metaclass=_EntityType):
         """This entities unique id."""
 
         return self._id
+
+    def get_component(self, component_type):
+        """Gets the first component of the given type found bound to this
+        entity
+
+        Parameters
+        ----------
+        component_type : Type[Component]
+
+        Returns
+        -------
+        Component:
+            An instance of the parameter component type.
+        """
+
+        field = self._field_by_type.get(component_type, None)
+        if field is None:
+            return None
+        return getattr(self, field)
 
     @classmethod
     def get_component_ids(cls, component_type):
