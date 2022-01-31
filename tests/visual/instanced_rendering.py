@@ -1,45 +1,64 @@
-import numpy as np
 import gamelib
-
 
 gamelib.init()
 
+model = gamelib.geometry.load_model("knight")
+camera = gamelib.rendering.PerspectiveCamera(
+    (-3, -3, 3), (1, 1, -1), controller=True
+)
+
+for x in range(30):
+    for y in range(30):
+        gamelib.ecs.Transform.create((4 * x, 4 * y, 0), theta=4 * x * y)
+
 instructions = gamelib.rendering.Renderer(
-    shader="""
-        #version 330
-        #vert
-        in vec2 v_pos;
-        in vec2 v_off;
-        in vec3 v_col;
+    """
+    #version 330
 
-        out vec3 f_col;
+    #vert
+    in vec3 v_pos;
+    in mat4 model;
 
-        void main()
-        {
-            gl_Position = vec4(v_pos + v_off, 0, 1);
-            f_col = v_col;
-        }
+    uniform mat4 proj;
+    uniform mat4 view;
 
-        #frag
-        in vec3 f_col;
-        out vec4 frag;
+    out vec3 world_pos;
 
-        void main()
-        {
-            frag = vec4(f_col, 1.0);
-        }
+    void main()
+    {
+        vec4 world_space_transform = model * vec4(v_pos, 1.0);
+        world_pos = world_space_transform.xyz;
+        gl_Position = proj * view * world_space_transform;
+    }
+
+    #frag
+    in vec3 world_pos;
+    out vec4 frag;
+
+    vec3 light_color = vec3(0.9, 0.6, 0.3);
+    vec3 light_pos = vec3(-400.0, -125.0, 1000.0);
+    float ambient_strength = 0.15;
+
+    void main()
+    {
+        vec3 dx = dFdx(world_pos);
+        vec3 dy = dFdy(world_pos);
+        vec3 face_normal = normalize(cross(dx, dy));
+        vec3 light_dir = normalize(light_pos - world_pos);
+
+        float diffuse_strength = max(dot(face_normal, light_dir), 0.0);
+        vec3 diffuse = diffuse_strength * light_color;
+        vec3 ambient = light_color * ambient_strength;
+
+        frag = vec4(ambient + diffuse, 1.0);
+    }
     """,
-    v_pos=np.array(
-        [(-0.1, -0.1), (-0.1, 0.1), (0.1, 0.1), (0.1, -0.1)], gamelib.gl.vec2
-    ),
-    indices=np.array([0, 1, 2, 0, 2, 3], gamelib.gl.uint),
-    v_off=np.array(
-        [(-0.5, -0.5), (-0.5, 0.5), (0.5, 0.5), (0.5, -0.5)], gamelib.gl.vec2
-    ),
-    v_col=np.array(
-        [(1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 0, 1)], gamelib.gl.vec3
-    ),
-    instanced=("v_col", "v_off"),
+    instanced=("model",),
+    indices=model.triangles,
+    v_pos=model.vertices,
+    proj=camera.projection_matrix,
+    view=camera.view_matrix,
+    model=gamelib.ecs.Transform.model_matrix,
 )
 
 gamelib.set_draw_commands(instructions.render)
