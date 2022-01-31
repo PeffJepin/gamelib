@@ -258,7 +258,7 @@ class TestBVH:
         bmax = root.leaf_bmax_vectors
 
         for node in root:
-            if node.triangles is not None:
+            if node.indices is not None:
                 assert node in root.leaves
                 expected = True
             else:

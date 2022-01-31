@@ -1,32 +1,45 @@
+from gamelib import Vec3
 import numpy as np
 
 
 class Model:
-    def __init__(self, vertices, triangles, normals=None, anchor=None):
+    def __init__(self, vertices, indices, normals=None, anchor=None):
+        vertices = np.asarray(vertices)
+        length, *shape = vertices.shape
+        if not shape:
+            vertices = vertices.reshape(-1, 3)
+
+        indices = np.asarray(indices)
+        length, *shape = indices.shape
+        if not shape:
+            indices = indices.reshape(-1, 3)
+
         self.vertices = vertices
-        self.triangles = triangles
+        self.indices = indices
         self.normals = normals
         self.v_min, self.v_max = self._calculate_bounding_box()
         if anchor is not None:
             self.anchor(anchor)
 
-    def anchor(self, anchor_location):
-        ax, ay, az = anchor_location
-        assert all(0.0 <= val <= 1.0 for val in anchor_location)
-        box_size = tuple(
-            max_val - min_val
-            for max_val, min_val in zip(self.v_max, self.v_min)
-        )
-        anchor_point = tuple(
-            min_val + (size_val * anchor_val)
-            for min_val, size_val, anchor_val in zip(
-                self.v_min, box_size, anchor_location
-            )
-        )
-        diff = tuple(0 - val for val in anchor_point)
+    @property
+    def triangles(self):
+        return self.vertices[self.indices]
+
+    def anchor(self, relative_anchor):
+        assert all(0.0 <= val <= 1.0 for val in relative_anchor)
+
+        if not isinstance(relative_anchor, Vec3):
+            relative_anchor = Vec3(relative_anchor)
+
+        shape = self.v_max - self.v_min
+        anchor_point = self.v_min + shape * relative_anchor
+        diff = 0 - anchor_point
         self.vertices += diff
-        self.v_max = tuple(cur + dif for cur, dif in zip(self.v_max, diff))
-        self.v_min = tuple(cur + dif for cur, dif in zip(self.v_min, diff))
+        self.v_min += diff
+        self.v_max += diff
+
+    def recalculate_boundaries(self):
+        self.v_min, self.v_max = self._calculate_bounding_box()
 
     def _calculate_bounding_box(self):
         min_x = np.min(self.vertices[:, 0])
@@ -37,4 +50,4 @@ class Model:
         max_y = np.max(self.vertices[:, 1])
         max_z = np.max(self.vertices[:, 2])
 
-        return (min_x, min_y, min_z), (max_x, max_y, max_z)
+        return Vec3(min_x, min_y, min_z), Vec3(max_x, max_y, max_z)

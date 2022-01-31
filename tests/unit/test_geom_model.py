@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from gamelib.geometry import base
@@ -57,3 +58,21 @@ def test_anchor_on_init():
 
     assert_approx(model.v_min, (0, 0, 0))
     assert_approx(model.v_max, (1, 1, 1))
+
+
+def test_triangles():
+    v = np.arange(9)
+    i = np.arange(3)
+    model = base.Model(vertices=v, indices=i)
+
+    v = v.reshape(-1, 3)
+    i = i.reshape(-1, 3)
+    assert np.all(model.triangles == v[i])
+
+
+def test_python_inputs():
+    v = [(1, 2, 3), (4, 5, 6), (7, 8, 9)]
+    i = [(0, 1, 2)]
+    model = base.Model(vertices=v, indices=i)
+
+    assert np.all(model.triangles == v)

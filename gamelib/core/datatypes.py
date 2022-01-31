@@ -104,7 +104,8 @@ class VectorType(np.ndarray):
             if isinstance(args[0], Iterable):
                 self._parse_iter(args[0])
         # else iterate over args
-        self._parse_iter(args)
+        else:
+            self._parse_iter(args)
 
     def _parse_iter(self, iterable):
         # raises index error if iterable is too long

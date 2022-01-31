@@ -635,11 +635,14 @@ def _transform_model(matrix, model):
     transformed = np.hstack((vcopy, vpad)).dot(matrix.T)
     model.vertices[:] = np.delete(transformed, 3, 1)
 
-    ncopy = model.normals.copy()
-    npad = np.zeros((len(ncopy), 1), ncopy.dtype)
-    transformed = np.hstack((ncopy, npad)).dot(matrix.T)
-    model.normals[:] = np.delete(transformed, 3, 1)
-    normalize(model.normals)
+    if model.normals is not None:
+        ncopy = model.normals.copy()
+        npad = np.zeros((len(ncopy), 1), ncopy.dtype)
+        transformed = np.hstack((ncopy, npad)).dot(matrix.T)
+        model.normals[:] = np.delete(transformed, 3, 1)
+        normalize(model.normals)
+
+    model.recalculate_boundaries()
 
 
 def _transform_vertex(matrix, vertex, normal):

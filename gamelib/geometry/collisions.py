@@ -203,7 +203,7 @@ class Ray:
             # check leaf nodes first
             if node.left.indices is not None:
                 if node.right.indices is None:
-                    return (node.left, node.right)
+                    return node.left, node.right
             elif node.right.indices is not None:
                 return node.right, node.left
 
@@ -212,8 +212,8 @@ class Ray:
             dl = (center - node.left.aabb.center).magnitude
             dr = (center - node.left.aabb.center).magnitude
             if dl < dr:
-                return (node.left, node.right)
-            return (node.right, node.left)
+                return node.left, node.right
+            return node.right, node.left
 
         if bvh_node is None:
             return minimum
@@ -432,9 +432,7 @@ class BVH:
 
         aabb = AABB(model.v_min, model.v_max)
         root = cls(aabb)
-        BVH_Helper.divide(
-            root, model.vertices, model.triangles, target_density
-        )
+        BVH_Helper.divide(root, model.vertices, model.indices, target_density)
         bmin_vectors = []
         bmax_vectors = []
         leaves = []
@@ -447,7 +445,7 @@ class BVH:
         root.leaf_bmin_vectors = np.stack(bmin_vectors)
         root.leaf_bmax_vectors = np.stack(bmax_vectors)
         root.leaves = np.array(leaves, object)
-        root.ntris = len(model.triangles)
+        root.ntris = len(model.indices)
         return root
 
     def __iter__(self):

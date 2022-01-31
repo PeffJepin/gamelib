@@ -57,7 +57,7 @@ instructions = rendering.Renderer(
         }
     """,
     pos=mesh.vertices,
-    indices=mesh.triangles,
+    indices=mesh.indices,
     view=camera.view_matrix,
     proj=camera.projection_matrix,
 )

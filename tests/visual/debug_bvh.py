@@ -145,13 +145,13 @@ def get_bvh_node_contained_triangles(node):
     triangles = []
     for n in node:
         if n.indices is not None:
-            triangles.append(n.triangles)
+            triangles.append(n.indices)
     return np.concatenate(triangles)
 
 
 def get_bvh_vertex_data():
     if state.render_mode == RENDER_BVH_LEAF_ONLY:
-        nodes = [node for node in bvh if node.triangles is not None]
+        nodes = [node for node in bvh if node.indices is not None]
         vert_list = []
         color_list = []
         for n in nodes:
@@ -201,7 +201,7 @@ def get_ray_vertex_data():
 
 def get_triangles_vertex_data():
     if state.render_mode == RENDER_BVH_LEAF_ONLY:
-        return model.vertices[model.triangles]
+        return model.vertices[model.indices]
     if state.render_mode == RENDER_NODE_EXPLORER:
         return get_bvh_node_contained_triangles(state.node)
     if state.render_mode == RENDER_INTERSECTIONS:
@@ -215,7 +215,7 @@ def cast_ray():
     state.ray.to_object_space(transform)
     ts = time.time()
     distances = collisions.ray_triangle_intersections(
-        model.vertices[model.triangles], state.ray.origin, state.ray.direction
+        model.vertices[model.indices], state.ray.origin, state.ray.direction
     )
     try:
         brute_force = np.min(distances[distances != -1])
@@ -246,7 +246,7 @@ def cast_ray():
             node_list.append(node)
         if node.indices is not None:
             # trace all hit triangles
-            triangles = node.triangles
+            triangles = node.indices
             ntris += len(triangles)
             result = collisions.ray_triangle_intersections(
                 triangles, state.ray.origin, state.ray.direction
@@ -343,7 +343,7 @@ def info_dump():
         f"[INFO]: {node_count=}, {leaf_count=} avg_density={leaf_tri_count / leaf_count}"
     )
     print(
-        f"[INFO]: models_triangles={len(model.triangles)}, bvh_triangles={leaf_tri_count}"
+        f"[INFO]: models_triangles={len(model.indices)}, bvh_triangles={leaf_tri_count}"
     )
 
 

@@ -46,4 +46,15 @@ def test_applying_a_transform_to_a_model():
 
     assert np.allclose(vertices, model.vertices)
     assert np.allclose(normals, model.normals)
-    assert np.all(indices == model.triangles)
+    assert np.all(indices == model.indices)
+
+
+def test_model_boundaries_are_recalculated_after_transformation():
+    model = geometry.Cube(2)
+    assert model.v_min == (-1, -1, -1)
+    assert model.v_max == (1, 1, 1)
+
+    geometry.Transform((1, 1, 1)).apply(model)
+
+    assert model.v_min == (0, 0, 0)
+    assert model.v_max == (2, 2, 2)

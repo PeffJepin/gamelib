@@ -33,7 +33,7 @@ f 1 2 3
     parsed = geometry.load_model(tmpfile)
 
     assert np.all(parsed.vertices == vertices)
-    assert np.all(parsed.triangles == triangles)
+    assert np.all(parsed.indices == triangles)
 
 
 def test_with_vertex_normals_base_case(tmpfile):
@@ -77,7 +77,7 @@ f 1//1 3//3 4//4
     parsed = geometry.load_model(tmpfile)
     assert np.all(parsed.vertices == vertices)
     assert np.all(parsed.normals == normals)
-    assert np.all(parsed.triangles == triangles)
+    assert np.all(parsed.indices == triangles)
 
 
 def test_vertex_data_out_of_order(tmpfile):
@@ -121,7 +121,7 @@ f 1//3 3//1 4//2
     parsed = geometry.load_model(tmpfile)
     assert np.all(parsed.vertices == vertices)
     assert np.all(parsed.normals == normals)
-    assert np.all(parsed.triangles == triangles)
+    assert np.all(parsed.indices == triangles)
 
 
 def test_faces_that_arent_triangles(tmpfile):
@@ -136,4 +136,4 @@ f 1 2 3 4
         f.write(source)
 
     parsed = geometry.load_model(tmpfile)
-    assert len(parsed.triangles) == 2
+    assert len(parsed.indices) == 2

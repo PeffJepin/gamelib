@@ -17,7 +17,7 @@ model_matrix = geometry.Mat4.identity()
 instructions = rendering.Renderer(
     "simple_faceted",
     v_pos=cube.vertices,
-    indices=cube.triangles,
+    indices=cube.indices,
     proj=camera.projection_matrix,
     view=camera.view_matrix,
     model=model_matrix,

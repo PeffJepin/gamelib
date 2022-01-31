@@ -26,7 +26,7 @@ class _PreProcessorData:
 @dataclasses.dataclass
 class _Arrays:
     vertices: np.ndarray
-    triangles: np.ndarray
+    indices: np.ndarray
     normals: np.ndarray
 
 
@@ -42,7 +42,7 @@ def parse(path) -> base.Model:
         _parse_lines(lines, arrays, ppd)
         return base.Model(
             vertices=arrays.vertices,
-            triangles=arrays.triangles,
+            indices=arrays.indices,
             normals=arrays.normals,
         )
 
@@ -90,7 +90,7 @@ def _parse_lines(lines, arrays, ppd) -> None:
                     cleaned_values[i + 1],
                     cleaned_values[i + 2],
                 )
-                arrays.triangles[triangles_pointer] = tri
+                arrays.indices[triangles_pointer] = tri
                 triangles_pointer += 1
 
 

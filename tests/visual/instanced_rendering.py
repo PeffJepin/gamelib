@@ -54,7 +54,7 @@ instructions = gamelib.rendering.Renderer(
     }
     """,
     instanced=("model",),
-    indices=model.triangles,
+    indices=model.indices,
     v_pos=model.vertices,
     proj=camera.projection_matrix,
     view=camera.view_matrix,
