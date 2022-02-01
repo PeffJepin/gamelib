@@ -122,6 +122,15 @@ class TestBuffer:
         assert glo is not buffer.gl
         assert np.all(buffer.read() == array)
 
+    def test_writing_a_buffer_with_empty_array(self):
+        array = np.arange(10, dtype=gl.float)
+        buffer = buffers.Buffer(array, gl.float)
+
+        array = np.array([], gl.float)
+        buffer.write(array)
+
+        assert len(buffer) == 0
+
     def test_dtype_conversion_on_init(self):
         array = np.arange(10)
         buffer = buffers.Buffer(array, dtype=gl.float)

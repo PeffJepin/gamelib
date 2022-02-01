@@ -38,6 +38,8 @@ class Buffer:
     def size(self):
         """The size of the buffer in bytes."""
 
+        if self.gl is None:
+            return 0
         return self.gl.size
 
     def write(self, data):
@@ -55,9 +57,6 @@ class Buffer:
         if isinstance(data, Callable):
             data = data()
             assert isinstance(data, np.ndarray)
-
-        if not len(data) > 0:
-            return
 
         if isinstance(data, np.ndarray):
             self._write_array(data)
@@ -97,12 +96,17 @@ class Buffer:
     def _write_bytes(self, data):
         if self.gl is None or self.size != len(data):
             self._make_opengl_buffer(len(data))
+        if self.gl is None:
+            return
         self.gl.write(data)
 
     def _make_opengl_buffer(self, nbytes):
         nbytes = int(nbytes)
         if self.gl is not None:
             self.gl.release()
+        if nbytes == 0:
+            self.gl = None
+            return
         self.gl = get_context().buffer(reserve=nbytes, dynamic=self._dynamic)
 
 
@@ -207,6 +211,8 @@ class AutoBuffer(Buffer):
             self._make_opengl_buffer(nbytes)
         if self._shrink and nbytes < self.size / 4:
             self._make_opengl_buffer(nbytes)
+        if self.gl is None:
+            return
 
         self.gl.write(data)
 

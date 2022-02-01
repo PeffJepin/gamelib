@@ -1025,7 +1025,7 @@ class Entity(metaclass=_EntityType):
         if not isinstance(other, type(self)):
             return False
         else:
-            return all(comp1 == comp2 for comp1, comp2 in zip(self, other))
+            return self.id == other.id
 
     def __iter__(self):
         """Iterate over the components this entity is bound to."""

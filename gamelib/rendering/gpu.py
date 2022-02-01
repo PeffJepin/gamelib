@@ -80,6 +80,8 @@ class TransformFeedback(GPUInstructions):
 
         self.sources.update(data_sources)
         vao = VertexArray(self.shader, **self.sources)
+        if vao.glo is None:
+            return None
         vao.update()
         out_dtype = np.dtype(
             [
@@ -115,6 +117,8 @@ class Renderer(GPUInstructions):
         self.vao.update()
         vertices = vertices or self.vao.num_elements
         instances = instances or self.vao.num_instances
+        if self.vao.glo is None:
+            return
         self.vao.glo.render(
             vertices=vertices, instances=instances, mode=self._mode
         )
@@ -394,6 +398,8 @@ class VertexArray:
             buffer.gl.release()
 
     def _make_glo(self):
+        if any(len(buf) == 0 for buf in self._buffers_in_use.values()):
+            return None
         if self._glo is not None:
             self._glo.release()
         ibo = self._index_buffer.gl if self._index_buffer else None

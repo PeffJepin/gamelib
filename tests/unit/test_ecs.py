@@ -377,7 +377,8 @@ class TestEntity:
             comp1=Component1.create(3, 4), comp2=Component2.create(1, 2)
         )
 
-        assert entity1 == entity2
+        assert entity1 == Entity1.get(entity1.id)
+        assert entity2 != entity1
         assert entity3 != entity1
 
     def test_getting_a_previously_created_entity(self):
