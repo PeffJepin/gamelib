@@ -624,6 +624,16 @@ class TestEntity:
         assert np.all(Entity1.get_mask(Component1).x == (1, 5))
         assert np.all(Entity1.get_mask(Component1).y == (2, 6))
 
+    def test_proxy_to_masked_component_field(self):
+        callable_proxy = Entity1.comp1.proxy("x")
+        assert len(callable_proxy()) == 0
+
+        Entity1.create(Component1.create(1, 2), Component2.create(3, 4))
+        Entity1.create(Component1.create(5, 6), Component2.create(7, 8))
+        Entity2.create(Component1.create(9, 9), Component2.create(9, 9))
+
+        assert np.all(callable_proxy() == Entity1.comp1.x)
+
 
 class GlTypeComponent(base.Component):
     v3: gl.vec3

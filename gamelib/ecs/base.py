@@ -15,7 +15,7 @@ support the OpenGL datatypes defined in gamelib.gl.
 ...     mass: float
 
 >>> for i in range(3):
-...     Physical((i, i), (1 + i))
+...     Physical.create((i, i), (1 + i))
 
 
 Access to the internal arrays can be made through the type object.
@@ -35,7 +35,7 @@ array([0, 1, 2])
 Access to individual elements into the array can be made through an instances
 interface.
 
->>> obj = Physical((10, 10), 5)
+>>> obj = Physical.create((10, 10), 5)
 >>> obj
 <Physical(id=3, pos=[10. 10.], mass=5.0)>
 
@@ -103,7 +103,7 @@ component.
 3
 
 >>> for _ in range(10):
-...     Physical((0, 0), 0)
+...     Physical.create((0, 0), 0)
 >>> Physical.internal_length
 16
 >>> len(Physical)
@@ -148,10 +148,10 @@ instances share a global unique id pool. Note below how the StaticObject and
 MovingObject don't share any ids, while Physical and Motion do.
 
 >>> for i in range(5):
-...     MovingObject(Physical((i, i), i), Motion((i, i), (-i, -i)))
+...     MovingObject.create(Physical((i, i), i), Motion((i, i), (-i, -i)))
 
 >>> for i in range(5):
-...     StaticObject(Physical((100 * i, 100 * i), 100 * i))
+...     StaticObject.create(Physical((100 * i, 100 * i), 100 * i))
 
 >>> Physical.ids
 array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
@@ -278,7 +278,7 @@ Above we see that clearing MovingObject left StaticObject data untouched. If we
 recreate another MovingObject for demonstration purposes, note that 
 Entity.clear() will clear the entire Entity-Component framework.
 
->>> MovingObject(Physical((0, 0), 1), Motion((1, 1), (-1, -1)))
+>>> MovingObject.create(Physical((0, 0), 1), Motion((1, 1), (-1, -1)))
 >>> MovingObject.ids
 array([0])
 >>> StaticObject.ids
@@ -1058,6 +1058,30 @@ class Entity(metaclass=_EntityType):
         return getattr(self, field)
 
     @classmethod
+    def create(cls, *args, **kwargs):
+        """Since __new__ and __init__ args are tied closely together, custom
+        creation procedures are best done through the create method to avoid
+        conflicting with __new__ and __init__ signatures.
+
+        A subclass can implement this signature however they like, and should
+        just pass the proper component instances into the super().create call.
+
+        Parameters
+        ----------
+        *args : Any
+            Args will map to annotated attributes in the order they are given.
+        **kwargs : Any
+            Keys will map to annotated attribute names.
+
+        Returns
+        -------
+        Entity:
+            An instance of this class.
+        """
+
+        return cls(*args, **kwargs)
+
+    @classmethod
     def has_field(cls, component_type):
         """Check if an entity type has a field of a particular type of
         component.
@@ -1320,6 +1344,14 @@ class _EntityMask:
             getattr(self._component, name)[indices] = value
         else:
             super().__setattr__(name, value)
+
+    @property
+    def _indices(self):
+        ids = self._entity.get_component_ids(self._component)
+        return self._component.indices_from_ids(ids)
+
+    def proxy(self, field):
+        return lambda: getattr(self._component, field)[self._indices]
 
 
 class _MaskedArrayProxy:
