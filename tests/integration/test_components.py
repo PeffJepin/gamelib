@@ -48,8 +48,8 @@ class TestVectorComponentIntegration:
     def test_creation(self):
         v1 = gamelib.Vec3(1, 2, 3)
         v2 = gamelib.Vec3(3, 2, 1)
-        c1 = VectorComponent(pos=v1)
-        c2 = VectorComponent(pos=tuple(v2))
+        c1 = VectorComponent.create(pos=v1)
+        c2 = VectorComponent.create(pos=tuple(v2))
 
         assert c1.pos == v1
         assert c2.pos == v2
@@ -62,8 +62,8 @@ class TestVectorComponentIntegration:
     def test_destroy(self):
         v1 = gamelib.Vec3(1, 2, 3)
         v2 = gamelib.Vec3(3, 2, 1)
-        c1 = VectorComponent(pos=v1)
-        c2 = VectorComponent(pos=v2)
+        c1 = VectorComponent.create(pos=v1)
+        c2 = VectorComponent.create(pos=v2)
 
         VectorComponent.destroy(c1)
 
@@ -71,7 +71,7 @@ class TestVectorComponentIntegration:
 
     def test_instance_ops(self):
         v = gamelib.Vec3(1, 2, 3)
-        c = VectorComponent(pos=v)
+        c = VectorComponent.create(pos=v)
 
         c.pos += (3, 2, 1)
         v += (3, 2, 1)
@@ -88,8 +88,8 @@ class TestVectorComponentIntegration:
     def test_array_ops(self):
         v1 = gamelib.Vec3(1, 2, 3)
         v2 = gamelib.Vec3(3, 2, 1)
-        VectorComponent(pos=v1)
-        VectorComponent(pos=v2)
+        VectorComponent.create(pos=v1)
+        VectorComponent.create(pos=v2)
 
         dv = (1, 2, 3)
         VectorComponent.pos += dv

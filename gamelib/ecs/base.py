@@ -604,6 +604,30 @@ class Component(metaclass=_ComponentType):
         return tuple(getattr(self, name) for name in self._fields)
 
     @classmethod
+    def create(cls, *args, **kwargs):
+        """Since __new__ and __init__ args are tied closely together, custom
+        creation procedures are best done through the create method to avoid
+        conflicting with __new__ and __init__ signatures.
+
+        A subclass can implement this signature however they like, and should
+        just pass the proper component instances into the super().create call.
+
+        Parameters
+        ----------
+        *args : Any
+            Args will map to annotated attributes in the order they are given.
+        **kwargs : Any
+            Keys will map to annotated attribute names.
+
+        Returns
+        -------
+        Component:
+            An instance of this class.
+        """
+
+        return cls(*args, **kwargs)
+
+    @classmethod
     def get(cls, id):
         """Gets an existing instance of this Component given an id.
 
