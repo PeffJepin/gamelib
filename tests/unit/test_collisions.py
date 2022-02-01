@@ -269,6 +269,18 @@ class TestBVH:
             equal_max = np.all(np.isclose(node.aabb.max, bmax), axis=1)
             assert np.any(equal_min & equal_max) == expected
 
+    def test_bvh_is_cached_per_model(self):
+        vertices = gl.coerce_array(np.arange(180), gl.vec3)
+        indices = gl.coerce_array(np.arange(60), gl.uvec3)
+        model = base.Model(vertices, indices)
+
+        root1 = collisions.BVH.create_tree(model, target_density=16)
+        root2 = collisions.BVH.create_tree(model, target_density=16)
+        root3 = collisions.BVH.create_tree(model, target_density=24)
+
+        assert root1 is root2
+        assert root1 is not root3
+
 
 class TestAABB:
     def test_getting_the_center(self):

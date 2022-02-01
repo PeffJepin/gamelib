@@ -1,4 +1,5 @@
 import dataclasses
+import weakref
 
 from typing import Tuple
 from typing import Iterable
@@ -7,6 +8,9 @@ import numpy as np
 
 from gamelib import gl
 from gamelib import Vec3
+
+
+_bvh_cache = dict()
 
 
 class Ray:
@@ -431,6 +435,16 @@ class BVH:
         """
 
         aabb = AABB(model.v_min, model.v_max)
+
+        # check if we already have created this bvh
+        key = (id(model), tuple(aabb.min), tuple(aabb.max), target_density)
+        ref = _bvh_cache.pop(key, None)
+        if ref is not None:
+            bvh = ref()
+            if bvh is not None:
+                _bvh_cache[key] = ref
+                return bvh
+
         root = cls(aabb)
         BVH_Helper.divide(root, model.vertices, model.indices, target_density)
         bmin_vectors = []
@@ -446,6 +460,9 @@ class BVH:
         root.leaf_bmax_vectors = np.stack(bmax_vectors)
         root.leaves = np.array(leaves, object)
         root.ntris = len(model.indices)
+
+        # cache reference
+        _bvh_cache[key] = weakref.ref(root)
         return root
 
     def __iter__(self):
