@@ -27,8 +27,8 @@ def test_first_entity_hit_base_case():
     model1 = geometry.GridMesh(4, 4)
     model2 = geometry.GridMesh(4, 4)
     model2.vertices += gamelib.Vec3(0, 0, 1)
-    entity1 = Entity1.create(ecs.Collider.from_model(model1))
-    entity2 = Entity2.create(ecs.Collider.from_model(model2))
+    entity1 = Entity1.create(ecs.Collider.create(model1))
+    entity2 = Entity2.create(ecs.Collider.create(model2))
 
     ray_top = geometry.Ray((2, 2, 10), (0, 0, -1))
     ray_bottom = geometry.Ray((2, 2, -10), (0, 0, 1))
@@ -44,8 +44,8 @@ def test_first_entity_hit_with_transform():
     model1.vertices += gamelib.Vec3(0, 0, 1)
     model3 = geometry.GridMesh(4, 4)
     transform = ecs.Transform.create(pos=(0, 0, 3), theta=30)
-    entity1 = Entity1.create(ecs.Collider.from_model(model1))
-    entity3 = Entity3.create(ecs.Collider.from_model(model3), transform)
+    entity1 = Entity1.create(ecs.Collider.create(model1))
+    entity3 = Entity3.create(ecs.Collider.create(model3), transform)
 
     ray_top = geometry.Ray((2, 2, 10), (0, 0, -1))
     ray_bottom = geometry.Ray((2, 2, -10), (0, 0, 1))

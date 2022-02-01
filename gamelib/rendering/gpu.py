@@ -1,5 +1,7 @@
 import numpy as np
 
+from typing import Callable
+
 import gamelib
 from gamelib import gl
 from gamelib.rendering import glslutils
@@ -368,11 +370,19 @@ class VertexArray:
 
     def _generate_buffer(self, source, dtype, auto=None):
         self._dirty = True
+
         if isinstance(source, buffers.Buffer):
             return source
-        elif isinstance(source, np.ndarray):
-            auto = auto if auto is not None else self._auto
-            buf_type = buffers.AutoBuffer if auto else buffers.Buffer
+        
+        auto = auto if auto is not None else self._auto
+        buf_type = buffers.AutoBuffer if auto else buffers.Buffer
+
+        if isinstance(source, np.ndarray):
+            buf = buf_type(source, dtype)
+            self._generated_buffers.append(buf)
+            return buf
+        elif isinstance(source, Callable):
+            assert isinstance(source(), np.ndarray)
             buf = buf_type(source, dtype)
             self._generated_buffers.append(buf)
             return buf

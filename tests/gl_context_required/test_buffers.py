@@ -43,6 +43,19 @@ class TestBuffer:
             # must supply dtype when using bytes
             buffer = buffers.Buffer(array.tobytes())
 
+    def test_initializing_a_buffer_with_a_callable(self):
+        array = np.arange(10, dtype=gl.float)
+        proxy = lambda: array
+        buffer = buffers.Buffer(proxy, gl.float)
+
+        assert buffer.dtype == gl.float
+        assert buffer.size == array.nbytes
+        assert np.all(buffer.read() == array)
+
+        with pytest.raises(Exception):
+            # for now callable must point to ndarray, may change in future.
+            buffer = buffers.Buffer(lambda: (1, 2, 3), gl.float)
+
     def test_writing_new_array_of_the_same_size(self):
         array = np.arange(10, dtype=gl.float)
         buffer = buffers.Buffer(array, gl.float)

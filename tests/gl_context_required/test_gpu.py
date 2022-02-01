@@ -373,3 +373,25 @@ class TestVaoIntegration:
         array3 += 100
         array4 += 33
         assert np.all(instructions.transform() == array3 + array4)
+
+    def test_using_a_callable_as_a_source(self):
+        array1 = np.arange(6, dtype=gl.int)
+        proxy = lambda: array1
+        instructions = gpu.TransformFeedback(
+            shader="""
+                #version 330
+                #vert
+                in int input1;
+                out int output_value;
+                void main() 
+                {
+                    output_value = input1;
+                }
+            """,
+            input1=proxy,
+        )
+        assert np.all(instructions.transform() == array1)
+
+        array1 = np.arange(12)
+
+        assert np.all(instructions.transform() == array1)

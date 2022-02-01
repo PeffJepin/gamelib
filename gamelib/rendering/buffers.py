@@ -4,6 +4,8 @@
 
 import numpy as np
 
+from typing import Callable
+
 from gamelib import get_context, gl
 
 
@@ -49,6 +51,10 @@ class Buffer:
         ----------
         data : np.ndarray | bytes
         """
+
+        if isinstance(data, Callable):
+            data = data()
+            assert isinstance(data, np.ndarray)
 
         if not len(data) > 0:
             return
