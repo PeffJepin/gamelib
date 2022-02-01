@@ -373,7 +373,7 @@ class VertexArray:
 
         if isinstance(source, buffers.Buffer):
             return source
-        
+
         auto = auto if auto is not None else self._auto
         buf_type = buffers.AutoBuffer if auto else buffers.Buffer
 

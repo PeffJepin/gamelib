@@ -841,7 +841,7 @@ class _EntityGlobalState:
     def grow_index(self):
         new_length = len(self.data_index) * 1.4
         self.data_index = _reallocate_array(self.data_index, new_length, -1)
-        self.type_index = _reallocate_array(self.data_index, new_length, -1)
+        self.type_index = _reallocate_array(self.type_index, new_length, -1)
 
 
 class _EntityType(type):

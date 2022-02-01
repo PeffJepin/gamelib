@@ -9,8 +9,13 @@ class Collider(base.Component):
     bvh: geometry.BVH
 
     @classmethod
-    def create(cls, model, target_density=64):
-        bvh = geometry.collisions.BVH.create_tree(model, target_density)
+    def create(cls, model_or_bvh, target_density=64):
+        if isinstance(model_or_bvh, geometry.BVH):
+            bvh = model_or_bvh
+        else:
+            bvh = geometry.collisions.BVH.create_tree(
+                model_or_bvh, target_density
+            )
         return cls(bvh)
 
 
