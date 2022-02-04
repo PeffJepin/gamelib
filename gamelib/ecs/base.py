@@ -72,7 +72,7 @@ array([[-50., -50.],
        [ 73.,  73.]])
 
 
-Data can be accessed and destroyed by the Component ids. Note that when 
+Data can be accessed and destroyed by the Component ids. Note that when
 component data is destroyed, the original order of the data is NOT preserved.
 
 >>> Physical.ids
@@ -144,7 +144,7 @@ The following examples will use this set of simple example classes:
 
 Entities are very similar to components in that they are just meant to organize
 and facilitate access to data. One important difference to note is that Entity
-instances share a global unique id pool. Note below how the StaticObject and 
+instances share a global unique id pool. Note below how the StaticObject and
 MovingObject don't share any ids, while Physical and Motion do.
 
 >>> for i in range(5):
@@ -165,8 +165,8 @@ array([5, 6, 7, 8, 9])
 array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
 
 
-This distinction means you can load access to an entity from the Entity base 
-class with only an id value. 
+This distinction means you can load access to an entity from the Entity base
+class with only an id value.
 
 >>> Entity.get(0)
 <MovingObject(id=0, physical=<Physical(id=0, pos=[0. 0.], mass=0.0)>, motion=<Motion(id=0, vel=[0. 0.], acc=[0. 0.])>)>
@@ -174,7 +174,7 @@ class with only an id value.
 <StaticObject(id=5, physical=<Physical(id=5, pos=[0. 0.], mass=0.0)>)>
 
 
-Like with Component, access into individual elements of the data arrays can 
+Like with Component, access into individual elements of the data arrays can
 be made through an instance of an EntityType, while array access is available
 through the type objects themselves.
 
@@ -191,7 +191,7 @@ The following is an example of direct array element manipulation.
 
 Access to the component arrays through an entity is a little more complex than
 just getting access to the array, since it needs to be masked, as can be seen
-by the return types of the following. 
+by the return types of the following.
 
 >>> StaticObject.physical
 <gamelib.ecs._EntityMask at 0x7f875e6c46a0>
@@ -260,8 +260,8 @@ array([[ 400.,  400.],
        [ 200.,  200.]])
 
 
-Finally there is a distiction to be made between clearing Entity and clearing a 
-subclass of entity. 
+Finally there is a distiction to be made between clearing Entity and clearing a
+subclass of entity.
 
 >>> Motion.ids
 array([4, 1, 2])
@@ -275,7 +275,7 @@ array([5, 6, 7, 8, 9])
 
 
 Above we see that clearing MovingObject left StaticObject data untouched. If we
-recreate another MovingObject for demonstration purposes, note that 
+recreate another MovingObject for demonstration purposes, note that
 Entity.clear() will clear the entire Entity-Component framework.
 
 >>> MovingObject.create(Physical((0, 0), 1), Motion((1, 1), (-1, -1)))
@@ -299,7 +299,6 @@ array([], dtype=int64)
 
 import collections
 import itertools
-import threading
 
 from typing import Dict
 from typing import Iterable
@@ -430,45 +429,69 @@ class _ComponentType(type):
     specific indices into that array.
     """
 
+    # must be implemented on component classes
+    fields: Dict[str, Any]  # any numpy compatible dtype
+    arrays: Dict[str, np.ndarray]  # field -> internal array mapping
+    _data_index: np.ndarray
     _active_length: int
     _initialized: bool = False
-    _fields: Dict[str, Any]  # any numpy compatible dtype
-    _arrays: Dict[str, np.ndarray]  # field -> internal array mapping
-    _lock: threading.RLock
-
-    @property
-    def ids(cls):
-        """A masked view of the active ids."""
-
-        return cls._arrays["id"][: cls._active_length]
-
-    @property
-    def internal_length(cls):
-        """Get the full length of the internal data arrays."""
-
-        return len(cls._arrays["id"])
 
     def __len__(cls):
+        """How many of this component actually exists."""
+
         return cls._active_length
 
     def __setattr__(cls, name, value):
         """Annotated attribute access from the type object represents the whole
         array, so this should set the value for the entire internal array."""
 
-        if cls._initialized and name in cls._fields:
-            cls._arrays[name][: cls._active_length] = value
+        if cls._initialized and name in cls.fields:
+            cls.arrays[name][: cls._active_length] = value
         else:
             super().__setattr__(name, value)
 
-    def __enter__(cls):
-        """Acquire a lock on the internal arrays."""
+    @property
+    def ids(cls):
+        """A masked view of the active ids."""
 
-        cls._lock.acquire()
+        return cls.arrays["id"][: cls._active_length]
 
-    def __exit__(cls, *args, **kwargs):
-        """Release the internal lock."""
+    @property
+    def internal_length(cls):
+        """Get the full length of the internal data arrays."""
 
-        cls._lock.release()
+        return len(cls.arrays["id"])
+
+    def get_subclasses(cls):
+        """Gets a list of all subclasses defined below this one.
+
+        Returns
+        -------
+        list[_ComponentType]
+        """
+
+        total_subclasses = []
+        running_list = list(cls.__subclasses__())
+        while running_list:
+            c = running_list.pop(0)
+            total_subclasses.append(c)
+            running_list.extend(c.__subclasses__())
+        return total_subclasses
+
+    def get_index(cls, id_):
+        """Gets the data index for component with given id.
+
+        Parameters
+        ----------
+        id_ : int
+
+        Returns
+        -------
+        int:
+            Returns -1 if there is no component with this id.
+        """
+
+        return cls._data_index[id_]
 
 
 class Component(metaclass=_ComponentType):
@@ -476,7 +499,11 @@ class Component(metaclass=_ComponentType):
     memory. Attributes should be annotated like a dataclass and appropriate
     internal arrays will be managed with the annotated dtype."""
 
+    fields: Dict[str, Any]  # any numpy compatible dtype
+    arrays: Dict[str, np.ndarray]  # field -> internal array mapping
     _data_index: np.ndarray
+    _active_length: int
+    _initialized: bool = False
     _structured_dtype: np.dtype
     _id_gen: IdGenerator
     itemsize: int
@@ -485,23 +512,18 @@ class Component(metaclass=_ComponentType):
         """Initialize the subclass based on what has been annotated."""
 
         cls._initialized = False
-        cls._lock = threading.RLock()
         annotations = cls.__dict__.get("__annotations__", {})
-        if getattr(cls, "_fields", None):
-            cls._fields.update(annotations)
+        if getattr(cls, "fields", None):
+            cls.fields.update(annotations)
         else:
-            cls._fields = annotations
-        if not cls._fields:
+            cls.fields = annotations
+        if not cls.fields:
             raise AttributeError("No attributes have been annotated.")
-        for field in cls._fields:
+        for field in cls.fields:
             setattr(cls, field, _ComponentElement(cls, field))
-        cls._active_length = 0
-        cls._id_gen = IdGenerator()
         cls._init_arrays()
-        cls._data_index = np.zeros(_STARTING_LENGTH, int)
-        cls._data_index[:] = -1
         dtypes = []
-        for name, dtype in cls._fields.items():
+        for name, dtype in cls.fields.items():
             if dtype in datatypes.VectorType.__subclasses__():
                 dtypes.append((name, dtype.as_dtype()))
             elif isinstance(dtype, np.dtype):
@@ -559,16 +581,16 @@ class Component(metaclass=_ComponentType):
 
         kwargs.pop("_id", None)  # __new__ kwarg not needed here
         if args:
-            for field, value in zip(self._fields, args):
+            for field, value in zip(self.fields, args):
                 setattr(self, field, value)
         else:
             for field, value in kwargs.items():
-                if field in self._fields:
+                if field in self.fields:
                     setattr(self, field, value)
 
     def __repr__(self):
         values = ", ".join(
-            f"{field}={getattr(self, field)}" for field in self._fields
+            f"{field}={getattr(self, field)}" for field in self.fields
         )
         return f"<{self.__class__.__name__}(id={self.id}, {values})>"
 
@@ -581,16 +603,6 @@ class Component(metaclass=_ComponentType):
         else:
             return self.values == other
 
-    def __enter__(self):
-        """Use the instance as a context manager to lock the internal array."""
-
-        self._lock.acquire()
-
-    def __exit__(self, *args, **kwargs):
-        """Release the lock."""
-
-        self._lock.release()
-
     @property
     def id(self):
         """Readonly access to the object's id."""
@@ -601,7 +613,7 @@ class Component(metaclass=_ComponentType):
     def values(self):
         """Get the values for this instance's annotated attributes."""
 
-        return tuple(getattr(self, name) for name in self._fields)
+        return tuple(getattr(self, name) for name in self.fields)
 
     @classmethod
     def create(cls, *args, **kwargs):
@@ -655,9 +667,9 @@ class Component(metaclass=_ComponentType):
         """
 
         combined = np.empty(cls.internal_length, cls._structured_dtype)
-        for name in cls._fields:
-            combined[name] = cls._arrays[name]
-        combined["id"] = cls._arrays["id"]
+        for name in cls.fields:
+            combined[name] = cls.arrays[name]
+        combined["id"] = cls.arrays["id"]
         return combined
 
     @classmethod
@@ -684,8 +696,8 @@ class Component(metaclass=_ComponentType):
 
         # swap good data on the end of the arrays into this data slot
         cls._active_length -= 1
-        swapped_id = cls._arrays["id"][cls._active_length]
-        for array in cls._arrays.values():
+        swapped_id = cls.arrays["id"][cls._active_length]
+        for array in cls.arrays.values():
             array[index] = array[cls._active_length]
         cls._data_index[swapped_id] = index
         cls._data_index[id] = -1
@@ -696,9 +708,12 @@ class Component(metaclass=_ComponentType):
 
     @classmethod
     def clear(cls):
-        """Resets the component to initial state."""
+        """Resets the component and all subclasses to initial state."""
 
-        cls.__init_subclass__()
+        if cls != Component:
+            cls._init_arrays()
+        for c in cls.get_subclasses():
+            c._init_arrays()
 
     @classmethod
     def indices_from_ids(cls, ids):
@@ -725,9 +740,9 @@ class Component(metaclass=_ComponentType):
             )
             if new_length == cls.internal_length:
                 return
-            for field, array in cls._arrays.items():
-                array = cls._arrays[field]
-                cls._arrays[field] = _reallocate_array(array, new_length, -1)
+            for field, array in cls.arrays.items():
+                array = cls.arrays[field]
+                cls.arrays[field] = _reallocate_array(array, new_length, -1)
 
         # shrink the index
         necessary_length = cls._id_gen.largest_active + 1
@@ -742,14 +757,19 @@ class Component(metaclass=_ComponentType):
     def _init_arrays(cls):
         """Allocate the initial internal arrays."""
 
-        cls._arrays = dict()
-        for field, dtype in cls._fields.items():
+        cls.arrays = dict()
+        for field, dtype in cls.fields.items():
             if isinstance(dtype, type) and issubclass(
                 dtype, datatypes.VectorType
             ):
                 dtype = dtype.as_dtype()
-            cls._arrays[field] = np.zeros(_STARTING_LENGTH, dtype)
-        cls._arrays["id"] = np.zeros(_STARTING_LENGTH, int)
+            cls.arrays[field] = np.zeros(_STARTING_LENGTH, dtype)
+        cls.arrays["id"] = np.zeros(_STARTING_LENGTH, int)
+
+        cls._data_index = np.zeros(_STARTING_LENGTH, int)
+        cls._data_index[:] = -1
+        cls._active_length = 0
+        cls._id_gen = IdGenerator()
 
     @classmethod
     def _create(cls):
@@ -767,21 +787,21 @@ class Component(metaclass=_ComponentType):
         index = cls._active_length
         if index >= len(cls):
             new_length = index * 1.4
-            for field, arr in cls._arrays.items():
-                cls._arrays[field] = _reallocate_array(arr, new_length, -1)
+            for field, arr in cls.arrays.items():
+                cls.arrays[field] = _reallocate_array(arr, new_length, -1)
         cls._active_length += 1
         cls._data_index[id] = index
-        cls._arrays["id"][index] = id
+        cls.arrays["id"][index] = id
         return id
 
 
 class _ComponentElement:
     """Descriptor for an annotated component field."""
 
-    def __init__(self, owner, field):
+    def __init__(self, owner: _ComponentType, field):
         self._owner = owner
         self._field = field
-        self._dtype = owner._fields[field]
+        self._dtype = owner.fields[field]
         self._should_view = False
         if self._dtype in datatypes.VectorType.__subclasses__():
             self._should_view = True
@@ -792,15 +812,13 @@ class _ComponentElement:
         entire array."""
 
         if obj is None:
-            return self._owner._arrays[self._field][
-                : self._owner._active_length
-            ]
+            return self._owner.arrays[self._field][: len(self._owner)]
 
-        data_index = self._owner._data_index[obj.id]
+        data_index = self._owner.get_index(obj.id)
         if data_index == -1:
             return None
 
-        value = self._owner._arrays[self._field][data_index]
+        value = self._owner.arrays[self._field][data_index]
         if self._should_view:
             return value.view(self._dtype)
         return value
@@ -808,10 +826,10 @@ class _ComponentElement:
     def __set__(self, obj, value):
         """Sets a single value into the internal array."""
 
-        data_index = self._owner._data_index[obj.id]
+        data_index = self._owner.get_index(obj.id)
         if data_index == -1:
             return
-        self._owner._arrays[self._field][data_index] = value
+        self._owner.arrays[self._field][data_index] = value
 
 
 class _EntityGlobalState:
@@ -819,7 +837,7 @@ class _EntityGlobalState:
     accessible from the Entity class."""
 
     # class attributes
-    entity_number_counter = itertools.count(0)
+    entity_number_counter = itertools.count(1)  # start at 1, Entity is 0
     subclass_lookup: Dict[int, "_EntityType"] = dict()
     # keeps a set of entity numbers that can be looked up in subclass lookup
     subclasses_by_component_type = collections.defaultdict(set)
@@ -847,13 +865,42 @@ class _EntityGlobalState:
 class _EntityType(type):
     """Entity metaclass. Describes properties unique to entity type objects."""
 
-    _arrays: dict
+    _global = _EntityGlobalState()
+
+    # per-subclass
+    arrays: Dict[str, np.ndarray]
     _length: int
-    _global: _EntityGlobalState
+    _entity_number: int
+
+    def __hash__(cls):
+        """Assume unique entity numbers."""
+
+        return hash(cls._entity_number)
+
+    def __eq__(cls, other):
+        """Assume unique entity numbers."""
+
+        return (
+            isinstance(other, _EntityType)
+            and cls._entity_number == other._entity_number
+        )
 
     def __len__(cls):
+        """Gets the number of Entities of this type that exists."""
+
+        if cls == Entity:
+            return cls._global.existing
+
+        return cls._length
+
+    @property
+    def internal_length(cls):
         """Gets the length of the internal data arrays."""
-        return len(cls._arrays["id"])
+
+        if cls == Entity:
+            return len(cls._global.data_index)
+
+        return len(cls.arrays["id"])
 
     def get_subclasses(cls, components=None):
         """Gets all of the subclasses of Entity if called globally on Entity,
@@ -868,7 +915,7 @@ class _EntityType(type):
 
         Returns
         -------
-        tuple | list
+        list[Type[Entity]]
         """
 
         if components is not None:
@@ -876,9 +923,15 @@ class _EntityType(type):
                 components = (components,)
             return cls._get_subclasses_by_contained_components(components)
         if cls == Entity:
-            return cls._global.subclass_lookup.values()
+            return list(cls._global.subclass_lookup.values())
         else:
-            return cls.__subclasses__()
+            total = []
+            running_list = [cls]
+            while running_list:
+                c = running_list.pop(0)
+                total.append(c)
+                running_list.extend(c.__subclasses__())
+            return total
 
     def _get_subclasses_by_contained_components(cls, components):
         if cls == Entity:
@@ -897,13 +950,13 @@ class _EntityType(type):
                 continue
             these_nums = cls._global.subclasses_by_component_type[c]
             entity_nums = set.intersection(these_nums, entity_nums)
-        return tuple(cls._global.subclass_lookup[n] for n in entity_nums)
+        return list(cls._global.subclass_lookup[n] for n in entity_nums)
 
     @property
     def ids(cls):
         if cls == Entity:
             return np.where(Entity._global.data_index != -1)[0]
-        return cls._arrays["id"][: cls._length]
+        return cls.arrays["id"][: cls._length]
 
     @property
     def existing(cls):
@@ -929,30 +982,27 @@ class Entity(metaclass=_EntityType):
     type will tie together. Note that all annotated datatypes should be
     subclasses of Component."""
 
-    # Entity global attributes
-    _global = _EntityGlobalState()
-
-    # Subclass attributes
-    _entity_number: int  # derived automatically
+    arrays: Dict[str, np.ndarray]
+    fields: Dict[str, _ComponentType]
     _length: int
-    _arrays: Dict[str, np.ndarray]
-    _fields: Dict[str, _ComponentType]
+    _entity_number = 0  # derived automatically for subclasses
+    _field_by_type: Dict[_ComponentType, str]
 
     def __init_subclass__(cls):
         """Inspect the annotated attributes and initialize internals
         accordingly."""
 
-        cls._entity_number = next(Entity._global.entity_number_counter)
+        cls._entity_number = next(cls._global.entity_number_counter)
         cls._global.subclass_lookup[cls._entity_number] = cls
         annotations = cls.__dict__.get("__annotations__", {})
-        if getattr(cls, "_fields", None):
-            cls._fields.update(annotations)
+        if getattr(cls, "fields", None):
+            cls.fields.update(annotations)
         else:
-            cls._fields = annotations
-        if not cls._fields:
+            cls.fields = annotations
+        if not cls.fields:
             raise AttributeError("No attributes have been annotated.")
         cls._field_by_type = dict()
-        for field, component_type in cls._fields.items():
+        for field, component_type in cls.fields.items():
             cls._global.subclasses_by_component_type[component_type].add(
                 cls._entity_number
             )
@@ -976,7 +1026,7 @@ class Entity(metaclass=_EntityType):
 
         if _id is None:
             _id = cls._create()
-        elif Entity._global.type_index[_id] == -1:
+        elif cls._global.type_index[_id] == -1:
             return None
         obj = super().__new__(cls)
         obj._id = _id
@@ -997,7 +1047,7 @@ class Entity(metaclass=_EntityType):
 
         kwargs.pop("_id", None)  # __new__ kwarg not needed here
         if args:
-            for field, arg in zip(self._fields, args):
+            for field, arg in zip(self.fields, args):
                 setattr(self, field, arg)
         elif kwargs:
             for field, arg in kwargs.items():
@@ -1005,7 +1055,7 @@ class Entity(metaclass=_EntityType):
 
     def __repr__(self):
         components = ", ".join(
-            f"{name}={getattr(self, name)}" for name in self._fields
+            f"{name}={getattr(self, name)}" for name in self.fields
         )
         return f"<{self.__class__.__name__}(id={self._id}, {components})>"
 
@@ -1030,7 +1080,7 @@ class Entity(metaclass=_EntityType):
     def __iter__(self):
         """Iterate over the components this entity is bound to."""
 
-        return iter(getattr(self, name) for name in self._fields)
+        return iter(getattr(self, name) for name in self.fields)
 
     @property
     def id(self):
@@ -1128,13 +1178,13 @@ class Entity(metaclass=_EntityType):
         """
 
         field = ""
-        for name, type in cls._fields.items():
+        for name, type in cls.fields.items():
             if type is component_type:
                 field = name
                 break
         if not field:
             raise ValueError(f"Couldn't find a field for {component_type!r}.")
-        return cls._arrays[field][: cls._length]
+        return cls.arrays[field][: cls._length]
 
     @classmethod
     def get(cls, id):
@@ -1150,7 +1200,7 @@ class Entity(metaclass=_EntityType):
             Returns None if no entity with this id was found.
         """
 
-        if id >= len(Entity._global.data_index):
+        if id >= len(cls._global.data_index):
             return None
         if cls == Entity:
             entity_num = cls._global.type_index[id]
@@ -1194,8 +1244,8 @@ class Entity(metaclass=_EntityType):
         # if it's already the final element we don't need to swap
         if entity_index != entity_type._length:
             # swap the end entity data into this destroyed entities data slot
-            id_at_the_end = entity_type._arrays["id"][entity_type._length]
-            for array in entity_type._arrays.values():
+            id_at_the_end = entity_type.arrays["id"][entity_type._length]
+            for array in entity_type.arrays.values():
                 array[entity_index] = array[entity_type._length]
             # update the global index
             cls._global.data_index[id_at_the_end] = entity_index
@@ -1213,30 +1263,32 @@ class Entity(metaclass=_EntityType):
         also destroy bound components."""
 
         if cls == Entity:
-            for ent in Entity.__subclasses__():
-                ent.clear()
-            for comp in Component.__subclasses__():
-                comp.clear()
-            Entity._global = _EntityGlobalState()
-        else:
-            for field, comp_type in cls._fields.items():
-                for id in cls._arrays[field][: cls._length]:
-                    comp_type.destroy(id)
-            for id in cls.ids:
-                Entity._global.id_gen.recycle(id)
-            Entity._global.data_index[cls.ids] = -1
-            Entity._global.type_index[cls.ids] = -1
-            cls._init_arrays()
-            cls._length = 0
+            _EntityType._global = _EntityGlobalState()
+            for e in Entity.get_subclasses():
+                e._init_arrays()
+            Component.clear()
+            return
+
+        for c in [cls] + cls.get_subclasses():
+            for field, comp_type in c.fields.items():
+                for i in c.arrays[field][: c._length]:
+                    comp_type.destroy(i)
+            for i in c.ids:
+                cls._global.id_gen.recycle(i)
+
+            cls._global.data_index[c.ids] = -1
+            cls._global.type_index[c.ids] = -1
+            c._init_arrays()
 
     @classmethod
     def _init_arrays(cls):
         """Allocate the initial internal data storage."""
 
-        cls._arrays = {
-            field: np.zeros(_STARTING_LENGTH, int) for field in cls._fields
+        cls.arrays = {
+            field: np.zeros(_STARTING_LENGTH, int) for field in cls.fields
         }
-        cls._arrays["id"] = np.zeros(_STARTING_LENGTH, int)
+        cls.arrays["id"] = np.zeros(_STARTING_LENGTH, int)
+        cls._length = 0
 
     @classmethod
     def _create(cls):
@@ -1244,15 +1296,15 @@ class Entity(metaclass=_EntityType):
         bookkeeping for creating a new instance."""
 
         assert cls != Entity, "should be a subclass"
-        id_ = next(Entity._global.id_gen)
+        id_ = next(cls._global.id_gen)
 
-        if id_ >= len(Entity._global.data_index):
-            Entity._global.grow_index()
+        if id_ >= len(cls._global.data_index):
+            cls._global.grow_index()
         data_index = cls._get_new_data_index()
         cls._global.data_index[id_] = data_index
         cls._global.type_index[id_] = cls._entity_number
         cls._global.existing += 1
-        cls._arrays["id"][data_index] = id_
+        cls.arrays["id"][data_index] = id_
         return id_
 
     @classmethod
@@ -1266,8 +1318,8 @@ class Entity(metaclass=_EntityType):
     @classmethod
     def _grow_arrays(cls):
         new_length = int(len(cls) * 1.4)
-        for name, array in cls._arrays.items():
-            cls._arrays[name] = _reallocate_array(array, new_length, fill=-1)
+        for name, array in cls.arrays.items():
+            cls.arrays[name] = _reallocate_array(array, new_length, fill=-1)
 
     @classmethod
     def _consider_shrinking(cls):
@@ -1276,9 +1328,9 @@ class Entity(metaclass=_EntityType):
             new_length = max(int(cls._length * 1.2), _STARTING_LENGTH)
             if new_length == len(cls):
                 return
-            for field, array in cls._arrays.items():
-                array = cls._arrays[field]
-                cls._arrays[field] = _reallocate_array(array, new_length, -1)
+            for field, array in cls.arrays.items():
+                array = cls.arrays[field]
+                cls.arrays[field] = _reallocate_array(array, new_length, -1)
 
         # shrink the index
         necessary_length = cls._global.id_gen.largest_active + 1
@@ -1312,8 +1364,8 @@ class _EntityMask:
         a copy of the array, not a view. In the future this class may help to
         get around this problem by implementing mathematical dunder methods."""
 
-        if name not in self._component._fields and name != "ids":
-            raise AttributeError(f"name not in {self._component._fields!r}.")
+        if name not in self._component.fields and name != "ids":
+            raise AttributeError(f"name not in {self._component.fields!r}.")
         ids = self._entity.get_component_ids(self._component)
         if name == "ids":
             return ids
@@ -1324,7 +1376,7 @@ class _EntityMask:
     def __setattr__(self, name, value):
         if not self._initialized:
             super().__setattr__(name, value)
-        elif name in self._component._fields:
+        elif name in self._component.fields:
             if isinstance(value, _MaskedArrayProxy):
                 # the only time an array proxy is passed in here
                 # is when is has been called like the following:
@@ -1351,7 +1403,11 @@ class _EntityMask:
         return self._component.indices_from_ids(ids)
 
     def proxy(self, field):
-        return lambda: getattr(self._component, field)[self._indices]
+        return lambda: (
+            arr[self._indices]
+            if len(arr := getattr(self._component, field)) > 0
+            else arr
+        )
 
 
 class _MaskedArrayProxy:
@@ -1429,13 +1485,13 @@ class _BoundComponent:
 
         if obj is None:
             return _EntityMask(self._owner, self._component_type)
-        data_index = Entity._global.data_index[obj.id]
+        data_index = _EntityType._global.data_index[obj.id]
         if data_index == -1:
             return None
         cached = getattr(obj, self._cached_name, None)
         if cached is not None:
             return cached
-        component_id = obj._arrays[self._field][data_index]
+        component_id = obj.arrays[self._field][data_index]
         component_instance = self._component_type.get(component_id)
         setattr(obj, self._cached_name, component_instance)
         return component_instance
@@ -1443,10 +1499,10 @@ class _BoundComponent:
     def __set__(self, obj, component):
         """Binds this entity to the given component."""
 
-        data_index = Entity._global.data_index[obj.id]
+        data_index = _EntityType._global.data_index[obj.id]
         if data_index == -1:
             return
-        obj._arrays[self._field][data_index] = component.id
+        obj.arrays[self._field][data_index] = component.id
 
     def __repr__(self):
         return f"<_ComponentDescriptor(type={self._component_type})>"
@@ -1466,11 +1522,6 @@ def _reallocate_array(array, new_length, fill=0):
         new_array[:] = array[:new_length]
     return new_array
 
-
-# TODO: Some way to get a proxy to a component attribute such that another
-#   module could keep reference to the proxy and call it on demand to get
-#   to the internal data. Since the internal array is subject to reallocation,
-#   simply getting a reference to the underlying array is insufficient.
 
 # TODO: An option to allocate the internal arrays using the structured dtype
 #   instead of individual arrays. Using a decorator approach like dataclass

@@ -1,7 +1,6 @@
 import numpy as np
 
 import pytest
-import threading
 import time
 
 from gamelib.ecs import base
@@ -168,25 +167,6 @@ class TestComponent:
 
         assert component2.id == c1_id
 
-    def test_ids_back_to_0_after_clear(self):
-        for _ in range(10):
-            Component1.create(0, 0)
-        Component1.clear()
-
-        assert Component1.create(0, 0).id == 0
-
-    def test_clearing_a_component(self):
-        for _ in range(10):
-            component = Component1.create(0, 0)
-
-        assert len(Component1) >= 10
-
-        Component1.clear()
-
-        assert len(Component1) == 0
-        assert component.x is None
-        assert component.y is None
-
     def test_masked_after_being_destroyed(self):
         component1 = Component1.create(1, 1)
         component2 = Component1.create(2, 2)
@@ -263,40 +243,6 @@ class TestComponent:
             assert c.values == expected
             assert Component1.get(c.id).values == expected
 
-    def test_locking_access_using_context_manager(self):
-        instance = Component1.create(0, 0)
-        running = True
-
-        def increment(inst):
-            while running:
-                inst.x += 1
-                inst.y += 1
-
-        t = threading.Thread(target=increment, args=(instance,), daemon=True)
-        t.start()
-
-        try:
-            # thread shouldn't be able to increment
-            # a component instance can lock the entire array
-            with instance:
-                first_peek = (instance.x, instance.y)
-                for _ in range(100):
-                    assert first_peek == (instance.x, instance.y)
-
-            # thread should do some increments
-            time.sleep(0.001)
-
-            # thread should be locked out again
-            # the component type can lock the entire array
-            with Component1:
-                second_peek = (instance.x, instance.y)
-                assert second_peek != first_peek
-                for _ in range(100):
-                    assert second_peek == (instance.x, instance.y)
-        finally:
-            running = False
-            t.join(1)
-
     def test_component_inheritance(self):
         class C(Component1):
             pass
@@ -304,6 +250,64 @@ class TestComponent:
         comp = C(x=1, y=2)
         assert comp.x == 1
         assert comp.y == 2
+
+    def test_base_component_subclasses(self):
+        class C(Component1):
+            pass
+
+        all_subclasses = base.Component.get_subclasses()
+
+        assert C in all_subclasses
+        assert Component1 in all_subclasses
+        assert Component2 in all_subclasses
+
+    def test_getting_subclasses_of_a_subclass(self):
+        class C1(Component1):
+            pass
+
+        class C2(Component2):
+            pass
+
+        class C3(C1):
+            pass
+
+        subclasses1 = Component1.get_subclasses()
+        subclasses2 = Component2.get_subclasses()
+
+        assert C1 in subclasses1
+        assert C3 in subclasses1
+        assert C1 not in subclasses2
+        assert C3 not in subclasses2
+        assert C2 in subclasses2
+        assert C2 not in subclasses1
+
+    def test_ids_back_to_0_after_clear(self):
+        for _ in range(2):
+            Component1.create(0, 0)
+        Component1.clear()
+
+        assert Component1.create(0, 0).id == 0
+
+    def test_clearing_a_component(self):
+        for _ in range(2):
+            Component1.create(0, 0)
+        assert len(Component1) == 2
+
+        Component1.clear()
+
+        assert len(Component1) == 0
+
+    def test_clearing_a_parent_class(self):
+        for _ in range(2):
+            Component1.create(0, 0)
+            Component2.create(0, 0)
+        assert len(Component1) == 2
+        assert len(Component2) == 2
+
+        base.Component.clear()
+
+        assert len(Component1) == 0
+        assert len(Component2) == 0
 
 
 class Entity1(base.Entity):
@@ -473,8 +477,8 @@ class TestEntity:
     def test_internal_length(self):
         Entity1.clear()
 
-        assert Entity1.existing == 0
-        assert len(Entity1) > 0
+        assert len(Entity1) == 0
+        assert Entity1.internal_length > 0
 
     def test_auto_allocation(self):
         c1 = Component1.create(1, 2)
@@ -504,35 +508,46 @@ class TestEntity:
         assert len(Entity1) < grown_length
 
     def test_clearing_a_subclass(self):
-        entities1, entities2 = [], []
-        components1, components2 = [], []
+        class NestedClass(Entity1):
+            pass
+
+        entities1, entities2, entities3 = [], [], []
+        components1, components2, components3 = [], [], []
         for i in range(3):
             comp1 = Component1.create(i, i)
-            comp2 = Component2.create(100 * i, 100 * i)
+            comp2 = Component2.create(i, i)
             components1.extend((comp1, comp2))
             entities1.append(Entity1.create(comp1, comp2))
 
             comp1 = Component1.create(i, i)
-            comp2 = Component2.create(100 * i, 100 * i)
+            comp2 = Component2.create(i, i)
             components2.extend((comp1, comp2))
             entities2.append(Entity2.create(comp1, comp2))
 
-        Entity2.clear()
+            comp1 = Component1.create(i, i)
+            comp2 = Component2.create(i, i)
+            components3.extend((comp1, comp2))
+            entities3.append(NestedClass.create(comp1, comp2))
 
-        for e in entities1:
-            assert base.Entity.get(e.id) == e
-        for c in components1:
-            assert type(c).get(c.id) == c
+        Entity1.clear()
 
         for e in entities2:
+            assert base.Entity.get(e.id) == e
+        for c in components2:
+            assert type(c).get(c.id) == c
+
+        for e in entities1 + entities3:
             assert base.Entity.get(e.id) is None
             assert e.comp1 is None
             assert e.comp2 is None
-        for c in components2:
+        for c in components1 + components3:
             assert type(c).get(c.id) is None
             assert c.values == (None, None)
 
     def test_clearing_the_base_class(self):
+        class NestedClass(Entity1):
+            pass
+
         entities = []
         components = []
         for i in range(3):
@@ -546,13 +561,23 @@ class TestEntity:
             components.extend((comp1, comp2))
             entities.append(Entity2.create(comp1, comp2))
 
+            comp1 = Component1.create(i, i)
+            comp2 = Component2.create(100 * i, 100 * i)
+            components.extend((comp1, comp2))
+            entities.append(NestedClass.create(comp1, comp2))
+
         base.Entity.clear()
 
         for e in entities:
             assert base.Entity.get(e.id) is None
+            assert len(Entity1) == 0
+            assert len(Entity2) == 0
+            assert len(NestedClass) == 0
+            assert len(base.Entity) == 0
         for c in components:
             assert type(c).get(c.id) is None
-            assert c.values == (None, None)
+            assert len(Component1) == 0
+            assert len(Component2) == 0
 
     def test_entity_inheritance(self):
         class E(Entity1):

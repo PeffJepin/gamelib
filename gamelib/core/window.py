@@ -127,7 +127,7 @@ def swap_buffers():
     _window.swap_buffers()
 
 
-def clear(red=0.0, blue=0.0, green=0.0, alpha=0.0, depth=1.0, viewport=None):
+def clear(red=0.0, green=0.0, blue=0.0, alpha=0.0, depth=1.0, viewport=None):
     """Clears the framebuffer. The float values should be on a range
     from 0 to 1.
 
