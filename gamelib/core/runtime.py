@@ -104,6 +104,8 @@ def update():
     now = time.Timer.now()
     next_frame = _render_timer.remaining(now=now)
     next_update = _update_timer.remaining(now=now)
+    threaded_schedule.update()
+    schedule.update()
 
     if next_frame < next_update:
         _render_timer.tick(config.fps)
