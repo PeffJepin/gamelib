@@ -107,11 +107,11 @@ def test_loading_single_file_shader(glsl):
 
 
 def test_loading_separate_file_shader(vert, tesc, tese, geom, frag):
-    vert_s = f"#version 330\nvoid main() {{1}}"
-    tesc_s = f"#version 330\nvoid main() {{2}}"
-    tese_s = f"#version 330\nvoid main() {{3}}"
-    geom_s = f"#version 330\nvoid main() {{4}}"
-    frag_s = f"#version 330\nvoid main() {{5}}"
+    vert_s = "#version 330\nvoid main() {1}"
+    tesc_s = "#version 330\nvoid main() {2}"
+    tese_s = "#version 330\nvoid main() {3}"
+    geom_s = "#version 330\nvoid main() {4}"
+    frag_s = "#version 330\nvoid main() {5}"
 
     for file, src in zip(
         (vert, tesc, tese, geom, frag),
@@ -134,15 +134,15 @@ def test_include_directive(vert, include_glsl):
         fjkladjfkadf
         ajdklfjadjflkadd
     """
-    vert_src1 = f"""
+    vert_src1 = """
         #version 400
         #include <test_include.glsl>
-        void main() {{123}}
+        void main() {123}
     """
-    vert_src2 = f"""
+    vert_src2 = """
         #version 400
         #include <test_include>
-        void main() {{123}}
+        void main() {123}
     """
     expected = f"""
         #version 400
@@ -161,3 +161,28 @@ def test_include_directive(vert, include_glsl):
         f.write(vert_src2)
     parsed = glslutils.ShaderData.read_file("test").code
     assert compare_glsl(parsed.vert, expected)
+
+
+def test_source_tracks_where_it_came_from(glsl):
+    version = "#version 330"
+    vert = "void main() {1}"
+    with open(glsl, "w") as f:
+        f.write(
+            f"""
+            {version}
+            #vert
+            {vert}
+            """
+        )
+
+    file_shader = glslutils.ShaderData.read_file(glsl.name)
+    assert file_shader.files == [glsl]
+
+    str_shader = glslutils.ShaderData.read_string(
+        """
+        #version 330
+        #vert
+        void main() {}
+        """
+    )
+    assert str_shader.files is None

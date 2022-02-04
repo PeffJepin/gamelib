@@ -90,8 +90,10 @@ This fragment shader would expand to:
 """
 
 import dataclasses
+import pathlib
 
 from typing import Dict
+from typing import List
 from typing import Optional
 
 import numpy as np
@@ -136,6 +138,7 @@ class ShaderData:
 
     code: ShaderSourceCode
     meta: ShaderMetaData
+    files: Optional[List[pathlib.Path]] = None
 
     def __hash__(self):
         return hash(self.code)
@@ -210,7 +213,7 @@ class ShaderData:
             code = _ShaderPreProcessor.process_separate_strings(**src)
 
         meta = _parse_metadata(code)
-        return cls(code, meta)
+        return cls(code, meta, paths)
 
 
 class _ShaderPreProcessor:

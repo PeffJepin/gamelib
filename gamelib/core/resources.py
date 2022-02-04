@@ -150,8 +150,9 @@ def get_shader_files(name):
     for ext in _shader_extensions:
         try:
             if name.endswith(ext):
-                return get_file(name)
-            sources.append(get_file(name + ext))
+                sources.append(get_file(name))
+            else:
+                sources.append(get_file(name + ext))
         except KeyError:
             pass
 

@@ -3,6 +3,7 @@ import pytest
 import gamelib
 
 from gamelib import gl
+from gamelib.core import resources
 from gamelib.rendering import buffers
 from gamelib.rendering import gpu
 from gamelib.rendering import glslutils
@@ -395,3 +396,31 @@ class TestVaoIntegration:
         array1 = np.arange(12)
 
         assert np.all(instructions.transform() == array1)
+
+    def test_hot_reloading_a_shader_from_file(self, tempdir):
+        shader_file = tempdir / "test_shader.glsl"
+        shader1 = """
+        #version 330
+        #vert
+        """
+        shader2 = "#define UPDATE_ME 1"
+        shader3 = """
+        out int output_value;
+
+        void main(){
+            output_value = UPDATE_ME;
+        }
+        """
+        with open(shader_file, "w") as f:
+            f.writelines((shader1, shader2, shader3))
+
+        resources.add_content_roots(tempdir)
+        instructions = gpu.TransformFeedback(shader="test_shader")
+        assert instructions.transform(1) == 1
+
+        shader2 = "#define UPDATE_ME 2"
+        with open(shader_file, "w") as f:
+            f.writelines((shader1, shader2, shader3))
+
+        gpu.hot_reload_shaders()
+        assert instructions.transform(1) == 2

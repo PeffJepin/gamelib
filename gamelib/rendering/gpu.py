@@ -36,16 +36,24 @@ class GPUInstructions:
         if isinstance(shader, str) and "#version" in shader:
             self.shader = glslutils.ShaderData.read_string(shader)
         else:
+            self._shader_name = shader
             self.shader = glslutils.ShaderData.read_file(shader)
         self.vao = VertexArray(
             self.shader, mode=mode, instanced=instanced, **data_sources
         )
+        self._instanced = instanced
         self._mode = mode
+        gamelib.subscribe(HotReloadEvent, self._hot_reload)
 
     def source(self, **data_sources):
         """Use these data sources."""
 
         self.vao.use_sources(**data_sources)
+
+    def _hot_reload(self, _):
+        if self.shader.files is not None:
+            self.shader = glslutils.ShaderData.read_file(self._shader_name)
+            self.vao.use_shader(self.shader)
 
 
 class TransformFeedback(GPUInstructions):
@@ -173,20 +181,7 @@ class VertexArray:
         self._uniforms_in_use = dict()
         self._buffer_ids = dict()
         self._generated_buffers = list()
-        self.shader = shader
-        cached = _cached_shaders.get(shader, None)
-        if cached:
-            self.shader_glo = cached
-        else:
-            self.shader_glo = gamelib.get_context().program(
-                vertex_shader=shader.code.vert,
-                tess_control_shader=shader.code.tesc,
-                tess_evaluation_shader=shader.code.tese,
-                geometry_shader=shader.code.geom,
-                fragment_shader=shader.code.frag,
-                varyings=shader.meta.vertex_outputs,
-            )
-            _cached_shaders[shader] = self.shader_glo
+        self.use_shader(shader)
         self.use_sources(**data_sources)
         self.source_indices(indices)
 
@@ -272,6 +267,31 @@ class VertexArray:
                 buffer.update()
         for uniform in self._uniforms_in_use.values():
             uniform.update(self.shader_glo)
+
+    def use_shader(self, shader):
+        """Use the new given shader. The only use case for this right now is
+        for hot reloading.
+
+        Parameters
+        ----------
+        shader : ShaderData
+        """
+
+        self.shader = shader
+        cached = _cached_shaders.get(shader, None)
+        if cached:
+            self.shader_glo = cached
+        else:
+            self.shader_glo = gamelib.get_context().program(
+                vertex_shader=shader.code.vert,
+                tess_control_shader=shader.code.tesc,
+                tess_evaluation_shader=shader.code.tese,
+                geometry_shader=shader.code.geom,
+                fragment_shader=shader.code.frag,
+                varyings=shader.meta.vertex_outputs,
+            )
+            _cached_shaders[shader] = self.shader_glo
+        self._dirty = True
 
     def use_source(self, name, source):
         """Set a source uniform/buffer.
@@ -440,3 +460,11 @@ class _AutoUniform:
     @property
     def _data(self):
         return gl.coerce_array(self.array, self.dtype).tobytes()
+
+
+def hot_reload_shaders():
+    gamelib.post_event(HotReloadEvent())
+
+
+class HotReloadEvent:
+    pass
