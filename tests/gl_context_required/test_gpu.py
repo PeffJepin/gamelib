@@ -62,6 +62,16 @@ class TestVertexArray:
 
         assert np.all(buffer.read() == array)
 
+    def test_sourcing_an_attached_buffer_with_a_list(self, shader):
+        buffer = buffers.Buffer(np.arange(9), gl.vec3)
+        vao = gpu.VertexArray(shader, v_pos=buffer, f_color=np.arange(4))
+
+        list_ = [(1, 2, 3), (3, 2, 1)]
+        array = np.array(list_, dtype=gl.vec3)
+        vao.source_buffers(v_pos=list_)
+
+        assert np.all(buffer.read() == array)
+
     def test_sourcing_an_attached_autobuffer_with_an_array(self, shader):
         buffer = buffers.AutoBuffer(np.array((1, 2, 3)), gl.vec3)
         vao = gpu.VertexArray(shader, v_pos=buffer, f_color=np.arange(4))
@@ -396,6 +406,29 @@ class TestVaoIntegration:
         array1 = np.arange(12)
 
         assert np.all(instructions.transform() == array1)
+
+    def test_using_a_list_as_a_source(self):
+        list1 = [(100, 10, 1), (100, 20, 3)]
+        list2 = [(100, 10, 1), (100, 20, 3), (100, 10, 1), (100, 20, 3)]
+
+        instructions = gpu.TransformFeedback(
+            shader="""
+                #version 330
+                #vert
+                in vec3 in_value;
+                out int out_value;
+                void main() 
+                {
+                    out_value = int(in_value.x + in_value.y + in_value.z);
+                }
+            """,
+            in_value=list1
+        )
+        assert np.all(instructions.transform() == [111, 123])
+
+        instructions.source(in_value=list2)
+
+        assert np.all(instructions.transform() == [111, 123, 111, 123])
 
     def test_hot_reloading_a_shader_from_file(self, tempdir):
         shader_file = tempdir / "test_shader.glsl"

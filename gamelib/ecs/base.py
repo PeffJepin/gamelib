@@ -902,6 +902,10 @@ class _EntityType(type):
 
         return len(cls.arrays["id"])
 
+    @property
+    def ids_proxy(cls):
+        return lambda: cls.ids
+
     def get_subclasses(cls, components=None):
         """Gets all of the subclasses of Entity if called globally on Entity,
         or just the subclasses for the particular Entity if called on a

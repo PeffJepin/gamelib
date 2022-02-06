@@ -329,6 +329,7 @@ class VertexArray:
 
         for name, buffer in buffer_sources.items():
             self._integrate_buffer(name, buffer)
+        self._dirty = True
 
     def source_indices(self, indices):
         """Set the index buffer.
@@ -363,14 +364,15 @@ class VertexArray:
 
         for name, uniform in uniform_sources.items():
             self._integrate_uniform(name, uniform)
+        self._dirty = True
 
     def _integrate_buffer(self, attribute, source):
         if attribute not in self.shader.meta.attributes:
             self._raise_invalid_source(attribute)
 
         current_buffer = self._buffers_in_use.get(attribute, None)
+        dtype = self.shader.meta.attributes[attribute].dtype
         if current_buffer is None:
-            dtype = self.shader.meta.attributes[attribute].dtype
             buffer = self._generate_buffer(source, dtype)
             self._buffers_in_use[attribute] = buffer
             self._buffer_ids[attribute] = id(buffer.gl)
@@ -379,7 +381,9 @@ class VertexArray:
                 self._remove_buffer(current_buffer)
                 self._buffers_in_use[attribute] = source
                 self._buffer_ids[attribute] = id(source.gl)
-            elif isinstance(source, np.ndarray):
+            elif source is not None:
+                if not isinstance(source, np.ndarray):
+                    source = np.asarray(source, dtype)
                 if isinstance(current_buffer, buffers.AutoBuffer):
                     current_buffer.use_array(source)
                 else:
@@ -408,6 +412,12 @@ class VertexArray:
         elif isinstance(source, Callable):
             assert isinstance(source(), np.ndarray)
             buf = buf_type(source, dtype)
+            self._generated_buffers.append(buf)
+            return buf
+        elif source is not None:
+            # fallback to trying to interpret as an array
+            array = np.asarray(source, dtype) 
+            buf = buf_type(array, dtype)
             self._generated_buffers.append(buf)
             return buf
 
