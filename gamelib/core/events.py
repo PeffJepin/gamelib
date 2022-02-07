@@ -54,7 +54,6 @@ Doing update, dt=0.01
 
 import threading
 import collections
-import dataclasses
 import multiprocessing as mp
 
 from typing import Sequence
@@ -65,10 +64,15 @@ from gamelib import utils
 
 _HANDLER_INJECTION_ATTRIBUTE = "_gamelib_handler_"
 _event_handlers = collections.defaultdict(list)
+_internal_handlers = list()
 _adapters = dict()
 
 
 class Update(NamedTuple):
+    dt: float
+
+
+class InternalUpdate(NamedTuple):
     dt: float
 
 
@@ -89,8 +93,12 @@ def post(event):
         An event is just a data container.
     """
 
-    key = type(event)
-    for handler_ in _event_handlers[key]:
+    if isinstance(event, InternalUpdate):
+        for handler_ in _internal_handlers:
+            handler_(event)
+        return
+
+    for handler_ in _event_handlers[type(event)]:
         handler_(event)
 
 
@@ -103,7 +111,10 @@ def subscribe(event_type, *callbacks):
     *callbacks : Callable
     """
 
-    _event_handlers[event_type].extend(callbacks)
+    if event_type == InternalUpdate:
+        _internal_handlers.extend(callbacks)
+    else:
+        _event_handlers[event_type].extend(callbacks)
 
 
 def unsubscribe(event_type, *callbacks) -> None:
@@ -114,6 +125,14 @@ def unsubscribe(event_type, *callbacks) -> None:
     event_type : type
     *callbacks : Callable
     """
+
+    if event_type == InternalUpdate:
+        for callback in callbacks:
+            try:
+                _internal_handlers.remove(callback)
+            except ValueError:
+                pass
+        return
 
     for callback in callbacks:
         try:

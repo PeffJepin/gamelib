@@ -1,6 +1,8 @@
 import pytest
 
 from gamelib.rendering.camera import PerspectiveCamera
+from gamelib.rendering.camera import get_primary_view
+from gamelib.rendering.camera import get_primary_proj
 from tests.conftest import assert_approx
 
 
@@ -107,3 +109,22 @@ class TestPerspectiveCamera:
         camera.fov_y = 90
 
         assert_approx(camera.near_plane_size, (4 * ASPECT, 4))
+
+    def test_get_primary_view(self):
+        c1 = PerspectiveCamera((12, 123, 1234), (1, 2, 3))
+        c2 = PerspectiveCamera((12, 321, 1234), (1, 2, 3))
+        
+        c1.set_primary()
+        c2.set_primary()
+
+        assert_approx(c2.view_matrix, get_primary_view())
+
+    def test_get_primary_proj(self):
+        c1 = PerspectiveCamera((12, 123, 1234), (1, 2, 3))
+        c2 = PerspectiveCamera((12, 321, 1234), (1, 2, 3))
+        
+        c1.set_primary()
+        c2.set_primary()
+
+        assert_approx(c2.projection_matrix, get_primary_proj())
+

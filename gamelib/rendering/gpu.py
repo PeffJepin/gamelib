@@ -4,6 +4,8 @@ from typing import Callable
 
 import gamelib
 from gamelib import gl
+from gamelib.rendering import global_uniforms
+from gamelib.rendering import uniforms
 from gamelib.rendering import glslutils
 from gamelib.rendering import buffers
 
@@ -184,6 +186,7 @@ class VertexArray:
         self.use_shader(shader)
         self.use_sources(**data_sources)
         self.source_indices(indices)
+        self.check_global_uniforms(**data_sources)
 
     @property
     def glo(self):
@@ -366,6 +369,12 @@ class VertexArray:
             self._integrate_uniform(name, uniform)
         self._dirty = True
 
+    def check_global_uniforms(self, **data_sources):
+        glob = global_uniforms.todict()
+        for name in self.shader.meta.uniforms:
+            if name not in data_sources and name in glob:
+                self._integrate_uniform(name, glob[name])
+
     def _integrate_buffer(self, attribute, source):
         if attribute not in self.shader.meta.attributes:
             self._raise_invalid_source(attribute)
@@ -392,7 +401,9 @@ class VertexArray:
     def _integrate_uniform(self, name, source):
         if isinstance(source, np.ndarray):
             dtype = self.shader.meta.uniforms[name].dtype
-            self._uniforms_in_use[name] = _AutoUniform(source, dtype, name)
+            self._uniforms_in_use[name] = uniforms.AutoUniform(
+                source, dtype, name
+            )
         else:
             self.shader_glo[name] = source
 
@@ -416,7 +427,7 @@ class VertexArray:
             return buf
         elif source is not None:
             # fallback to trying to interpret as an array
-            array = np.asarray(source, dtype) 
+            array = np.asarray(source, dtype)
             buf = buf_type(array, dtype)
             self._generated_buffers.append(buf)
             return buf
@@ -447,29 +458,6 @@ class VertexArray:
             f"Valid uniforms: {tuple(self.shader.meta.uniforms.keys())!r}, "
             f"valid buffers: {tuple(self.shader.meta.attributes.keys())!r}"
         )
-
-
-class _AutoUniform:
-    """Helper class for ShaderProgram to keep track of uniform sources."""
-
-    def __init__(self, array, dtype, name):
-        """
-        Parameters
-        ----------
-        array : np.ndarray
-        dtype : np.dtype | str
-        name : str
-        """
-        self.array = array
-        self.dtype = dtype
-        self.name = name
-
-    def update(self, prog):
-        prog[self.name].write(self._data)
-
-    @property
-    def _data(self):
-        return gl.coerce_array(self.array, self.dtype).tobytes()
 
 
 def hot_reload_shaders():

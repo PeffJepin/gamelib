@@ -119,6 +119,7 @@ def update():
         dt = _update_timer.tick(config.tps)
         window.poll_for_user_input(dt)
         events.post(events.Update(dt))
+        events.post(events.InternalUpdate(dt))
         schedule.update()
 
 

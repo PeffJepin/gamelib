@@ -9,6 +9,23 @@ from gamelib.geometry import transforms
 from gamelib.geometry import collisions
 
 
+_primary_camera = None
+
+
+def get_primary_view():
+    if _primary_camera is None:
+        return transforms.Mat4.identity()
+    else:
+        return _primary_camera.view_matrix
+
+
+def get_primary_proj():
+    if _primary_camera is None:
+        return transforms.Mat4.identity()
+    else:
+        return _primary_camera.projection_matrix
+
+
 class BaseCamera:
     """A base class for cameras. Subclasses must implement _update_view and
     _update_proj for updating the view and projection matrices."""
@@ -282,6 +299,14 @@ class BaseCamera:
         """
 
         self._proj[:] = mat4
+
+    def set_primary(self):
+        """Sets this as the primary camera. Other parts of the application that
+        need a camera, but aren't explicilty given one will fallback to this
+        one."""
+
+        global _primary_camera
+        _primary_camera = self
 
     def move(self, translation):
         """Offset current position by given translation.

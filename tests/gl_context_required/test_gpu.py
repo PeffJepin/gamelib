@@ -3,6 +3,7 @@ import pytest
 import gamelib
 
 from gamelib import gl
+from gamelib import rendering
 from gamelib.core import resources
 from gamelib.rendering import buffers
 from gamelib.rendering import gpu
@@ -269,9 +270,9 @@ class TestVaoIntegration:
                 #vert
                 uniform {gl_type} test_input[2];
                 out {gl_type} test_output;
-                void main() 
+                void main()
                 {{
-                    test_output = test_input[gl_VertexID]; 
+                    test_output = test_input[gl_VertexID];
                 }}
             """,
             test_input=uniform,
@@ -290,7 +291,7 @@ class TestVaoIntegration:
             uniform int input1;
             uniform int input2;
             out int output_value;
-            void main() 
+            void main()
             {
                 output_value = input1 + input2;
             }
@@ -313,7 +314,7 @@ class TestVaoIntegration:
                 uniform int input1;
                 uniform int input2;
                 out int output_value;
-                void main() 
+                void main()
                 {
                     output_value = input1 + input2;
                 }
@@ -339,7 +340,7 @@ class TestVaoIntegration:
             in int input1;
             in int input2;
             out int output_value;
-            void main() 
+            void main()
             {
                 output_value = input1 + input2;
             }
@@ -365,7 +366,7 @@ class TestVaoIntegration:
                 in int input1;
                 in int input2;
                 out int output_value;
-                void main() 
+                void main()
                 {
                     output_value = input1 + input2;
                 }
@@ -394,7 +395,7 @@ class TestVaoIntegration:
                 #vert
                 in int input1;
                 out int output_value;
-                void main() 
+                void main()
                 {
                     output_value = input1;
                 }
@@ -417,7 +418,7 @@ class TestVaoIntegration:
                 #vert
                 in vec3 in_value;
                 out int out_value;
-                void main() 
+                void main()
                 {
                     out_value = int(in_value.x + in_value.y + in_value.z);
                 }
@@ -457,3 +458,87 @@ class TestVaoIntegration:
 
         gpu.hot_reload_shaders()
         assert instructions.transform(1) == 2
+
+
+class TestUniformBlock:
+
+    @staticmethod
+    def make_instructions(**uniform_descs):
+        uni_declarations = "\n".join(
+            f"uniform {type} {name};"
+            for name, type in uniform_descs.items()
+        )
+        out_declarations = "\n".join(
+            f"out {type} {'out_' + name};"
+            for name, type in uniform_descs.items()
+        )
+        out_assignments = "\n".join(
+            f"out_{name} = {name};"
+            for name in uniform_descs
+        )
+        return gpu.TransformFeedback(f"""
+        #version 330
+        #vert
+        {uni_declarations}
+        {out_declarations}
+
+        void main()
+        {{
+            {out_assignments}
+        }}
+        """)
+
+    def test_sourcing_instructions(self):
+        class MyBlock(rendering.uniforms.UniformBlock):
+            offset = rendering.uniforms.ArrayStorage(gl.vec2)
+            scale = rendering.uniforms.ArrayStorage(gl.float)
+
+        block = MyBlock(offset=(1, 2), scale=3)
+        inst = self.make_instructions(offset="vec2", scale="float")
+        inst.source(**block.todict())
+
+        result = inst.transform(1)
+        assert np.all(result["out_offset"] == (1, 2))
+        assert result["out_scale"] == 3
+
+    def test_updates_are_seen_in_instructions(self):
+        class MyBlock(rendering.uniforms.UniformBlock):
+            offset = rendering.uniforms.ArrayStorage(gl.vec2)
+            scale = rendering.uniforms.ArrayStorage(gl.float)
+
+        block = MyBlock(offset=(1, 2), scale=3)
+        inst = self.make_instructions(offset="vec2", scale="float")
+        inst.source(**block.todict())
+
+        block.offset = (3, 4)
+        block.scale = 5
+
+        result = inst.transform(1)
+        assert np.all(result["out_offset"] == (3, 4))
+        assert result["out_scale"] == 5
+
+    def test_cursor_screen_space(self):
+        gamelib.get_cursor = lambda: (12, 34)
+        gamelib.get_width = lambda: 100
+        gamelib.get_height = lambda: 100
+        gamelib.update()
+        inst = self.make_instructions(cursor="vec2")
+
+        assert np.allclose(inst.transform(1), (12/100, 34/100))
+
+    def test_view_mat4(self):
+        camera = rendering.PerspectiveCamera((123, 123, 123), (1, 3, 2))
+        camera.set_primary()
+        gamelib.update()
+        inst = self.make_instructions(view="mat4")
+
+        assert np.allclose(inst.transform(1), camera.view_matrix)
+
+    def test_proj_mat4(self):
+        camera = rendering.PerspectiveCamera((123, 123, 123), (1, 3, 2))
+        camera.set_primary()
+        gamelib.update()
+        inst = self.make_instructions(proj="mat4")
+
+        assert np.allclose(inst.transform(1), camera.projection_matrix)
+
