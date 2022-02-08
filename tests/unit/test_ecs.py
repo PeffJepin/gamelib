@@ -1,7 +1,6 @@
 import numpy as np
 
 import pytest
-import time
 
 from gamelib.ecs import base
 from gamelib import gl
@@ -31,6 +30,23 @@ class TestIdGenerator:
         gen.recycle(0)
 
         assert next(gen) == 0
+
+    def test_recycling_the_same_id_multiple_times(self):
+        gen = base.IdGenerator()
+
+        for _ in range(5):
+            next(gen)
+
+        gen.recycle(4)
+        gen.recycle(3)
+        gen.recycle(0)
+        gen.recycle(0)
+        gen.recycle(0)
+
+        assert next(gen) == 0
+        assert next(gen) == 3
+        assert next(gen) == 4
+        assert next(gen) == 5
 
     def test_always_lowest_possible_id(self):
         gen = base.IdGenerator()

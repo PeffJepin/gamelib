@@ -625,6 +625,11 @@ class BVH_Helper:
             # might change in the future with benchmarks to actually
             # test differences
             return 1_000
+        for spl in splits:
+            # discard splits that go beyond a 5/1 shape ratio
+            # try to stay more regular in shape
+            if max(spl.aabb.shape) >= 8 * min(spl.aabb.shape):
+                return -1
 
         score = 0
         volume_weight = 4

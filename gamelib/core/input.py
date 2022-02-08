@@ -186,7 +186,11 @@ class InputSchema:
 
         for event in self._events:
             events.unsubscribe(event, self)
-        del _key_states_to_monitor_lookup[self]
+        try:
+            del _key_states_to_monitor_lookup[self]
+        except KeyError:
+            # should be safe to disable if not enabled
+            pass
         _update_monitored_key_states()
 
     @property

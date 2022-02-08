@@ -113,7 +113,7 @@ class TestPerspectiveCamera:
     def test_get_primary_view(self):
         c1 = PerspectiveCamera((12, 123, 1234), (1, 2, 3))
         c2 = PerspectiveCamera((12, 321, 1234), (1, 2, 3))
-        
+
         c1.set_primary()
         c2.set_primary()
 
@@ -122,9 +122,8 @@ class TestPerspectiveCamera:
     def test_get_primary_proj(self):
         c1 = PerspectiveCamera((12, 123, 1234), (1, 2, 3))
         c2 = PerspectiveCamera((12, 321, 1234), (1, 2, 3))
-        
+
         c1.set_primary()
         c2.set_primary()
 
         assert_approx(c2.projection_matrix, get_primary_proj())
-

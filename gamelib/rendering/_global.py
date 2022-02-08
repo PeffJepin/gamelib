@@ -10,7 +10,6 @@ class GlobalUniformBlock(uniforms.UniformBlock):
     proj = uniforms.ArrayStorage(gamelib.gl.mat4)
 
 
-
 def _update_global_uniforms(event):
     x, y = gamelib.get_cursor()
     global_uniforms.cursor = (

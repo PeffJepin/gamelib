@@ -102,13 +102,22 @@ from gamelib import gl
 from gamelib.core import resources
 
 
-@dataclasses.dataclass(eq=True)
+@dataclasses.dataclass
 class TokenDesc:
     """Data describing a token parsed from glsl source code."""
 
     name: str
     dtype: np.dtype
     length: int  # array length if token is an array, else 1
+    dtype_str: Optional[str] = None
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, TokenDesc)
+            and self.name == other.name
+            and self.dtype == other.dtype
+            and self.length == other.length
+        )
 
 
 @dataclasses.dataclass
@@ -421,4 +430,4 @@ def _create_token_desc(values) -> TokenDesc:
     dtype = getattr(gl, values[0])
     assert isinstance(dtype, np.dtype)
 
-    return TokenDesc(name, dtype, length)
+    return TokenDesc(name, dtype, length, dtype_str=values[0])

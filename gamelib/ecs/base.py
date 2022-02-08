@@ -381,8 +381,12 @@ class IdGenerator:
             self._recycled.append(id)
         else:
             for i, v in enumerate(self._recycled[:]):
+                if id == v:
+                    # dont allow duplicates
+                    return
                 if id < v:
                     self._recycled.insert(i, id)
+                    break
         if id == self._largest:
             self._seek_largest()
 

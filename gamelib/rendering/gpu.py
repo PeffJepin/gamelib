@@ -4,13 +4,15 @@ from typing import Callable
 
 import gamelib
 from gamelib import gl
+from gamelib.core import resources
 from gamelib.rendering import global_uniforms
 from gamelib.rendering import uniforms
 from gamelib.rendering import glslutils
 from gamelib.rendering import buffers
-
+from gamelib.rendering import textures
 
 _cached_shaders = dict()
+_cached_assets = dict()
 
 
 class GPUInstructions:
@@ -33,6 +35,7 @@ class GPUInstructions:
         **data_sources : Any
             The keys should map to inputs for the specified shader and the
             values can be either np.ndarrays or buffers.Buffer instances.
+            Other values will be attempted to be interpreted as ndarrays.
         """
 
         if isinstance(shader, str) and "#version" in shader:
@@ -45,6 +48,8 @@ class GPUInstructions:
         )
         self._instanced = instanced
         self._mode = mode
+        self._textures = dict()
+        self._fetch_textures()
         gamelib.subscribe(HotReloadEvent, self._hot_reload)
 
     def source(self, **data_sources):
@@ -52,18 +57,40 @@ class GPUInstructions:
 
         self.vao.use_sources(**data_sources)
 
+    def _bind_textures(self):
+        for binding, texture in self._textures.items():
+            texture.gl.use(binding)
+
     def _hot_reload(self, _):
         if self.shader.files is not None:
             self.shader = glslutils.ShaderData.read_file(self._shader_name)
             self.vao.use_shader(self.shader)
+
+    def _fetch_textures(self):
+        i = 0
+        samplers = dict()
+        for name, uniform in self.shader.meta.uniforms.items():
+            if uniform.dtype_str == "sampler2D":
+                asset = _cached_assets.get(name, None) 
+                if asset is None:
+                    path = resources.get_image_file(name)
+                    asset = textures.ImageAsset(name, path)
+                    _cached_assets[name] = asset
+                if asset.texture is None:
+                    asset.upload_texture(gamelib.get_context())
+                value_wrapper = np.array([i], gamelib.gl.sampler2D)
+                samplers[name] = value_wrapper
+                self._textures[i] = asset.texture
+                i += 1
+        self.source(**samplers)
 
 
 class TransformFeedback(GPUInstructions):
     """Use the GPU to transform some data."""
 
     def __init__(self, shader, mode=gl.POINTS, **data_sources):
-        super().__init__(shader, mode)
         self.sources = data_sources
+        super().__init__(shader, mode)
 
     def source(self, **data_sources):
         self.sources.update(data_sources)
@@ -125,6 +152,7 @@ class Renderer(GPUInstructions):
         """
 
         self.vao.update()
+        self._bind_textures()
         vertices = vertices or self.vao.num_elements
         instances = instances or self.vao.num_instances
         if self.vao.glo is None:

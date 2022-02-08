@@ -55,4 +55,3 @@ class AutoUniform:
     @property
     def _data(self):
         return gl.coerce_array(self.array, self.dtype).tobytes()
-

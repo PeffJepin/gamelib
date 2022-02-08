@@ -22,9 +22,17 @@ model = gamelib.geometry.load_model(model_to_load)
 model.anchor((0.5, 0.5, 0))
 transform = transforms.Transform((2, 3, 4), (1, 1, 1), (1, 1, 1), 0)
 bvh = collisions.BVH.create_tree(model, target_density=bvh_density)
+
+position = bvh.aabb.max.copy()
+position += 5
+direction = bvh.aabb.center - position
+transform.apply(position)
+transform.apply(direction, normal=True)
+
 camera = gamelib.rendering.PerspectiveCamera(
-    (-100, -100, 100), (12, 13, -16), controller=True
+    position, direction, far=10_000, controller=True
 )
+camera.set_primary()
 
 NUM_MODES = 3
 RENDER_INTERSECTIONS = 0
@@ -66,8 +74,6 @@ state = State(
 
 triangles_instructions = gpu.Renderer(
     "simple_faceted",
-    view=camera.view_matrix,
-    proj=camera.projection_matrix,
     model=transform.matrix,
 )
 
@@ -97,16 +103,12 @@ line_shader = """
 ray_instructions = gpu.Renderer(
     shader=line_shader,
     mode=gamelib.gl.LINES,
-    view=camera.view_matrix,
-    proj=camera.projection_matrix,
     model=transforms.Mat4.identity(),
 )
 
 bvh_instructions = gpu.Renderer(
     shader=line_shader,
     mode=gamelib.gl.LINES,
-    view=camera.view_matrix,
-    proj=camera.projection_matrix,
     model=transform.matrix,
 )
 
@@ -145,7 +147,7 @@ def get_bvh_node_contained_triangles(node):
     triangles = []
     for n in node:
         if n.indices is not None:
-            triangles.append(n.indices)
+            triangles.append(n.triangles)
     return np.concatenate(triangles)
 
 
@@ -201,7 +203,7 @@ def get_ray_vertex_data():
 
 def get_triangles_vertex_data():
     if state.render_mode == RENDER_BVH_LEAF_ONLY:
-        return model.vertices[model.indices]
+        return model.triangles
     if state.render_mode == RENDER_NODE_EXPLORER:
         return get_bvh_node_contained_triangles(state.node)
     if state.render_mode == RENDER_INTERSECTIONS:
@@ -215,7 +217,7 @@ def cast_ray():
     state.ray.to_object_space(transform)
     ts = time.time()
     distances = collisions.ray_triangle_intersections(
-        model.vertices[model.indices], state.ray.origin, state.ray.direction
+        model.triangles, state.ray.origin, state.ray.direction
     )
     try:
         brute_force = np.min(distances[distances != -1])
@@ -246,7 +248,7 @@ def cast_ray():
             node_list.append(node)
         if node.indices is not None:
             # trace all hit triangles
-            triangles = node.indices
+            triangles = node.triangles
             ntris += len(triangles)
             result = collisions.ray_triangle_intersections(
                 triangles, state.ray.origin, state.ray.direction
@@ -337,7 +339,7 @@ def info_dump():
     for node in bvh:
         node_count += 1
         if node.indices is not None:
-            leaf_tri_count += len(node.indices)
+            leaf_tri_count += len(node.triangles)
             leaf_count += 1
     print(
         f"[INFO]: {node_count=}, {leaf_count=} avg_density={leaf_tri_count / leaf_count}"

@@ -423,7 +423,7 @@ class TestVaoIntegration:
                     out_value = int(in_value.x + in_value.y + in_value.z);
                 }
             """,
-            in_value=list1
+            in_value=list1,
         )
         assert np.all(instructions.transform() == [111, 123])
 
@@ -461,22 +461,20 @@ class TestVaoIntegration:
 
 
 class TestUniformBlock:
-
     @staticmethod
     def make_instructions(**uniform_descs):
         uni_declarations = "\n".join(
-            f"uniform {type} {name};"
-            for name, type in uniform_descs.items()
+            f"uniform {type} {name};" for name, type in uniform_descs.items()
         )
         out_declarations = "\n".join(
             f"out {type} {'out_' + name};"
             for name, type in uniform_descs.items()
         )
         out_assignments = "\n".join(
-            f"out_{name} = {name};"
-            for name in uniform_descs
+            f"out_{name} = {name};" for name in uniform_descs
         )
-        return gpu.TransformFeedback(f"""
+        return gpu.TransformFeedback(
+            f"""
         #version 330
         #vert
         {uni_declarations}
@@ -486,7 +484,8 @@ class TestUniformBlock:
         {{
             {out_assignments}
         }}
-        """)
+        """
+        )
 
     def test_sourcing_instructions(self):
         class MyBlock(rendering.uniforms.UniformBlock):
@@ -524,7 +523,7 @@ class TestUniformBlock:
         gamelib.update()
         inst = self.make_instructions(cursor="vec2")
 
-        assert np.allclose(inst.transform(1), (12/100, 34/100))
+        assert np.allclose(inst.transform(1), (12 / 100, 34 / 100))
 
     def test_view_mat4(self):
         camera = rendering.PerspectiveCamera((123, 123, 123), (1, 3, 2))
@@ -541,4 +540,3 @@ class TestUniformBlock:
         inst = self.make_instructions(proj="mat4")
 
         assert np.allclose(inst.transform(1), camera.projection_matrix)
-
