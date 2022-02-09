@@ -52,7 +52,7 @@ class Asset(abc.ABC):
         im_shape : tuple[int, int]
         """
 
-    def upload_texture(self, ctx, wrap_x=False, wrap_y=False, _free=True):
+    def upload_texture(self, ctx, wrap_x=True, wrap_y=True, _free=True):
         """Load the data and upload it to the gpu.
 
         Parameters
@@ -160,6 +160,7 @@ class ImageAsset(Asset):
 
     def load(self):
         self._im = Image.open(self.path).transpose(Image.FLIP_TOP_BOTTOM)
+        self._px_depth = len(self._im.getbands())
 
     def free(self):
         self._im = None

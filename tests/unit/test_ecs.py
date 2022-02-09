@@ -676,6 +676,16 @@ class TestEntity:
 
         assert np.all(callable_proxy() == Entity1.comp1.x)
 
+    def test_iterating_over_an_entity(self):
+        e1 = Entity1.create(Component1.create(1, 2), Component2.create(3, 4))
+        e2 = Entity1.create(Component1.create(5, 6), Component2.create(7, 8))
+        e3 = Entity1.create(Component1.create(9, 9), Component2.create(9, 9))
+
+        iterated = list(Entity1)
+        assert e1 in iterated
+        assert e2 in iterated
+        assert e3 in iterated
+
 
 class GlTypeComponent(base.Component):
     v3: gl.vec3

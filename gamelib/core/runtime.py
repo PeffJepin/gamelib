@@ -54,6 +54,7 @@ _render_func = _dummy_func
 _update_timer = time.Timer()
 _render_timer = time.Timer()
 _initialized = False
+_start_time = None
 
 
 def init(headless=False, **kwargs):
@@ -69,6 +70,7 @@ def init(headless=False, **kwargs):
     """
 
     global _initialized
+    global _start_time
     if _initialized:
         return
 
@@ -78,6 +80,7 @@ def init(headless=False, **kwargs):
     ctx.enable(ctx.DEPTH_TEST)
     ctx.enable(ctx.BLEND)
 
+    _start_time = time.Timer.now() 
     _initialized = True
 
 
@@ -147,3 +150,7 @@ def set_draw_commands(func):
 
     global _render_func
     _render_func = func
+
+
+def get_time():
+    return time.Timer.now() - _start_time

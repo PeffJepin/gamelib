@@ -1,3 +1,5 @@
+import time
+
 import gamelib
 
 from gamelib.rendering import uniforms
@@ -8,6 +10,8 @@ class GlobalUniformBlock(uniforms.UniformBlock):
     cursor = uniforms.ArrayStorage(gamelib.gl.vec2)
     view = uniforms.ArrayStorage(gamelib.gl.mat4)
     proj = uniforms.ArrayStorage(gamelib.gl.mat4)
+    window_size = uniforms.ArrayStorage(gamelib.gl.ivec2)
+    time = uniforms.ArrayStorage(gamelib.gl.float)
 
 
 def _update_global_uniforms(event):
@@ -18,6 +22,8 @@ def _update_global_uniforms(event):
     )
     global_uniforms.view = camera.get_primary_view()
     global_uniforms.proj = camera.get_primary_proj()
+    global_uniforms.window_size = (gamelib.get_width(), gamelib.get_height())
+    global_uniforms.time = gamelib.get_time()
 
 
 global_uniforms = GlobalUniformBlock()

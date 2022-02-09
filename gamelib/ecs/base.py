@@ -897,6 +897,12 @@ class _EntityType(type):
 
         return cls._length
 
+    def __iter__(cls):
+        for i in cls.ids:
+            e = cls.get(i)
+            if e is not None:
+                yield e
+
     @property
     def internal_length(cls):
         """Gets the length of the internal data arrays."""

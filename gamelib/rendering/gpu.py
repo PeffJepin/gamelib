@@ -1,3 +1,4 @@
+import time
 import numpy as np
 
 from typing import Callable
@@ -46,16 +47,29 @@ class GPUInstructions:
         self.vao = VertexArray(
             self.shader, mode=mode, instanced=instanced, **data_sources
         )
+
+        if "dt" in self.shader.meta.uniforms:
+            self.vao.source_uniforms(dt=self._dt)
+
         self._instanced = instanced
         self._mode = mode
         self._textures = dict()
         self._fetch_textures()
+        self._prev = time.time()
+        self._dt = np.zeros(1, gl.float)
         gamelib.subscribe(HotReloadEvent, self._hot_reload)
 
     def source(self, **data_sources):
         """Use these data sources."""
 
         self.vao.use_sources(**data_sources)
+
+    def update(self):
+        t = time.time()
+        dt = self._prev - t
+        self._prev = t
+        self._dt[0] = dt
+        self.vao.update()
 
     def _bind_textures(self):
         for binding, texture in self._textures.items():
@@ -71,7 +85,7 @@ class GPUInstructions:
         samplers = dict()
         for name, uniform in self.shader.meta.uniforms.items():
             if uniform.dtype_str == "sampler2D":
-                asset = _cached_assets.get(name, None) 
+                asset = _cached_assets.get(name, None)
                 if asset is None:
                     path = resources.get_image_file(name)
                     asset = textures.ImageAsset(name, path)
@@ -116,20 +130,20 @@ class TransformFeedback(GPUInstructions):
         """
 
         self.sources.update(data_sources)
-        vao = VertexArray(self.shader, **self.sources)
-        if vao.glo is None:
+        self.vao = VertexArray(self.shader, **self.sources)
+        if self.vao.glo is None:
             return None
-        vao.update()
+        self.update()
         out_dtype = np.dtype(
             [
                 (desc.name, desc.dtype)
                 for desc in self.shader.meta.vertex_outputs.values()
             ]
         )
-        vertices = vertices or vao.num_elements
+        vertices = vertices or self.vao.num_elements
         reserve = vertices * out_dtype.itemsize
         result_buffer = gamelib.get_context().buffer(reserve=reserve)
-        vao.glo.transform(result_buffer, vertices=vertices)
+        self.vao.glo.transform(result_buffer, vertices=vertices)
         array = np.frombuffer(result_buffer.read(), out_dtype)
         if len(self.shader.meta.vertex_outputs) == 1:
             return array[next(iter(self.shader.meta.vertex_outputs.keys()))]
@@ -151,12 +165,15 @@ class Renderer(GPUInstructions):
             Override the number of instances to be rendered.
         """
 
-        self.vao.update()
-        self._bind_textures()
-        vertices = vertices or self.vao.num_elements
-        instances = instances or self.vao.num_instances
+        self.update()
         if self.vao.glo is None:
             return
+
+        self._bind_textures()
+
+        vertices = vertices or self.vao.num_elements
+        instances = instances or self.vao.num_instances
+
         self.vao.glo.render(
             vertices=vertices, instances=instances, mode=self._mode
         )
@@ -427,13 +444,12 @@ class VertexArray:
                     current_buffer.write(source)
 
     def _integrate_uniform(self, name, source):
-        if isinstance(source, np.ndarray):
-            dtype = self.shader.meta.uniforms[name].dtype
-            self._uniforms_in_use[name] = uniforms.AutoUniform(
-                source, dtype, name
-            )
-        else:
-            self.shader_glo[name] = source
+        dtype = self.shader.meta.uniforms[name].dtype
+
+        if not isinstance(source, np.ndarray):
+            source = np.array(source, dtype)
+
+        self._uniforms_in_use[name] = uniforms.AutoUniform(source, dtype, name)
 
     def _generate_buffer(self, source, dtype, auto=None):
         self._dirty = True

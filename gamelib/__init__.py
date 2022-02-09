@@ -6,6 +6,7 @@ from gamelib.core.runtime import config
 from gamelib.core.runtime import set_draw_commands
 from gamelib.core.runtime import schedule
 from gamelib.core.runtime import threaded_schedule
+from gamelib.core.runtime import get_time
 
 from gamelib.core.window import clear
 from gamelib.core.window import swap_buffers

@@ -540,3 +540,11 @@ class TestUniformBlock:
         inst = self.make_instructions(proj="mat4")
 
         assert np.allclose(inst.transform(1), camera.projection_matrix)
+
+    def test_window_size(self):
+        gamelib.get_width = lambda: 16
+        gamelib.get_height = lambda: 9
+        gamelib.update()
+        inst = self.make_instructions(window_size="ivec2")
+
+        assert np.allclose(inst.transform(1), [16, 9])
