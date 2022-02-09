@@ -3,24 +3,23 @@ import gamelib
 
 from gamelib import rendering
 from gamelib import geometry
+from gamelib import Vec3
 
 
 gamelib.init()
 camera = rendering.PerspectiveCamera(
     position=(0, -2, 0), direction=(0, 1, 0), controller=True
 )
+camera.set_primary()
 cube = geometry.Cube()
 transform = geometry.Transform(
-    scale=(5, 1, 1), pos=(0, 0, 0), axis=(0, 0, 1), theta=0
+    scale=(1, 1, 1), pos=(0, 0, 0), axis=(0, 0, 1), theta=0
 )
-model_matrix = geometry.Mat4.identity()
 instructions = rendering.Renderer(
     "simple_faceted",
     v_pos=cube.vertices,
     indices=cube.indices,
-    proj=camera.projection_matrix,
-    view=camera.view_matrix,
-    model=model_matrix,
+    model=transform.matrix
 )
 
 waiting_for_input = False
@@ -35,7 +34,12 @@ def quit():
     global waiting_for_input
     waiting_for_input = False
     gamelib.exit()
-    exit()
+
+
+def draw():
+    gamelib.clear()
+    instructions.render()
+    gamelib.update()
 
 
 schema = gamelib.InputSchema(
@@ -55,219 +59,170 @@ def prompt(msg):
     waiting_for_input = True
 
 
-prompt("Rotating right.")
-theta = 0
+prompt("1. Rotating right.")
+transform.axis = (0, 0, 1)
 while waiting_for_input:
-    gamelib.clear()
-    theta += 1
-    model_matrix[:] = geometry.Mat4.rotate_about_z(theta)
-    instructions.render()
-    gamelib.update()
+    transform.theta += 1
+    draw()
 
 
-prompt("Rotating left.")
-theta = 0
+prompt("2. Rotating left.")
 while waiting_for_input:
-    gamelib.clear()
-    theta -= 1
-    model_matrix[:] = geometry.Mat4.rotate_about_z(theta)
-    instructions.render()
-    gamelib.update()
+    transform.theta -= 1
+    draw()
 
 
-prompt("Rotating right.")
-theta = 0
+prompt("3. Rotating right.")
+transform.axis = (0, 1, 0)
 while waiting_for_input:
-    gamelib.clear()
-    theta += 1
-    model_matrix[:] = geometry.Mat4.rotate_about_y(theta)
-    instructions.render()
-    gamelib.update()
+    transform.theta += 1
+    draw()
 
 
-prompt("Rotating left.")
-theta = 0
+prompt("4. Rotating left.")
 while waiting_for_input:
-    gamelib.clear()
-    theta -= 1
-    model_matrix[:] = geometry.Mat4.rotate_about_y(theta)
-    instructions.render()
-    gamelib.update()
+    transform.theta -= 1
+    draw()
 
 
-prompt("Rotating down.")
-theta = 0
+prompt("5. Rotating down.")
+transform.axis = (1, 0, 0)
 while waiting_for_input:
-    gamelib.clear()
-    theta += 1
-    model_matrix[:] = geometry.Mat4.rotate_about_x(theta)
-    instructions.render()
-    gamelib.update()
+    transform.theta += 1
+    draw()
 
 
-prompt("Rotating up.")
-theta = 0
+prompt("6. Rotating up.")
 while waiting_for_input:
-    gamelib.clear()
-    theta -= 1
-    model_matrix[:] = geometry.Mat4.rotate_about_x(theta)
-    instructions.render()
-    gamelib.update()
+    transform.theta -= 1
+    draw()
 
 
-camera.pos = (-2, -2, -2)
+camera.position = (-2, -2, -2)
 camera.direction = (2, 2, 2)
 
 
-prompt("Rotating right.")
-theta = 0
+prompt("7. Rotating right.")
+transform.axis = camera.direction
 while waiting_for_input:
-    gamelib.clear()
-    theta += 1
-    model_matrix[:] = geometry.Mat4.rotate_about_axis(camera.direction, theta)
-    instructions.render()
-    gamelib.update()
+    transform.theta += 1
+    draw()
 
 
-prompt("Rotating left.")
-theta = 0
+prompt("8. Rotating left.")
 while waiting_for_input:
-    gamelib.clear()
-    theta -= 1
-    model_matrix[:] = geometry.Mat4.rotate_about_axis(camera.direction, theta)
-    instructions.render()
-    gamelib.update()
+    transform.theta -= 1
+    draw()
 
 
-camera.pos = (0, -2, 0)
+transform.theta = 0
+camera.position = (0, -2, 0)
 camera.direction = (0, 1, 0)
 
 
-prompt("Stretching horizontally.")
-scale = 1
+prompt("9. Stretching horizontally.")
+scale = Vec3(1, 1, 1)
 while waiting_for_input:
-    gamelib.clear()
-    scale += 0.02
-    model_matrix[:] = geometry.Mat4.scale((scale, 1, 1))
-    instructions.render()
-    gamelib.update()
+    scale += (0.01, 0, 0)
+    transform.scale = scale
+    draw()
 
 
-prompt("Stretching vertically.")
-scale = 1
+prompt("10. Stretching vertically.")
+scale = Vec3(1, 1, 1)
 while waiting_for_input:
-    gamelib.clear()
-    scale += 0.02
-    model_matrix[:] = geometry.Mat4.scale((1, 1, scale))
-    instructions.render()
-    gamelib.update()
+    scale += (0, 0, 0.01)
+    transform.scale = scale
+    draw()
 
 
-camera.pos = (0, 0, 2)
+camera.position = (0, 0, 2)
 camera.direction = (0, 0, -1)
 camera.up = (0, 1, 0)
 
 
-prompt("Stretching vertically.")
-scale = 1
+prompt("11. Stretching vertically.")
+scale = Vec3(1, 1, 1)
 while waiting_for_input:
-    gamelib.clear()
-    scale += 0.02
-    model_matrix[:] = geometry.Mat4.scale((1, scale, 1))
-    instructions.render()
-    gamelib.update()
+    scale += (0, 0.01, 0)
+    transform.scale = scale
+    draw()
 
 
-camera.pos = (0, -10, 0)
+transform.scale = (1, 1, 1)
+camera.position = (0, -10, 0)
 camera.direction = (0, 1, 0)
 camera.up = (0, 0, 1)
 
 
-prompt("Moving left.")
-offset = 0
+prompt("12. Moving left.")
+pos = Vec3(0)
 while waiting_for_input:
-    gamelib.clear()
-    offset += 0.02
-    model_matrix[:] = geometry.Mat4.translation((-offset, 0, 0))
-    instructions.render()
-    gamelib.update()
+    pos.x -= 0.01
+    transform.pos = pos
+    draw()
 
 
-prompt("Moving right.")
-offset = 0
+prompt("13. Moving right.")
+pos = Vec3(0)
 while waiting_for_input:
-    gamelib.clear()
-    offset += 0.02
-    model_matrix[:] = geometry.Mat4.translation((offset, 0, 0))
-    instructions.render()
-    gamelib.update()
+    pos.x += 0.01
+    transform.pos = pos
+    draw()
 
 
-prompt("Moving up.")
-offset = 0
+prompt("14. Moving up.")
+pos = Vec3(0)
 while waiting_for_input:
-    gamelib.clear()
-    offset += 0.02
-    model_matrix[:] = geometry.Mat4.translation((0, 0, offset))
-    instructions.render()
-    gamelib.update()
+    pos.z += 0.01
+    transform.pos = pos
+    draw()
 
 
-prompt("Moving down.")
-offset = 0
+prompt("15. Moving down.")
+pos = Vec3(0)
 while waiting_for_input:
-    gamelib.clear()
-    offset += 0.02
-    model_matrix[:] = geometry.Mat4.translation((0, 0, -offset))
-    instructions.render()
-    gamelib.update()
+    pos.z -= 0.01
+    transform.pos = pos
+    draw()
 
 
-camera.pos = (0, 0, 10)
+camera.position = (0, 0, 10)
 camera.direction = (0, 0, -1)
 camera.up = (0, 1, 0)
 
 
-prompt("Moving up.")
-offset = 0
+prompt("16. Moving up.")
+pos = Vec3(0)
 while waiting_for_input:
-    gamelib.clear()
-    offset += 0.02
-    model_matrix[:] = geometry.Mat4.translation((0, offset, 0))
-    instructions.render()
-    gamelib.update()
+    pos.y += 0.01
+    transform.pos = pos
+    draw()
 
 
-prompt("Moving down.")
-offset = 0
+prompt("17. Moving down.")
+pos = Vec3(0)
 while waiting_for_input:
-    gamelib.clear()
-    offset += 0.02
-    model_matrix[:] = geometry.Mat4.translation((0, -offset, 0))
-    instructions.render()
-    gamelib.update()
+    pos.y -= 0.01
+    transform.pos = pos
+    draw()
 
 
-camera.pos = (0, -5, 0)
+camera.position = (0, -5, 0)
 camera.direction = (0, 1, 0)
 camera.up = (0, 0, 1)
 
 
-prompt("Cycle up/down, cycle width, rotate right.")
+prompt("18. Cycle up/down, cycle width, rotate right.")
 i = 0
 while waiting_for_input:
-    gamelib.clear()
     sin = np.sin(i / 66)
-    t = geometry.Transform(
-        pos=(0, 0, sin),
-        scale=(1.5 + sin, 1, 1),
-        axis=(0, 0, 1),
-        theta=i,
-    )
-    model_matrix[:] = t.matrix
-    instructions.render()
-    gamelib.update()
+    transform.pos = (0, 0, sin)
+    transform.scale=(1.5 + sin, 1, 1)
+    transform.axis=(0, 0, 1)
+    transform.theta=i
     i += 1
+    draw()
 
 
 gamelib.exit()
