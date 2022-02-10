@@ -235,7 +235,7 @@ class TestVaoIntegration:
         uniform = np.array(input_value)
         instructions = gpu.TransformFeedback(
             shader=f"""
-                #version 330
+                #version 400
                 #vert
                 uniform {gl_type} test_input;
                 out {gl_type} test_output;
@@ -265,7 +265,7 @@ class TestVaoIntegration:
         uniform = np.stack((arr1, arr2))
         instructions = gpu.TransformFeedback(
             shader=f"""
-                #version 330
+                #version 400
                 #vert
                 uniform {gl_type} test_input[2];
                 out {gl_type} test_output;
