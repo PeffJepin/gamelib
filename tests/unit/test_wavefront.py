@@ -1,6 +1,6 @@
 # fmt: off
 from gamelib import geometry
-from gamelib import gl
+from gamelib.core import gl
 
 import pytest
 import numpy as np

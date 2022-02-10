@@ -46,17 +46,17 @@ class TestPerspectiveCamera:
     def test_changing_properties(
         self, camera, attr, value, expected_to_change
     ):
-        proj_bytes = camera.projection_matrix.tobytes()
+        proj_bytes = camera.proj_matrix.tobytes()
         view_bytes = camera.view_matrix.tobytes()
 
         setattr(camera, attr, value)
 
         if expected_to_change == "view":
             assert camera.view_matrix.tobytes() != view_bytes
-            assert camera.projection_matrix.tobytes() == proj_bytes
+            assert camera.proj_matrix.tobytes() == proj_bytes
         if expected_to_change == "proj":
             assert camera.view_matrix.tobytes() == view_bytes
-            assert camera.projection_matrix.tobytes() != proj_bytes
+            assert camera.proj_matrix.tobytes() != proj_bytes
 
     def test_relative_directions(self, camera):
         camera.position = (0, 0, 0)
@@ -72,23 +72,23 @@ class TestPerspectiveCamera:
 
     def test_move(self, camera):
         camera.position = (1, 2, 3)
-        proj_bytes = camera.projection_matrix.tobytes()
+        proj_bytes = camera.proj_matrix.tobytes()
         view_bytes = camera.view_matrix.tobytes()
 
         camera.move((3, 2, 1))
 
-        assert camera.projection_matrix.tobytes() == proj_bytes
+        assert camera.proj_matrix.tobytes() == proj_bytes
         assert camera.view_matrix.tobytes() != view_bytes
         assert camera.position == (4, 4, 4)
 
     def test_rotate(self, camera):
         camera.direction = (0, 1, 0)
-        proj_bytes = camera.projection_matrix.tobytes()
+        proj_bytes = camera.proj_matrix.tobytes()
         view_bytes = camera.view_matrix.tobytes()
 
         camera.rotate(axis=(0, 0, 1), theta=90)
 
-        assert camera.projection_matrix.tobytes() == proj_bytes
+        assert camera.proj_matrix.tobytes() == proj_bytes
         assert camera.view_matrix.tobytes() != view_bytes
         assert_approx(camera.direction, (-1, 0, 0))
 
@@ -126,4 +126,4 @@ class TestPerspectiveCamera:
         c1.set_primary()
         c2.set_primary()
 
-        assert_approx(c2.projection_matrix, get_primary_proj())
+        assert_approx(c2.proj_matrix, get_primary_proj())

@@ -2,12 +2,11 @@ import numpy as np
 import pytest
 import gamelib
 
-from gamelib import gl
 from gamelib import rendering
-from gamelib.core import resources
+from gamelib.core import resources, gl
 from gamelib.rendering import buffers
 from gamelib.rendering import gpu
-from gamelib.rendering import glslutils
+from gamelib.rendering import shaders
 from ..conftest import assert_approx
 
 
@@ -35,7 +34,7 @@ class TestVertexArray:
 
     @pytest.fixture
     def shader(self):
-        return glslutils.ShaderData.read_string(self.shader_source)
+        return shaders.Shader.read_string(self.shader_source)
 
     def test_init(self, shader):
         vao = gpu.VertexArray(
@@ -107,7 +106,7 @@ class TestVertexArray:
     def test_num_entities_governed_by_smallest_buffer(self):
         array1 = np.arange(12)
         array2 = np.arange(12)
-        shader = glslutils.ShaderData.read_string(
+        shader = shaders.Shader.read_string(
             """
             #version 330
             #vert
@@ -134,7 +133,7 @@ class TestVertexArray:
     def test_num_elements_with_index_buffer(self):
         index_array = np.arange(8)
         input_array = np.arange(10)
-        shader = glslutils.ShaderData.read_string(
+        shader = shaders.Shader.read_string(
             """
             #version 330
             #vert
@@ -158,7 +157,7 @@ class TestVertexArray:
         assert program.num_elements == 8
 
     def test_num_instances(self):
-        shader = glslutils.ShaderData.read_string(
+        shader = shaders.Shader.read_string(
             """
             #version 330
             #vert
@@ -539,7 +538,7 @@ class TestUniformBlock:
         gamelib.update()
         inst = self.make_instructions(proj="mat4")
 
-        assert np.allclose(inst.transform(1), camera.projection_matrix)
+        assert np.allclose(inst.transform(1), camera.proj_matrix)
 
     def test_window_size(self):
         gamelib.get_width = lambda: 16

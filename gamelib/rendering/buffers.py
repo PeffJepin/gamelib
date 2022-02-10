@@ -6,7 +6,8 @@ import numpy as np
 
 from typing import Callable
 
-from gamelib import get_context, gl
+import gamelib
+from gamelib.core import gl
 
 
 class Buffer:
@@ -107,7 +108,9 @@ class Buffer:
         if nbytes == 0:
             self.gl = None
             return
-        self.gl = get_context().buffer(reserve=nbytes, dynamic=self._dynamic)
+        self.gl = gamelib.get_context().buffer(
+            reserve=nbytes, dynamic=self._dynamic
+        )
 
 
 class AutoBuffer(Buffer):
@@ -218,78 +221,3 @@ class AutoBuffer(Buffer):
 
     def _make_opengl_buffer(self, nbytes):
         super()._make_opengl_buffer(nbytes * 1.5)
-
-
-class OrderedIndexBuffer(AutoBuffer):
-    """Simple extension to AutoBuffer that manages a repeating order of
-    indices."""
-
-    def __init__(
-        self,
-        order,
-        num_entities=0,
-        max_entities=1000,
-        offset=None,
-    ):
-        """Initialize the buffer.
-
-        Parameters
-        ----------
-        order : iterable[int]
-            The index order that should be repeated for each entity.
-            For instance, if you were rendering a bunch of individual quads
-            with vertices ordered like so:
-                1-2
-                |/|
-                0-3
-            Then order might be given as:
-                (0, 1, 2, 0, 2, 3)
-
-        num_entities : int
-            How many repetitions the buffer should currently represent.
-
-        max_entities : int
-        offset : int
-        """
-
-        order = np.array(order, "u4")
-        offset = offset or max(order) + 1
-        index_offsets = np.array(np.arange(max_entities) * offset)
-        index_offsets = np.repeat(index_offsets, len(order))
-        indices = np.tile(order, max_entities) + index_offsets
-        super().__init__(indices, gl.uint, shrink=False)
-
-        self.indices_per_entity = len(order)
-        self._num_entities = 0
-        self.num_entities = num_entities
-
-    @property
-    def num_entities(self):
-        """Returns the current value for num_entities.
-
-        Returns
-        -------
-        int
-        """
-
-        return self._num_entities
-
-    @num_entities.setter
-    def num_entities(self, value):
-        """Sets the number of entities (number of repetitions of the initial
-        ordering) and writes the new indices to the buffer.
-
-        Parameters
-        ----------
-        value : int
-        """
-
-        if self._num_entities == value:
-            return
-        self._num_entities = value
-        stop = self.indices_per_entity * self._num_entities
-        self.write(self._source[:stop])
-
-    def update(self):
-        # This buffer is updated only when you change `num_entities`
-        pass

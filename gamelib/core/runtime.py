@@ -51,8 +51,8 @@ schedule = time.Schedule()
 threaded_schedule = time.Schedule(threaded=True)
 
 _render_func = _dummy_func
-_update_timer = time.Timer()
-_render_timer = time.Timer()
+_update_clock = time.Clock()
+_render_clock = time.Clock()
 _initialized = False
 _start_time = None
 
@@ -80,7 +80,7 @@ def init(headless=False, **kwargs):
     ctx.enable(ctx.DEPTH_TEST)
     ctx.enable(ctx.BLEND)
 
-    _start_time = time.Timer.now() 
+    _start_time = time.Clock.now()
     _initialized = True
 
 
@@ -101,29 +101,25 @@ def update():
     specified in the config.
     """
 
-    # not sure yet if I'll use an async main loop or just split this into
-    # two threads. This should suffice for now.
-
-    now = time.Timer.now()
-    next_frame = _render_timer.remaining(now=now)
-    next_update = _update_timer.remaining(now=now)
+    now = time.Clock.now()
+    next_frame = _render_clock.remaining(now=now)
+    next_update = _update_clock.remaining(now=now)
     threaded_schedule.update()
     schedule.update()
 
     if next_frame < next_update:
-        _render_timer.tick(config.fps)
+        _render_clock.tick(config.fps)
         window.swap_buffers()
-        _render_timer.tick(config.fps)
+        _render_clock.tick(config.fps)
         update()
     else:
         if _render_func != _dummy_func:
             window.clear()
             _render_func()
-        dt = _update_timer.tick(config.tps)
+        dt = _update_clock.tick(config.tps)
         window.poll_for_user_input(dt)
-        events.post(events.Update(dt))
-        events.post(events.InternalUpdate(dt))
-        schedule.update()
+        events.publish(events.Update(dt))
+        events.publish(events.InternalUpdate(dt))
 
 
 def exit():
@@ -153,4 +149,4 @@ def set_draw_commands(func):
 
 
 def get_time():
-    return time.Timer.now() - _start_time
+    return time.Clock.now() - _start_time

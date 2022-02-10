@@ -3,13 +3,13 @@ import numpy as np
 
 import gamelib
 
-from gamelib import gl
 from gamelib.core import input
+from gamelib.core import gl
 from gamelib.geometry import transforms
 from gamelib.geometry import collisions
 
 
-_primary_camera = None
+_primary_camera: "BaseCamera" = None
 
 
 def get_primary_view():
@@ -23,7 +23,7 @@ def get_primary_proj():
     if _primary_camera is None:
         return transforms.Mat4.identity()
     else:
-        return _primary_camera.projection_matrix
+        return _primary_camera.proj_matrix
 
 
 class BaseCamera:
@@ -277,7 +277,7 @@ class BaseCamera:
         self._view[:] = mat4
 
     @property
-    def projection_matrix(self):
+    def proj_matrix(self):
         """Gets the projection matrix.
 
         Returns
@@ -288,8 +288,8 @@ class BaseCamera:
 
         return self._proj
 
-    @projection_matrix.setter
-    def projection_matrix(self, mat4):
+    @proj_matrix.setter
+    def proj_matrix(self, mat4):
         """Updates the projection matrix in place.
 
         Parameters
@@ -495,7 +495,7 @@ class PerspectiveCamera(BaseCamera):
         )
 
     def _update_proj(self):
-        self.projection_matrix = transforms.Mat4.perspective_transform(
+        self.proj_matrix = transforms.Mat4.perspective_transform(
             self.fov_y, self._aspect_ratio, self.near, self.far
         )
 
@@ -583,7 +583,7 @@ class OrthogonalCamera(BaseCamera):
         self._update_view()
 
     def _update_proj(self):
-        self.projection_matrix = transforms.Mat4.orthogonal_transform(
+        self.proj_matrix = transforms.Mat4.orthogonal_transform(
             self._left,
             self._right,
             self._bottom,

@@ -1,6 +1,6 @@
 import numpy as np
 
-from gamelib import gl
+from gamelib.core import gl
 
 
 class ArrayStorage:

@@ -13,7 +13,7 @@ import numpy as np
 
 from gamelib.geometry import transforms
 from gamelib.geometry import base
-from gamelib import gl
+from gamelib.core import gl
 
 
 @dataclasses.dataclass
@@ -47,7 +47,7 @@ def parse(path) -> base.Model:
         )
 
 
-def _init_arrays(ppd) -> base.Model:
+def _init_arrays(ppd) -> _Arrays:
     vertices = np.zeros(ppd.nverts, gl.vec3)
     triangles = np.zeros(ppd.ntris, gl.uvec3)
     if ppd.normal_lookup:

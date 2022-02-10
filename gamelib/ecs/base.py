@@ -7,7 +7,7 @@ Components are used to create contiguous arrays of memory and offer convenient
 access to both the elements in the internal arrays and the arrays themselves.
 
 Components should be annotated in the same way dataclasses would be annotated.
-They support the VectorType datatypes found in gamelib.core.datatypes and also
+They support the VectorType datatypes found in gamelib.core.vectors and also
 support the OpenGL datatypes defined in gamelib.gl.
 
 >>> class Physical(Component):
@@ -20,7 +20,7 @@ support the OpenGL datatypes defined in gamelib.gl.
 
 Access to the internal arrays can be made through the type object.
 
->>> Physical.pos
+>>> Physical.position
 array([[0., 0.],
        [1., 1.],
        [2., 2.]])
@@ -39,11 +39,11 @@ interface.
 >>> obj
 <Physical(id=3, pos=[10. 10.], mass=5.0)>
 
->>> obj.pos = (123, 123)
+>>> obj.position = (123, 123)
 >>> obj
 <Physical(id=3, pos=[123. 123.], mass=5.0)>
 
->>> Physical.pos
+>>> Physical.position
 array([[  0.,   0.],
        [  1.,   1.],
        [  2.,   2.],
@@ -64,8 +64,8 @@ array([ 10.,  20.,  30., 300.])
 >>> obj.mass
 300.0
 
->>> Physical.pos -= (50, 50)
->>> Physical.pos
+>>> Physical.position -= (50, 50)
+>>> Physical.position
 array([[-50., -50.],
        [-49., -49.],
        [-48., -48.],
@@ -86,7 +86,7 @@ array([0, 1, 2, 3])
 >>> Physical.ids
 array([0, 3, 2])
 
->>> obj1.pos
+>>> obj1.position
 None
 >>> obj1.mass
 None
@@ -197,13 +197,13 @@ by the return types of the following.
 <gamelib.ecs._EntityMask at 0x7f875e6c46a0>
 >>> MovingObject.motion
 <gamelib.ecs._EntityMask at 0x7f875e5bddb0>
->>> MovingObject.physical.pos
+>>> MovingObject.physical.position
 <gamelib.ecs._MaskedArrayProxy at 0x7f87364d7340>
 
 
 These mask/proxy objects allow for array manipulation as follows:
 
->>> Physical.pos
+>>> Physical.position
 array([[  0.,   0.],
        [  1.,   1.],
        [  2.,   2.],
@@ -215,8 +215,8 @@ array([[  0.,   0.],
        [300., 300.],
        [400., 400.]])
 
->>> MovingObject.physical.pos += MovingObject.motion.vel
->>> Physical.pos
+>>> MovingObject.physical.position += MovingObject.motion.vel
+>>> Physical.position
 array([[  0.,   0.],
        [  2.,   2.],
        [  4.,   4.],
@@ -238,7 +238,7 @@ being destroyed. The mask/proxy objects take care of this complexity for you.
 >>> MovingObject.ids
 array([4, 1, 2])
 
->>> Physical.pos
+>>> Physical.position
 array([[400., 400.],
        [  2.,   2.],
        [  4.,   4.],
@@ -248,8 +248,8 @@ array([[400., 400.],
        [100., 100.],
        [200., 200.]])
 
->>> MovingObject.physical.pos += 1_000
->>> Physical.pos
+>>> MovingObject.physical.position += 1_000
+>>> Physical.position
 array([[ 400.,  400.],
        [1002., 1002.],
        [1004., 1004.],
@@ -306,7 +306,7 @@ from typing import Any
 
 import numpy as np
 
-from gamelib.core import datatypes
+from gamelib.core import vectors
 
 
 _STARTING_LENGTH = 10
@@ -528,7 +528,7 @@ class Component(metaclass=_ComponentType):
         cls._init_arrays()
         dtypes = []
         for name, dtype in cls.fields.items():
-            if dtype in datatypes.VectorType.__subclasses__():
+            if dtype in vectors.VectorType.__subclasses__():
                 dtypes.append((name, dtype.as_dtype()))
             elif isinstance(dtype, np.dtype):
                 dtypes.append((name, dtype))
@@ -764,7 +764,7 @@ class Component(metaclass=_ComponentType):
         cls.arrays = dict()
         for field, dtype in cls.fields.items():
             if isinstance(dtype, type) and issubclass(
-                dtype, datatypes.VectorType
+                dtype, vectors.VectorType
             ):
                 dtype = dtype.as_dtype()
             cls.arrays[field] = np.zeros(_STARTING_LENGTH, dtype)
@@ -807,7 +807,7 @@ class _ComponentElement:
         self._field = field
         self._dtype = owner.fields[field]
         self._should_view = False
-        if self._dtype in datatypes.VectorType.__subclasses__():
+        if self._dtype in vectors.VectorType.__subclasses__():
             self._should_view = True
 
     def __get__(self, obj, objtype=None):

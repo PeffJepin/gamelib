@@ -152,6 +152,13 @@ class VectorType(np.ndarray):
 
     @classmethod
     def as_dtype(cls):
+        """Express this vector type as a multidimensional numpy dtype.
+
+        Returns
+        -------
+        np.dtype
+        """
+
         return np.dtype((cls._DTYPE, cls._LENGTH))
 
 

@@ -1,6 +1,9 @@
-"""The _window module is the interface with moderngl_window dependency.
+"""The window module is the interface with moderngl_window dependency.
 This is responsible for polling for user input and translating the window
 events into gamelib events and provides the OpenGL context.
+
+In the future I plan on implementing my own window, the public interface of
+this module shouldn't really have to change when that happens.
 
 Notes
 -----
@@ -16,7 +19,7 @@ from moderngl_window.conf import settings
 
 from gamelib.core import input
 from gamelib.core import events
-from gamelib.core.datatypes import Vec2
+from gamelib.core.vectors import Vec2
 
 Window = mglw.BaseWindow
 Context = moderngl.Context
@@ -179,7 +182,7 @@ def poll_for_user_input(dt):
 
     eval(_poll_for_input, {}, {"self": _window})
     while _queued_input:
-        events.post(_queued_input.pop(0))
+        events.publish(_queued_input.pop(0))
     dispatch_is_pressed_events(dt)
 
 
@@ -197,22 +200,22 @@ def dispatch_is_pressed_events(dt):
             continue
 
         if _window.is_key_pressed(mglw_key):
-            events.post(input.KeyIsPressed(key_enum, _get_modifiers(), dt))
+            events.publish(input.KeyIsPressed(key_enum, _get_modifiers(), dt))
 
     if _window.mouse_states.left:
-        events.post(
+        events.publish(
             input.MouseIsPressed(
                 *_mouse_position, button=input.MouseButton.LEFT, dt=dt
             )
         )
     elif _window.mouse_states.right:
-        events.post(
+        events.publish(
             input.MouseIsPressed(
                 *_mouse_position, button=input.MouseButton.RIGHT, dt=dt
             )
         )
     elif _window.mouse_states.middle:
-        events.post(
+        events.publish(
             input.MouseIsPressed(
                 *_mouse_position, button=input.MouseButton.MIDDLE, dt=dt
             )

@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 
 import gamelib
-from gamelib import gl
+from gamelib.core import gl
 from gamelib.rendering import buffers
 
 
@@ -267,24 +267,3 @@ class TestAutoBuffer:
         array2 += 123
         buffer.update()
         assert np.all(buffer.read() == array2)
-
-
-class TestIndexBuffer:
-    def test_indices_from_num_entities(self):
-        buffer = buffers.OrderedIndexBuffer(
-            order=(0, 1, 2, 0, 2, 3), num_entities=2
-        )
-
-        expected = np.array([0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7])
-        assert np.all(buffer.read().astype(int) == expected)
-
-    def test_changing_number_of_entities(self):
-        buffer = buffers.OrderedIndexBuffer(
-            order=(0, 1, 2, 0, 2, 3), num_entities=2
-        )
-        buffer.num_entities = 3
-
-        expected = np.array(
-            [0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 8, 9, 10, 8, 10, 11]
-        )
-        assert np.all(buffer.read().astype(int) == expected)

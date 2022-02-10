@@ -1,5 +1,5 @@
-from gamelib.rendering import glslutils
-from gamelib import gl
+from gamelib.rendering import shaders
+from gamelib.core import gl
 
 from ..conftest import compare_glsl
 
@@ -52,7 +52,7 @@ def test_parsing_single_string_shader():
     """
 
     common = "\n".join((common_top, common_middle, common_bottom))
-    parsed = glslutils.ShaderData.read_string(source_string).code
+    parsed = shaders.Shader.read_string(source_string).code
 
     for parsed_stage, stage_src in zip(
         (parsed.vert, parsed.tesc, parsed.tese, parsed.geom, parsed.frag),
@@ -97,7 +97,7 @@ def test_parsing_individual_string_shaders():
         void main() { int i = 5; }
     """
 
-    code = glslutils.ShaderData.read_strings(vert, tesc, tese, geom, frag).code
+    code = shaders.Shader.read_strings(vert, tesc, tese, geom, frag).code
     assert compare_glsl(code.vert, vert)
     assert compare_glsl(code.tesc, tesc)
     assert compare_glsl(code.tese, tese)
@@ -121,15 +121,13 @@ def test_parsing_vertex_shader_data():
         void main() {}
     """
 
-    meta = glslutils.ShaderData.read_string(src).meta
+    meta = shaders.Shader.read_string(src).meta
 
-    assert glslutils.TokenDesc("v_pos", gl.vec3, 1) in meta.attributes.values()
-    assert (
-        glslutils.TokenDesc("scale", gl.float, 1) in meta.attributes.values()
-    )
+    assert shaders.TokenDesc("v_pos", gl.vec3, 1) in meta.attributes.values()
+    assert shaders.TokenDesc("scale", gl.float, 1) in meta.attributes.values()
     assert len(meta.attributes) == 2
     assert (
-        glslutils.TokenDesc("world_pos", gl.vec3, 1)
+        shaders.TokenDesc("world_pos", gl.vec3, 1)
         in meta.vertex_outputs.values()
     )
     assert len(meta.vertex_outputs) == 1
@@ -153,13 +151,11 @@ def test_parsing_uniforms():
         uniform mat4 u_mat4[2];
         void main() {}
     """
-    meta = glslutils.ShaderData.read_string(src).meta
+    meta = shaders.Shader.read_string(src).meta
 
-    assert (
-        glslutils.TokenDesc("u_float", gl.float, 1) in meta.uniforms.values()
-    )
-    assert glslutils.TokenDesc("u_vec4", gl.vec4, 1) in meta.uniforms.values()
-    assert glslutils.TokenDesc("u_mat4", gl.mat4, 2) in meta.uniforms.values()
+    assert shaders.TokenDesc("u_float", gl.float, 1) in meta.uniforms.values()
+    assert shaders.TokenDesc("u_vec4", gl.vec4, 1) in meta.uniforms.values()
+    assert shaders.TokenDesc("u_mat4", gl.mat4, 2) in meta.uniforms.values()
     assert len(meta.uniforms) == 3
 
 
@@ -170,9 +166,9 @@ def test_shader_source_code_hash():
         in vec3 v_pos;
         void main(){}
     """
-    shader1 = glslutils.ShaderData.read_string(src)
-    shader2 = glslutils.ShaderData.read_string(src)
-    shader3 = glslutils.ShaderData.read_string(src + "some difference")
+    shader1 = shaders.Shader.read_string(src)
+    shader2 = shaders.Shader.read_string(src)
+    shader3 = shaders.Shader.read_string(src + "some difference")
 
     assert hash(shader1) == hash(shader2)
     assert hash(shader1) != hash(shader3)

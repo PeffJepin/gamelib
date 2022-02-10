@@ -5,7 +5,7 @@ from gamelib.ecs import base
 from gamelib.ecs import Transform
 
 
-class Collider(base.Component):
+class Hitbox(base.Component):
     bvh: geometry.BVH
 
     @classmethod
@@ -19,7 +19,7 @@ class Collider(base.Component):
         return cls(bvh)
 
 
-def first_entity_hit(ray):
+def nearest_entity_hit(ray):
     best = None
     best_distance = geometry.Ray.MAX_DISTANCE
 
@@ -30,13 +30,13 @@ def first_entity_hit(ray):
         )
         return np.all(nearest_point > best_distance)
 
-    for entity_type in base.Entity.get_subclasses(components=(Collider,)):
+    for entity_type in base.Entity.get_subclasses(components=(Hitbox,)):
 
         transform_mask = entity_type.get_mask(Transform)
         if transform_mask is not None:
             transform_ids = transform_mask.ids
 
-        for i, bvh in enumerate(entity_type.get_mask(Collider).bvh):
+        for i, bvh in enumerate(entity_type.get_mask(Hitbox).bvh):
             if _skip_check(bvh):
                 continue
 

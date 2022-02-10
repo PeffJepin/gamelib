@@ -2,11 +2,11 @@ import threading
 import time
 
 
-class Timer:
+class Clock:
     """Simple tool for keeping time."""
 
     def __init__(self, rate=60):
-        """Initialize the timer.
+        """Initialize the clock.
 
         Parameters
         ----------
@@ -76,10 +76,10 @@ class Timer:
 
 
 class Schedule:
-    """This class manages a group of timers linked to callbacks."""
+    """This class manages a group of clocks linked to callbacks."""
 
     def __init__(self, *function_timings, threaded=False):
-        """Create a mapping of timers to callback functions.
+        """Create a mapping of clocks to callback functions.
 
         Parameters
         ----------
@@ -96,37 +96,37 @@ class Schedule:
         self._threaded = threaded
 
         for frequency, callback in function_timings:
-            self.add(frequency, callback)
+            self.add(callback, frequency)
 
     def update(self):
-        """Checks the Schedule for expired timers and calls the registered
+        """Checks the Schedule for expired clocks and calls the registered
         callback functions."""
 
         now = time.time()
-        timers = sorted(
-            [t for t in self._callbacks.keys() if t.remaining(now=now) < 0],
-            key=lambda t: t.remaining(now=now),
+        clocks = sorted(
+            [c for c in self._callbacks.keys() if c.remaining(now=now) < 0],
+            key=lambda c: c.remaining(now=now),
         )
-        for t in timers:
-            callback = self._get_callback(t)
+        for c in clocks:
+            callback = self._get_callback(c)
             if self._threaded:
                 threading.Thread(target=callback, daemon=True).start()
             else:
                 callback()
-            t.tick()
+            c.tick()
 
-    def add(self, frequency, callback):
+    def add(self, callback, frequency):
         """Adds a callback to this schedule.
 
         Parameters
         ----------
+        callback : Callable
         frequency : int | float
             How often to call the function.
-        callback : Callable
         """
 
-        timer = Timer(1 / frequency)
-        self._callbacks[timer] = callback
+        clock = Clock(1 / frequency)
+        self._callbacks[clock] = callback
 
     def remove(self, callback):
         """Removes a callback from this schedule, safe to call if callback is
@@ -137,28 +137,28 @@ class Schedule:
         callback : Callable
         """
 
-        for timer, cb in self._callbacks.copy().items():
+        for clock, cb in self._callbacks.copy().items():
             if cb is callback:
-                self._callbacks.pop(timer)
+                self._callbacks.pop(clock)
 
-    def once(self, wait, callback):
+    def once(self, callback, delay):
         """Register a callback to be called only once.
 
         Parameters
         ----------
-        wait : int | float
-            How many seconds to wait. Can be negative to occur on next update.
         callback : Callable
+        delay : int | float
+            How many seconds to wait. Can be negative to occur on next update.
         """
 
-        self.add(wait, callback)
+        self.add(callback, delay)
         self._once.add(callback)
 
-    def _get_callback(self, timer):
-        """Find a callback for the given timer."""
+    def _get_callback(self, clock):
+        """Find a callback for the given clock."""
 
-        cb = self._callbacks[timer]
+        cb = self._callbacks[clock]
         if cb in self._once:
-            self._callbacks.pop(timer)
+            self._callbacks.pop(clock)
             self._once.remove(cb)
         return cb

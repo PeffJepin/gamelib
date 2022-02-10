@@ -3,6 +3,8 @@ import numpy as np
 
 
 class Model:
+    """A minimal representation of some 3d geometry. API subject to change."""
+
     def __init__(self, vertices, indices, normals=None, anchor=None):
         vertices = np.asarray(vertices)
         length, *shape = vertices.shape
@@ -26,6 +28,17 @@ class Model:
         return self.vertices[self.indices]
 
     def anchor(self, relative_anchor):
+        """Anchors the model based on its bounding box.
+
+        Parameters
+        ----------
+        relative_anchor : Vec3 | Iterable
+            (0, 0, 0) would translate the model such that the minimum point of
+                the bounding box would be positioned on the origin.
+            (1, 1, 1) would translate the model such that the maximum point of
+                the bounding box would be positioned on the origin.
+        """
+
         assert all(0.0 <= val <= 1.0 for val in relative_anchor)
 
         if not isinstance(relative_anchor, Vec3):

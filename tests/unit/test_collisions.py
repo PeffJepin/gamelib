@@ -7,7 +7,7 @@ from gamelib.geometry import collisions
 from gamelib.geometry import transforms
 from gamelib.geometry import base
 from gamelib.geometry import gridmesh
-from gamelib import gl
+from gamelib.core import gl
 
 from ..conftest import assert_approx
 

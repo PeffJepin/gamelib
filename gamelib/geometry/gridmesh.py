@@ -1,6 +1,6 @@
 import numpy as np
 
-from gamelib import gl
+from gamelib.core import gl
 from gamelib.geometry import base
 
 

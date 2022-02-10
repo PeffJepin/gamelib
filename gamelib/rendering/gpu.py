@@ -4,11 +4,11 @@ import numpy as np
 from typing import Callable
 
 import gamelib
-from gamelib import gl
 from gamelib.core import resources
-from gamelib.rendering import global_uniforms
+from gamelib.core import gl
+from gamelib.rendering import _global
 from gamelib.rendering import uniforms
-from gamelib.rendering import glslutils
+from gamelib.rendering import shaders
 from gamelib.rendering import buffers
 from gamelib.rendering import textures
 
@@ -28,7 +28,7 @@ class GPUInstructions:
         ----------
         shader : Any
             This should either be a single source string or a filename for the
-            shader to be used. See glslutils.py docstring for more info.
+            shader to be used. See shaders.py docstring for more info.
         mode : int, optional
             OpenGL constant mode for rendering.
         instanced : tuple, optional
@@ -40,10 +40,10 @@ class GPUInstructions:
         """
 
         if isinstance(shader, str) and "#version" in shader:
-            self.shader = glslutils.ShaderData.read_string(shader)
+            self.shader = shaders.Shader.read_string(shader)
         else:
             self._shader_name = shader
-            self.shader = glslutils.ShaderData.read_file(shader)
+            self.shader = shaders.Shader.read_file(shader)
         self.vao = VertexArray(
             self.shader, mode=mode, instanced=instanced, **data_sources
         )
@@ -77,7 +77,7 @@ class GPUInstructions:
 
     def _hot_reload(self, _):
         if self.shader.files is not None:
-            self.shader = glslutils.ShaderData.read_file(self._shader_name)
+            self.shader = shaders.Shader.read_file(self._shader_name)
             self.vao.use_shader(self.shader)
 
     def _fetch_textures(self):
@@ -92,7 +92,7 @@ class GPUInstructions:
                     _cached_assets[name] = asset
                 if asset.texture is None:
                     asset.upload_texture(gamelib.get_context())
-                value_wrapper = np.array([i], gamelib.gl.sampler2D)
+                value_wrapper = np.array([i], gamelib.core.gl.sampler2D)
                 samplers[name] = value_wrapper
                 self._textures[i] = asset.texture
                 i += 1
@@ -415,7 +415,7 @@ class VertexArray:
         self._dirty = True
 
     def check_global_uniforms(self, **data_sources):
-        glob = global_uniforms.todict()
+        glob = _global.global_uniforms.todict()
         for name in self.shader.meta.uniforms:
             if name not in data_sources and name in glob:
                 self._integrate_uniform(name, glob[name])

@@ -216,11 +216,12 @@ def get_model_file(name):
     raise KeyError(f"Couldn't locate {name=}.")
 
 
-def _search_directory(path, exts=_supported_extensions):
+def _search_directory(path, exts=None):
     """Search through the given directory path recursively and cache files
     found with supported extensions."""
 
     assert path.is_dir()
+    exts = exts or _supported_extensions
 
     for path in path.iterdir():
         if path.is_dir():

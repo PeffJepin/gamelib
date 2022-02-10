@@ -1,6 +1,6 @@
 import numpy as np
 
-from gamelib import gl
+from gamelib.core import gl
 from gamelib.ecs import base
 from gamelib.geometry import transforms
 
@@ -16,11 +16,10 @@ class Transform(base.Component):
     model_matrix: gl.mat4
 
     @classmethod
-    def create(cls, pos=(0, 0, 0), scale=(1, 1, 1), axis=(0, 0, 1), theta=0):
-        # TODO: I might want to change ecs to use a create method instead of init.
-        # the use of __new__ and __init__ seems to collide to much with
-        # subclass usage.
-        inst = cls(_pos=pos, _scale=scale, _axis=axis, _theta=theta)
+    def create(
+        cls, position=(0, 0, 0), scale=(1, 1, 1), axis=(0, 0, 1), theta=0
+    ):
+        inst = cls(_pos=position, _scale=scale, _axis=axis, _theta=theta)
         inst._update_matrix()
         return inst
 
@@ -29,11 +28,11 @@ class Transform(base.Component):
         return np.linalg.inv(self.model_matrix.T)
 
     @property
-    def pos(self):
+    def position(self):
         return self._pos
 
-    @pos.setter
-    def pos(self, value):
+    @position.setter
+    def position(self, value):
         self._pos = value
         self._update_matrix()
 
@@ -72,5 +71,5 @@ class Transform(base.Component):
 
     def _update_matrix(self):
         self.model_matrix = transforms.Mat4.model_transform(
-            self.pos, self.scale, self.axis, self.theta
+            self.position, self.scale, self.axis, self.theta
         )

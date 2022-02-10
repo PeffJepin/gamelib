@@ -46,21 +46,21 @@ class TestEventHandling:
     def test_should_callback(self, recorded_callback, event):
         events.subscribe(type(event), recorded_callback)
 
-        events.post(event)
+        events.publish(event)
 
         assert recorded_callback.called
 
     def test_should_not_callback(self, recorded_callback, event):
         events.subscribe(type(event), recorded_callback)
 
-        events.post(SomeOtherEvent())
+        events.publish(SomeOtherEvent())
 
         assert not recorded_callback.called
 
     def test_callback_receives_event_as_arg(self, recorded_callback, event):
         events.subscribe(type(event), recorded_callback)
 
-        events.post(event)
+        events.publish(event)
 
         assert recorded_callback.called
         assert recorded_callback.event is event
@@ -71,7 +71,7 @@ class TestEventHandling:
         events.subscribe(type(event), recorded_callback)
 
         events.unsubscribe(type(event), recorded_callback)
-        events.post(event)
+        events.publish(event)
 
         assert not recorded_callback.called
 
@@ -82,9 +82,9 @@ class TestEventHandling:
         events.subscribe(TupleEvent, cb3)
 
         events.clear_handlers(Event, DataEvent)
-        events.post(Event())
-        events.post(DataEvent())
-        events.post(TupleEvent())
+        events.publish(Event())
+        events.publish(DataEvent())
+        events.publish(TupleEvent())
 
         assert not cb1.called and not cb2.called
         assert cb3.called
@@ -93,7 +93,7 @@ class TestEventHandling:
         a, b = Pipe()
 
         events.service_connection(a, type(event))
-        events.post(event)
+        events.publish(event)
 
         if not b.poll(0.01):
             raise AssertionError("Nothing in pipe.")
@@ -104,7 +104,7 @@ class TestEventHandling:
         event = SomeOtherEvent()
 
         events.service_connection(a, Event)
-        events.post(event)
+        events.publish(event)
 
         assert not b.poll(0.01)
 
@@ -128,7 +128,7 @@ class TestEventHandling:
         events.service_connection(a, type(event))
 
         events.stop_connection_service(a)
-        events.post(event)
+        events.publish(event)
 
         assert not b.poll(0.001)
 
@@ -166,24 +166,24 @@ class TestHandlerDecorator:
     def test_should_not_delegate_to_handlers(self, event):
         container = HandlerContainer()
 
-        events.post(event)
+        events.publish(event)
 
         assert container.record[type(event)] == 0
 
     def test_should_delegate_to_handlers(self, event):
         container = HandlerContainer()
-        events.subscribe_obj(container)
+        events.subscribe_marked(container)
 
-        events.post(event)
+        events.publish(event)
 
         assert container.record[type(event)] == 1
 
     def test_should_stop_after_unsubscribing(self, event):
         container = HandlerContainer()
-        events.subscribe_obj(container)
+        events.subscribe_marked(container)
 
-        events.unsubscribe_obj(container)
-        events.post(event)
+        events.unsubscribe_marked(container)
+        events.publish(event)
 
         assert container.record[type(event)] == 0
 
@@ -192,16 +192,16 @@ class TestHandlerDecorator:
         c2 = HandlerContainer()
         type_ = type(event)
 
-        events.subscribe_obj(c1)
-        events.post(event)
+        events.subscribe_marked(c1)
+        events.publish(event)
         assert c1.record[type_] == 1 and c2.record[type_] == 0
 
-        events.subscribe_obj(c2)
-        events.post(event)
+        events.subscribe_marked(c2)
+        events.publish(event)
         assert c1.record[type_] == 2 and c2.record[type_] == 1
 
-        events.unsubscribe_obj(c1)
-        events.post(event)
+        events.unsubscribe_marked(c1)
+        events.publish(event)
         assert c1.record[type_] == 2 and c2.record[type_] == 2
 
     def test_methods_marked_as_handlers_can_be_called_normally(self):

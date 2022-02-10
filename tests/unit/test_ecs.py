@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from gamelib.ecs import base
-from gamelib import gl
+from gamelib.core import gl
 
 from ..conftest import assert_approx
 

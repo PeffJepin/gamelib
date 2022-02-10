@@ -18,12 +18,12 @@ from gamelib.core.window import get_height
 from gamelib.core.window import get_aspect_ratio
 from gamelib.core.window import get_cursor
 
-from gamelib.core.events import post as post_event
+from gamelib.core.events import publish as post_event
 from gamelib.core.events import subscribe
 from gamelib.core.events import unsubscribe
-from gamelib.core.events import subscribe_obj as subscribe_marked_handlers
-from gamelib.core.events import unsubscribe_obj as unsubscribe_marked_handlers
-from gamelib.core.events import handler as event_handler
+from gamelib.core.events import subscribe_marked
+from gamelib.core.events import unsubscribe_marked
+from gamelib.core.events import handler as eventhandler
 from gamelib.core.events import Update
 
 from gamelib.core.input import InputSchema
@@ -39,13 +39,14 @@ from gamelib.core.input import MouseIsPressed
 from gamelib.core.input import MouseDrag
 from gamelib.core.input import MouseMotion
 
-from gamelib.core.datatypes import Vec2
-from gamelib.core.datatypes import Vec3
-from gamelib.core.datatypes import Vec4
+from gamelib.core import gl
+from gamelib.core.vectors import Vec2
+from gamelib.core.vectors import Vec3
+from gamelib.core.vectors import Vec4
 
 from gamelib.core.resources import get_file
 
-from gamelib.core.time import Timer
+from gamelib.core.time import Clock
 
 from gamelib import core
 from gamelib import geometry

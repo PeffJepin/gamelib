@@ -1,7 +1,6 @@
-import time
-
 import gamelib
 
+from gamelib.core import events
 from gamelib.rendering import uniforms
 from gamelib.rendering import camera
 
@@ -14,7 +13,7 @@ class GlobalUniformBlock(uniforms.UniformBlock):
     time = uniforms.ArrayStorage(gamelib.gl.float)
 
 
-def _update_global_uniforms(event):
+def _update_global_uniforms(_):
     x, y = gamelib.get_cursor()
     global_uniforms.cursor = (
         x / gamelib.get_width(),
@@ -27,4 +26,4 @@ def _update_global_uniforms(event):
 
 
 global_uniforms = GlobalUniformBlock()
-gamelib.subscribe(gamelib.core.events.InternalUpdate, _update_global_uniforms)
+gamelib.subscribe(events.InternalUpdate, _update_global_uniforms)

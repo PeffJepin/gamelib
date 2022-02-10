@@ -51,7 +51,7 @@ def test_input_schema_event_basic_integration(
         (schema_str, recorded_callback),
     )
 
-    events.post(event)
+    events.publish(event)
     assert recorded_callback.called and not bad_callback.called
 
 
@@ -62,11 +62,11 @@ def test_enable_disable_input_schema(schema_str_and_event, recorded_callback):
     )
 
     schema.disable()
-    events.post(event)
+    events.publish(event)
     assert not recorded_callback.called
 
     schema.enable()
-    events.post(event)
+    events.publish(event)
     assert recorded_callback.called
 
 
@@ -76,15 +76,15 @@ def test_multiple_schemas(schema_str_and_event):
     schema1 = InputSchema((schema_str, cb1))
     schema2 = InputSchema((schema_str, cb2))
 
-    events.post(event)
+    events.publish(event)
     assert cb1.called and cb2.called
 
     schema2.disable()
-    events.post(event)
+    events.publish(event)
     assert cb1.called == 2 and cb2.called == 1
 
     schema2.enable(master=True)
-    events.post(event)
+    events.publish(event)
     assert cb1.called == 2 and cb2.called == 2
 
 
@@ -104,7 +104,7 @@ class TestEventHandlerDecorators:
         for key in Keyboard:
             prev = obj.i
             event = event_type(key, Modifiers())
-            events.post(event)
+            events.publish(event)
             assert obj.i == prev + 1
 
         input.disable_handlers(obj)
@@ -112,7 +112,7 @@ class TestEventHandlerDecorators:
 
         for key in Keyboard:
             event = event_type(key, Modifiers())
-            events.post(event)
+            events.publish(event)
             assert obj.i == disabled_at
 
     @pytest.mark.parametrize("event_type", (KeyUp, KeyDown, KeyIsPressed))
@@ -139,7 +139,7 @@ class TestEventHandlerDecorators:
         for key in Keyboard:
             prev = obj.i
             event = event_type(key, Modifiers())
-            events.post(event)
+            events.publish(event)
 
             if key in expected_calls_from:
                 assert obj.i == prev + 1
@@ -150,7 +150,7 @@ class TestEventHandlerDecorators:
 
         for key in Keyboard:
             event = event_type(key, Modifiers())
-            events.post(event)
+            events.publish(event)
         assert obj.i == 7
 
     @pytest.mark.parametrize("event_type", (KeyUp, KeyDown, KeyIsPressed))
@@ -168,7 +168,7 @@ class TestEventHandlerDecorators:
         for key in Keyboard:
             prev = obj.i
             event = event_type(key, Modifiers())
-            events.post(event)
+            events.publish(event)
             if key == Keyboard.A:
                 assert obj.i == 1
             else:
@@ -176,7 +176,7 @@ class TestEventHandlerDecorators:
 
         input.disable_handlers(obj)
         event = event_type(Keyboard.A, Modifiers())
-        events.post(event)
+        events.publish(event)
         assert obj.i == 1
 
     @pytest.mark.parametrize("type", (MouseDown, MouseUp, MouseIsPressed))
@@ -193,14 +193,14 @@ class TestEventHandlerDecorators:
 
         for button in MouseButton:
             prev = obj.i
-            events.post(type(0, 0, button))
+            events.publish(type(0, 0, button))
             assert obj.i == prev + 1
 
         last_call = obj.i
         input.disable_handlers(obj)
 
         for button in MouseButton:
-            events.post(type(0, 0, button))
+            events.publish(type(0, 0, button))
         assert obj.i == last_call
 
     def test_mouse_motion(self):
@@ -214,13 +214,13 @@ class TestEventHandlerDecorators:
         obj = MyClass()
         input.enable_handlers(obj)
 
-        events.post(MouseMotion(0, 0, 0, 0))
+        events.publish(MouseMotion(0, 0, 0, 0))
         assert obj.i == 1
-        events.post(MouseDrag(0, 0, 0, 0, Buttons(True)))
+        events.publish(MouseDrag(0, 0, 0, 0, Buttons(True)))
         assert obj.i == 1
 
         input.disable_handlers(obj)
-        events.post(MouseMotion(0, 0, 0, 0))
+        events.publish(MouseMotion(0, 0, 0, 0))
         assert obj.i == 1
 
     def test_mouse_drag(self):
@@ -234,13 +234,13 @@ class TestEventHandlerDecorators:
         obj = MyClass()
         input.enable_handlers(obj)
 
-        events.post(MouseDrag(0, 0, 0, 0, Buttons(True)))
+        events.publish(MouseDrag(0, 0, 0, 0, Buttons(True)))
         assert obj.i == 1
-        events.post(MouseMotion(0, 0, 0, 0))
+        events.publish(MouseMotion(0, 0, 0, 0))
         assert obj.i == 1
 
         input.disable_handlers(obj)
-        events.post(MouseDrag(0, 0, 0, 0, Buttons(True)))
+        events.publish(MouseDrag(0, 0, 0, 0, Buttons(True)))
         assert obj.i == 1
 
     def test_mouse_scroll(self):
@@ -254,11 +254,11 @@ class TestEventHandlerDecorators:
         obj = MyClass()
         input.enable_handlers(obj)
 
-        events.post(MouseScroll(0, 0))
+        events.publish(MouseScroll(0, 0))
         assert obj.i == 1
-        events.post(MouseMotion(0, 0, 0, 0))
+        events.publish(MouseMotion(0, 0, 0, 0))
         assert obj.i == 1
 
         input.disable_handlers(obj)
-        events.post(MouseScroll(0, 0))
+        events.publish(MouseScroll(0, 0))
         assert obj.i == 1

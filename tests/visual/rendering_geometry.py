@@ -19,7 +19,7 @@ instructions = rendering.Renderer(
     "simple_faceted",
     v_pos=cube.vertices,
     indices=cube.indices,
-    model=transform.matrix
+    model=transform.matrix,
 )
 
 waiting_for_input = False
@@ -218,9 +218,9 @@ i = 0
 while waiting_for_input:
     sin = np.sin(i / 66)
     transform.pos = (0, 0, sin)
-    transform.scale=(1.5 + sin, 1, 1)
-    transform.axis=(0, 0, 1)
-    transform.theta=i
+    transform.scale = (1.5 + sin, 1, 1)
+    transform.axis = (0, 0, 1)
+    transform.theta = i
     i += 1
     draw()
 

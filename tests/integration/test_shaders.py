@@ -1,6 +1,6 @@
 import pytest
 
-from gamelib.rendering import glslutils
+from gamelib.rendering import shaders
 from gamelib.core import resources
 
 from ..conftest import compare_glsl
@@ -93,7 +93,7 @@ def test_loading_single_file_shader(glsl):
         """
         )
 
-    parsed = glslutils.ShaderData.read_file("test").code
+    parsed = shaders.Shader.read_file("test").code
     for actual, stage in zip(
         (parsed.vert, parsed.tesc, parsed.tese, parsed.geom, parsed.frag),
         (vert, tesc, tese, geom, frag),
@@ -120,7 +120,7 @@ def test_loading_separate_file_shader(vert, tesc, tese, geom, frag):
         with open(file, "w") as f:
             f.write(src)
 
-    parsed = glslutils.ShaderData.read_file("test").code
+    parsed = shaders.Shader.read_file("test").code
     for actual, src in zip(
         (parsed.vert, parsed.tesc, parsed.tese, parsed.geom, parsed.frag),
         (vert_s, tesc_s, tese_s, geom_s, frag_s),
@@ -154,12 +154,12 @@ def test_include_directive(vert, include_glsl):
 
     with open(vert, "w") as f:
         f.write(vert_src1)
-    parsed = glslutils.ShaderData.read_file("test").code
+    parsed = shaders.Shader.read_file("test").code
     assert compare_glsl(parsed.vert, expected)
 
     with open(vert, "w") as f:
         f.write(vert_src2)
-    parsed = glslutils.ShaderData.read_file("test").code
+    parsed = shaders.Shader.read_file("test").code
     assert compare_glsl(parsed.vert, expected)
 
 
@@ -175,10 +175,10 @@ def test_source_tracks_where_it_came_from(glsl):
             """
         )
 
-    file_shader = glslutils.ShaderData.read_file(glsl.name)
+    file_shader = shaders.Shader.read_file(glsl.name)
     assert file_shader.files == [glsl]
 
-    str_shader = glslutils.ShaderData.read_string(
+    str_shader = shaders.Shader.read_string(
         """
         #version 330
         #vert

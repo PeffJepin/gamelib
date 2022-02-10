@@ -26,10 +26,10 @@ Subscribe and unsubscribe functions as event handlers:
 ...     print(f"dt={event.dt}")
 ...
 >>> subscribe(Update, do_update)
->>> post(Update(0.01))
+>>> publish(Update(0.01))
 dt=0.01
 >>> unsubscribe(Update, do_update)
->>> post(Update(0.01))
+>>> publish(Update(0.01))
 >>> # no callback
 
 
@@ -41,10 +41,10 @@ Using an object as a container for handlers:
 ...         print(f"Doing update, dt={event.dt}")
 ...
 >>> system = System()
->>> post(Update(0.01))
+>>> publish(Update(0.01))
 >>> # nothing happens
->>> subscribe_obj(system)
->>> post(Update(0.01))
+>>> subscribe_marked(system)
+>>> publish(Update(0.01))
 Doing update, dt=0.01
 """
 # TODO: I should consider at some point whether or not to change the handler
@@ -54,7 +54,7 @@ Doing update, dt=0.01
 
 import threading
 import collections
-import multiprocessing as mp
+import multiprocessing
 
 from typing import Sequence
 from typing import NamedTuple
@@ -76,15 +76,11 @@ class InternalUpdate(NamedTuple):
     dt: float
 
 
-class SystemStop:
-    pass
-
-
 class Quit:
     pass
 
 
-def post(event):
+def publish(event):
     """Calls callbacks registered to the type of this event.
 
     Parameters
@@ -141,7 +137,7 @@ def unsubscribe(event_type, *callbacks) -> None:
             pass
 
 
-def subscribe_obj(obj):
+def subscribe_marked(obj):
     """Finds methods bound to an object that have been marked as event
     handlers and subscribe them to appropriate events.
 
@@ -154,7 +150,7 @@ def subscribe_obj(obj):
         subscribe(event_key, *handlers)
 
 
-def unsubscribe_obj(obj):
+def unsubscribe_marked(obj):
     """Removes methods bound to an object that have been marked as event
     handlers.
 
@@ -266,7 +262,7 @@ class _ConnectionAdapter:
 
     def __init__(
         self,
-        conn: mp.Pipe,
+        conn: multiprocessing.Pipe,
         event_types: Sequence[type],
     ):
         self.conn = conn
@@ -284,7 +280,7 @@ class _ConnectionAdapter:
                     continue
                 message = self.conn.recv()
                 event = message
-                post(event)
+                publish(event)
             except (BrokenPipeError, EOFError):
                 self._running = False
                 break

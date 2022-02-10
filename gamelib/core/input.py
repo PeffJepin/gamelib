@@ -4,8 +4,8 @@ into an application.
 
 The only component needed to get user input integrated is InputSchema. The
 input events can be selected with python strings, or if more verbose
-declarations are desired the enum.Enum classes Keyboard, Mouse, and MouseButton can
-be used.
+declarations are desired the enum.Enum classes Keyboard, Mouse, and MouseButton
+can be used.
 
 Example
 -------
@@ -57,7 +57,7 @@ based off of keystroke.
 >>> # Disable the controller like so:
 >>> disable_handlers(controller)
 """
-# TODO: Eventually the StringMappingenum.Enum class will need to be implemented
+# TODO: Eventually the StringMappingEnum class will need to be implemented
 #   in such a way that the values mapped to the enums are simply ints and the
 #   string matching lookup can be stored in some dictionary or something.
 #   It's not really a problem now, but if these events have to start getting

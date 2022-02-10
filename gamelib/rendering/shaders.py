@@ -98,8 +98,8 @@ from typing import Optional
 
 import numpy as np
 
-from gamelib import gl
 from gamelib.core import resources
+from gamelib.core import gl
 
 
 @dataclasses.dataclass
@@ -142,7 +142,7 @@ class ShaderSourceCode:
 
 
 @dataclasses.dataclass
-class ShaderData:
+class Shader:
     """Entry point into the module for preprocessing glsl code."""
 
     code: ShaderSourceCode
@@ -162,7 +162,7 @@ class ShaderData:
 
         Returns
         -------
-        ShaderData
+        Shader
         """
 
         code = _ShaderPreProcessor.process_single_string(code)
@@ -183,7 +183,7 @@ class ShaderData:
 
         Returns
         -------
-        ShaderData
+        Shader
         """
 
         code = _ShaderPreProcessor.process_separate_strings(
@@ -202,7 +202,7 @@ class ShaderData:
 
         Returns
         -------
-        ShaderData
+        Shader
         """
 
         paths = resources.get_shader_files(filename)

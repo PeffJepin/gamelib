@@ -1,7 +1,7 @@
 import time
 import pytest
 
-from gamelib.core.time import Timer, Schedule
+from gamelib.core.time import Clock, Schedule
 from tests.conftest import RecordedCallback
 
 
@@ -19,7 +19,7 @@ def do_for(t, func):
 @pytest.mark.ignore_github
 class TestTimer:
     def test_tick_sets_next_time(self):
-        timer = Timer()
+        timer = Clock()
         rate = 60
 
         timer.tick(rate)
@@ -27,7 +27,7 @@ class TestTimer:
         assert_almost_equal(time.time() + 1 / rate, timer.next)
 
     def test_tick_sleeps_until_next(self):
-        timer = Timer()
+        timer = Clock()
         timer.tick(60)
 
         next = timer.next
@@ -36,7 +36,7 @@ class TestTimer:
         assert_almost_equal(time.time(), next)
 
     def test_remaining_no_args(self):
-        timer = Timer()
+        timer = Clock()
 
         timer.tick(30)
         time.sleep(0.01)
@@ -44,7 +44,7 @@ class TestTimer:
         assert_almost_equal(1 / 30 - 0.01, timer.remaining())
 
     def test_remaining_given_now_as_arg(self):
-        timer = Timer()
+        timer = Clock()
 
         timer.tick(60)
         remaining = timer.remaining(now=time.time() + 0.01)
@@ -52,11 +52,11 @@ class TestTimer:
         assert_almost_equal(1 / 60 - 0.01, remaining)
 
     def test_now(self):
-        assert_almost_equal(time.time(), Timer.now())
+        assert_almost_equal(time.time(), Clock.now())
 
     def test_default_tick_rate(self):
-        timer1 = Timer(120)
-        timer2 = Timer()
+        timer1 = Clock(120)
+        timer2 = Clock()
 
         timer1.tick()
         assert_almost_equal(time.time() + 1 / 120, timer1.next)
@@ -95,7 +95,7 @@ class TestSchedule:
 
     def test_adding_to_a_schedule(self, recorded_callback):
         schedule = Schedule()
-        schedule.add(0.001, recorded_callback)
+        schedule.add(recorded_callback, 0.001)
 
         do_for(0.01, schedule.update)
 
@@ -103,7 +103,7 @@ class TestSchedule:
 
     def test_schedule_once(self, recorded_callback):
         schedule = Schedule()
-        schedule.once(-1, recorded_callback)
+        schedule.once(recorded_callback, -1)
 
         schedule.update()
         assert recorded_callback.called == 1
@@ -113,7 +113,7 @@ class TestSchedule:
 
     def test_threaded(self, recorded_callback):
         schedule = Schedule((0.01, recorded_callback), threaded=True)
-        schedule.once(-1, lambda: time.sleep(0.09))
+        schedule.once(lambda: time.sleep(0.09), -1)
 
         do_for(0.1, schedule.update)
 

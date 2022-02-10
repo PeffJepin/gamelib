@@ -2,7 +2,7 @@ import math
 
 import pytest
 import numpy as np
-from gamelib.core.datatypes import Vec2, Vec3, Vec4
+from gamelib.core.vectors import Vec2, Vec3, Vec4
 
 from ..conftest import assert_approx
 

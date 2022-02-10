@@ -6,7 +6,7 @@ from typing import Iterable
 
 import numpy as np
 
-from gamelib import gl
+from gamelib.core import gl
 from gamelib import Vec3
 
 
