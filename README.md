@@ -9,27 +9,33 @@ This is a library I've been working on for writing 3d applications in python. Yo
 
 ### Prerequisites
 
-This package requires support for OpenGL 3.3 or later, depends on gcc and currently supports python >= 3.8
-
+This package requires support for OpenGL 3.3 or later and currently supports python >= 3.8.
+If building from source some compiler will be required dependent on your platform.
 
 
 ### Installation
 
 Optionally create a virtual environment:
 
+Linux:
+
 ```sh
 python3 -m venv venv
 . venv/bin/activate
 ```
 
+Windows:
+
+```cmd
+python3 -m venv venv
+venv\Scripts\activate
+```
 
 Install with pip:
 
 ```sh
 pip install gamelib
 ```
-
-
 
 ### Usage
 
@@ -91,3 +97,8 @@ For a coverage report:
 ```sh
 pytest --cov=gamelib --cov-report=html
 ```
+
+
+### Example Applications
+
+[gamelib-chess](https://github.com/peffjepin/gamelib-chess)
