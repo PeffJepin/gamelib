@@ -76,8 +76,7 @@ To run the tests you'll first need to get the source and install both the requir
 ```sh
 git clone https://github.com/peffjepin/gamelib.git
 cd gamelib
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
+python3 -m pip install .
 ```
 
 Then to run the tests simply:
