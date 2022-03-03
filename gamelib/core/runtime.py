@@ -74,7 +74,9 @@ def init(headless=False, **kwargs):
     if _initialized:
         return
 
-    resources.set_content_roots(pathlib.Path.cwd())
+    if not resources.has_content_root():
+        resources.set_content_roots(pathlib.Path.cwd())
+
     window.create(headless=headless, **kwargs)
     ctx = window.get_context()
     ctx.enable(ctx.DEPTH_TEST)

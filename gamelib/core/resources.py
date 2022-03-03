@@ -16,7 +16,6 @@ Find discovered files with:
     get_shader_files
 """
 
-import pathlib
 import collections
 
 
@@ -30,6 +29,10 @@ _supported_extensions = [
     *_image_extensions,
     *_3d_model_extensions,
 ]
+
+
+def has_content_root():
+    return len(_resource_roots) > 0
 
 
 def clear_cache():
