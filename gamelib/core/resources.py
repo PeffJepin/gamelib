@@ -13,7 +13,7 @@ Find discovered files with:
     # shortcuts for specific filetypes, don't specify extension
     get_image_file
     get_model_file
-    get_shader_files
+    get_shader_file
 """
 
 import collections
@@ -21,7 +21,7 @@ import collections
 
 _resource_roots = []
 _resource_cache = collections.defaultdict(list)
-_shader_extensions = (".vert", ".frag", ".tesc", ".tese", ".geom", ".glsl")
+_shader_extensions = (".glsl",)
 _image_extensions = (".jpg", ".png")
 _3d_model_extensions = (".obj",)
 _supported_extensions = [
@@ -129,40 +129,33 @@ def get_file(filename):
     raise KeyError(f"Unable to locate {filename=}.")
 
 
-def get_shader_files(name):
-    """Tries to get a list of paths to shader source files with
+def get_shader_file(name):
+    """Tries to get the path to a shader source file with
     the given name.
 
     Parameters
     ----------
     name : str
-        for shader made up of files water.vert, water.frag
-        name would be "water"
 
     Returns
     -------
-    list[pathlib.Path]
+    pathlib.Path
 
     Raises
     ------
     KeyError:
-        When the files could not be found for given name.
+        When the file for the given name could not be found.
     """
 
-    sources = []
     for ext in _shader_extensions:
         try:
             if name.endswith(ext):
-                sources.append(get_file(name))
+                return get_file(name)
             else:
-                sources.append(get_file(name + ext))
+                return get_file(name + ext)
         except KeyError:
             pass
-
-    if not sources:
-        raise KeyError(f"Couldn't locate {name=}.")
-
-    return sources
+    raise KeyError(f"Couldn't locate {name=}.")
 
 
 def get_image_file(name):

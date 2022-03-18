@@ -14,11 +14,6 @@ def cleanup(_blank_filesystem):
 
 @pytest.fixture(
     params=(
-        "some_shader.vert",
-        "some_shader.frag",
-        "some_shader.tesc",
-        "some_shader.tese",
-        "some_shader.geom",
         "some_shader.glsl",
         "some_image.png",
         "some_image.jpg",
@@ -124,19 +119,14 @@ def test_adding_a_supported_extension_rechecks_roots(tmpdir_maker):
     assert resources.get_file(filename).name == filename
 
 
-def test_get_shader_files(tmpdir_maker):
+def test_get_shader_file(tmpdir_maker):
     root = tmpdir_maker(
-        "shader.vert",
-        "shader.frag",
-        "shader.tesc",
-        "shader.tese",
-        "shader.geom",
         "shader.glsl",
     )
     resources.set_content_roots(root)
-    shader = resources.get_shader_files("shader")
+    path = resources.get_shader_file("shader")
 
-    assert len(shader) == 6
+    assert path == root / "shader.glsl"
 
 
 def test_get_image_file(tmpdir_maker):

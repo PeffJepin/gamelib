@@ -147,48 +147,25 @@ class Shader:
 
     code: ShaderSourceCode
     meta: ShaderMetaData
-    files: Optional[List[pathlib.Path]] = None
+    file: Optional[pathlib.Path] = None
 
     def __hash__(self):
         return hash(self.code)
 
     @classmethod
-    def read_string(cls, code):
+    def parse(cls, src):
         """Preprocesses and inspects a shader provided as a single string.
 
         Parameters
         ----------
-        code : str
+        src : str
 
         Returns
         -------
         Shader
         """
 
-        code = _ShaderPreProcessor.process_single_string(code)
-        meta = _parse_metadata(code)
-        return cls(code, meta)
-
-    @classmethod
-    def read_strings(cls, vert="", tesc="", tese="", geom="", frag=""):
-        """Preprocesses and inspects a shader provided as individual strings.
-
-        Parameters
-        ----------
-        vert : str
-        tesc : str
-        tese : str
-        geom : str
-        frag : str
-
-        Returns
-        -------
-        Shader
-        """
-
-        code = _ShaderPreProcessor.process_separate_strings(
-            vert, tesc, tese, geom, frag
-        )
+        code = _ShaderPreProcessor.process_single_string(src)
         meta = _parse_metadata(code)
         return cls(code, meta)
 
@@ -205,24 +182,12 @@ class Shader:
         Shader
         """
 
-        paths = resources.get_shader_files(filename)
-
-        if len(paths) == 1 and paths[0].name.endswith(".glsl"):
-            with open(paths[0], "r") as f:
-                src = f.read()
-                code = _ShaderPreProcessor.process_single_string(src)
-
-        else:
-            src = dict()
-            for path in paths:
-                ext = path.name[-4:]
-                assert ext in ("vert", "tesc", "tese", "geom", "frag")
-                with open(path, "r") as f:
-                    src[ext] = f.read()
-            code = _ShaderPreProcessor.process_separate_strings(**src)
-
+        path = resources.get_shader_file(filename)
+        with open(path, "r") as f:
+            src = f.read()
+        code = _ShaderPreProcessor.process_single_string(src)
         meta = _parse_metadata(code)
-        return cls(code, meta, paths)
+        return cls(code, meta, path)
 
 
 class _ShaderPreProcessor:
@@ -344,34 +309,6 @@ class _ShaderPreProcessor:
                 self.current_stage.extend(f.readlines())
             return True
         return False
-
-    @classmethod
-    def process_separate_strings(
-        cls, vert="", tesc="", tese="", geom="", frag=""
-    ) -> ShaderSourceCode:
-        self = cls()
-
-        self.current_stage = self.vert_stage
-        for line in vert.splitlines():
-            self.process_line(line)
-
-        self.current_stage = self.tesc_stage
-        for line in tesc.splitlines():
-            self.process_line(line)
-
-        self.current_stage = self.tese_stage
-        for line in tese.splitlines():
-            self.process_line(line)
-
-        self.current_stage = self.geom_stage
-        for line in geom.splitlines():
-            self.process_line(line)
-
-        self.current_stage = self.frag_stage
-        for line in frag.splitlines():
-            self.process_line(line)
-
-        return self.compose()
 
     @classmethod
     def process_single_string(cls, string) -> ShaderSourceCode:

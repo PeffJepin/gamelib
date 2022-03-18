@@ -40,7 +40,7 @@ class GPUInstructions:
         """
 
         if isinstance(shader, str) and "#version" in shader:
-            self.shader = shaders.Shader.read_string(shader)
+            self.shader = shaders.Shader.parse(shader)
         else:
             self._shader_name = shader
             self.shader = shaders.Shader.read_file(shader)
@@ -76,7 +76,7 @@ class GPUInstructions:
             texture.gl.use(binding)
 
     def _hot_reload(self, _):
-        if self.shader.files is not None:
+        if self.shader.file is not None:
             self.shader = shaders.Shader.read_file(self._shader_name)
             self.vao.use_shader(self.shader)
 
