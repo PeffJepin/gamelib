@@ -191,14 +191,14 @@ class TestTransformFeedback:
         data_in = np.arange(10, dtype=gl.float)
         instructions = gpu.TransformFeedback(
             shader="""
-            #version 330
-            #vert
-            in float data_in;
-            out float data_out;
-            void main() {
-                data_out = 2 * data_in;
-            }
-            """
+#version 330
+#vert
+in float data_in;
+out float data_out;
+void main() {
+    data_out = 2 * data_in;
+}
+"""
         )
         assert_approx(data_in * 2, instructions.transform(data_in=data_in))
 
@@ -429,34 +429,6 @@ class TestVaoIntegration:
         instructions.source(in_value=list2)
 
         assert np.all(instructions.transform() == [111, 123, 111, 123])
-
-    def test_hot_reloading_a_shader_from_file(self, tempdir):
-        shader_file = tempdir / "test_shader.glsl"
-        shader1 = """
-        #version 330
-        #vert
-        """
-        shader2 = "#define UPDATE_ME 1"
-        shader3 = """
-        out int output_value;
-
-        void main(){
-            output_value = UPDATE_ME;
-        }
-        """
-        with open(shader_file, "w") as f:
-            f.writelines((shader1, shader2, shader3))
-
-        resources.add_content_roots(tempdir)
-        instructions = gpu.TransformFeedback(shader="test_shader")
-        assert instructions.transform(1) == 1
-
-        shader2 = "#define UPDATE_ME 2"
-        with open(shader_file, "w") as f:
-            f.writelines((shader1, shader2, shader3))
-
-        gpu.hot_reload_shaders()
-        assert instructions.transform(1) == 2
 
 
 class TestUniformBlock:

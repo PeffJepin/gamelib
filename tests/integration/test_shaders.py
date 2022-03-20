@@ -42,12 +42,12 @@ void main()
     (
         "#include <test.glsl>",
         "#include <test>",
-        # '#include "test.glsl"',
-        # '#include "test"',
-        # "#include 'test.glsl'",
-        # "#include 'test'",
-        # "#include test.glsl",
-        # "#include test",
+        '#include "test.glsl"',
+        '#include "test"',
+        "#include 'test.glsl'",
+        "#include 'test'",
+        "#include test.glsl",
+        "#include test",
     ),
 )
 def test_include_directive(shaderdir, syntax):
