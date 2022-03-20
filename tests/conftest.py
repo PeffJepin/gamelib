@@ -220,8 +220,9 @@ def compare_glsl(src1, src2):
         if line.strip() not in ("", "\n")
     )
     if cleaned1 != cleaned2:
-        import pprint
-
-        pprint.pprint(cleaned1)
-        pprint.pprint(cleaned2)
+        print("shader1 source")
+        print(cleaned1)
+        print()
+        print("shader2 source")
+        print(cleaned2)
     return cleaned1 == cleaned2

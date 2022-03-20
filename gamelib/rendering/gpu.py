@@ -40,10 +40,11 @@ class GPUInstructions:
         """
 
         if isinstance(shader, str) and "#version" in shader:
-            self.shader = shaders.Shader.parse(shader)
+            self.shader = shaders.Shader(src=shader)
         else:
             self._shader_name = shader
-            self.shader = shaders.Shader.read_file(shader)
+            self.shader = shaders.Shader(self._shader_name)
+
         self.vao = VertexArray(
             self.shader, mode=mode, instanced=instanced, **data_sources
         )

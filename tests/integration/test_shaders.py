@@ -15,10 +15,20 @@ def shaderdir(tempdir):
     shutil.rmtree(directory)
 
 
-def test_loading_shader_from_a_file(shaderdir):
-    with open(shaderdir / "test.glsl", "w") as f:
-        f.write(
-            """
+@pytest.fixture
+def shader_writer(shaderdir):
+    def writer(filename, src):
+        fn = filename if filename.endswith(".glsl") else filename + ".glsl"
+        with open(shaderdir / fn, "w") as f:
+            f.write(src)
+        # update resource module after writing new files
+        resources.set_content_roots(shaderdir)
+
+    return writer
+
+
+def test_loading_shader_from_a_file(shader_writer):
+    src = """
 #version 330
 
 #vert
@@ -29,28 +39,26 @@ void main()
     f_pos = v_pos;
 }
 """
-        )
-
+    shader_writer("test", src)
     # unit tests should ensure strings are parsed correctly, we just want to
     # be sure we can load this shader by name once it's been written to disk.
-    resources.set_content_roots(shaderdir)
-    assert shaders.Shader.read_file("test") is not None
+    assert shaders.Shader("test") is not None
 
 
 @pytest.mark.parametrize(
     "syntax",
     (
-        "#include <test.glsl>",
-        "#include <test>",
-        '#include "test.glsl"',
-        '#include "test"',
-        "#include 'test.glsl'",
-        "#include 'test'",
-        "#include test.glsl",
-        "#include test",
+        "#include <test_include.glsl>",
+        "#include <test_include>",
+        '#include "test_include.glsl"',
+        '#include "test_include"',
+        "#include 'test_include.glsl'",
+        "#include 'test_include'",
+        "#include test_include.glsl",
+        "#include test_include",
     ),
 )
-def test_include_directive(shaderdir, syntax):
+def test_include_directive(shader_writer, syntax):
     incl_src = """
 int some_int;
 float some_float;
@@ -67,29 +75,47 @@ void main() {{}}
 {incl_src}
 void main() {{}}
 """
-    with open(shaderdir / "test.glsl", "w") as f:
-        f.write(incl_src)
-    with open(shaderdir / "test_shader.glsl", "w") as f:
-        f.write(shader_src)
-    resources.set_content_roots(shaderdir)
+    shader_writer("test_include", incl_src)
+    shader_writer("test", shader_src)
 
-    shader = shaders.Shader.read_file("test_shader")
+    shader = shaders.Shader("test")
     assert compare_glsl(shader.code.vert, expected)
 
 
-def test_shader_loaded_from_a_file_keeps_reference_to_the_filepath(shaderdir):
+def test_nested_includes(shader_writer):
+    include1 = "#include include2"
+    include2 = "hello"
+    shader_src = """
+#version 330
+#include include1
+#vert
+void main() {}
+"""
+    expected = """
+#version 330
+hello
+void main() {}
+"""
+    shader_writer("include1", include1)
+    shader_writer("include2", include2)
+    shader_writer("test", shader_src)
+
+    shader = shaders.Shader("test")
+    assert compare_glsl(shader.code.vert, expected)
+
+
+def test_shader_loaded_from_a_file_keeps_reference_to_the_filepath(
+    shader_writer,
+):
     src = """
 #version 330
 #vert
 void main() {}
 """
-    str_shader = shaders.Shader.parse(src)
+    str_shader = shaders.Shader(src=src)
     assert str_shader.file is None
 
-    filepath = shaderdir / "test_shader.glsl"
-    with open(filepath, "w") as f:
-        f.write(src)
-    resources.set_content_roots(shaderdir)
+    shader_writer("test", src)
 
-    file_shader = shaders.Shader.read_file("test_shader")
-    assert file_shader.file == filepath
+    file_shader = shaders.Shader("test")
+    assert file_shader.file is not None

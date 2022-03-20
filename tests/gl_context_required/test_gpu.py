@@ -34,7 +34,7 @@ class TestVertexArray:
 
     @pytest.fixture
     def shader(self):
-        return shaders.Shader.parse(self.shader_source)
+        return shaders.Shader(src=self.shader_source)
 
     def test_init(self, shader):
         vao = gpu.VertexArray(
@@ -106,8 +106,8 @@ class TestVertexArray:
     def test_num_entities_governed_by_smallest_buffer(self):
         array1 = np.arange(12)
         array2 = np.arange(12)
-        shader = shaders.Shader.parse(
-            """
+        shader = shaders.Shader(
+            src="""
             #version 330
             #vert
             in int input1;
@@ -133,8 +133,8 @@ class TestVertexArray:
     def test_num_elements_with_index_buffer(self):
         index_array = np.arange(8)
         input_array = np.arange(10)
-        shader = shaders.Shader.parse(
-            """
+        shader = shaders.Shader(
+            src="""
             #version 330
             #vert
             in int test_in;
@@ -157,8 +157,8 @@ class TestVertexArray:
         assert program.num_elements == 8
 
     def test_num_instances(self):
-        shader = shaders.Shader.parse(
-            """
+        shader = shaders.Shader(
+            src="""
             #version 330
             #vert
             in vec3 v_pos;

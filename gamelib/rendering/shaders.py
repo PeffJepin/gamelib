@@ -89,7 +89,6 @@ This fragment shader would expand to:
     }
 """
 
-import dataclasses
 import pathlib
 import re
 
@@ -103,53 +102,20 @@ import numpy as np
 from gamelib.core import resources
 from gamelib.core import gl
 
-GLSL_DTYPE_STRINGS = (
-    "int",
-    "uint",
-    "float",
-    "double",
-    "bool",
-    "bvec2",
-    "bvec3",
-    "bvec4",
-    "ivec2",
-    "ivec3",
-    "ivec4",
-    "vec2",
-    "vec3",
-    "vec4",
-    "uvec2",
-    "uvec3",
-    "uvec4",
-    "dvec2",
-    "dvec3",
-    "dvec4",
-    "sampler2d",
-    "mat2",
-    "mat3",
-    "mat4",
-    "mat2x3",
-    "mat2x4",
-    "mat3x2",
-    "mat3x4",
-    "mat4x2",
-    "mat4x3",
-    "dmat2",
-    "dmat3",
-    "dmat4",
-    "dmat2x3",
-    "dmat2x4",
-    "dmat3x2",
-    "dmat3x4",
-    "dmat4x2",
-    "dmat4x3",
-    "void",
-)
+
+# TODO: Test nested includes
+# TODO: Test hot reloading
+# TODO: Test function defualt arguments
+# TODO: Test line number debugging
+# TODO: Maybe shaders loaded as includes should be their own object, since they don't have stages
+# TODO: Shaders with includes need to know that they have includes for hot reloading
+# TODO: This module docstring and documentation needs to be updated.
+# TODO: Look over this modules entire API before finishing with it
+# TODO: Include some default gamelib glsl libraries available for includes
 
 # Shaders loaded from files are cached with a record of the file's
 # previously modified time to facilitate automatic hot reloading
-_CachedShader = Tuple["Shader", float]
-_cache: Dict[pathlib.Path, _CachedShader] = dict()
+_cache: Dict[pathlib.Path, "Shader"] = dict()
 
 
 class TokenDesc(NamedTuple):
@@ -175,8 +141,7 @@ class FunctionDesc(NamedTuple):
     defaults: tuple
 
 
-@dataclasses.dataclass
-class ShaderMetaData:
+class ShaderMetaData(NamedTuple):
     """A collection of metadata on tokens parsed from a single
     glsl source file."""
 
@@ -186,72 +151,77 @@ class ShaderMetaData:
     functions: Dict[str, FunctionDesc]
 
 
-@dataclasses.dataclass(frozen=True, eq=True)
-class ShaderSourceCode:
+class ShaderSourceCode(NamedTuple):
     """Source code strings for an OpenGl program."""
 
-    common: Optional[str]
-    vert: Optional[str]
-    tesc: Optional[str]
-    tese: Optional[str]
-    geom: Optional[str]
-    frag: Optional[str]
+    common: str
+    vert: Optional[str] = None
+    tesc: Optional[str] = None
+    tese: Optional[str] = None
+    geom: Optional[str] = None
+    frag: Optional[str] = None
 
 
-@dataclasses.dataclass
 class Shader:
     """Entry point into the module for preprocessing glsl code."""
+
+    _PREPROCESSOR_KWARGS = {}
 
     code: ShaderSourceCode
     meta: ShaderMetaData
     file: Optional[pathlib.Path] = None
 
+    def __new__(cls, name=None, *, src=None):
+        if name is not None and src is not None:
+            raise ValueError(
+                "Shaders can either be sourced from a python "
+                "source string, or from a file on disk. So "
+                "`name` and `src` are mutually exclusive."
+            )
+        elif name is None and src is None:
+            raise ValueError(
+                "No source specified for this shader, please supply "
+                "either a filename or source string."
+            )
+
+        # we might want return an existing shader instead of passing
+        # control over to __init__
+        if name is not None:
+            path = resources.get_shader_file(name)
+            if path in _cache:
+                return _cache[path]
+
+        return object.__new__(cls)
+
+    def __init__(self, name=None, *, src=None):
+        if name is not None:
+            path = resources.get_shader_file(name)
+            with open(path, "r") as f:
+                src = f.read()
+            _cache[path] = self
+        else:
+            path = None
+
+        code, meta = _ShaderPreProcessor(src).compile(
+            **self._PREPROCESSOR_KWARGS
+        )
+        self.code = code
+        self.meta = meta
+        self.file = path
+
     def __hash__(self):
         return hash(self.code)
 
-    @classmethod
-    def parse(cls, src):
-        """Preprocesses and inspects a shader provided as a single string.
 
-        Parameters
-        ----------
-        src : str
-
-        Returns
-        -------
-        Shader
-        """
-
-        return _ShaderPreProcessor(src).compile()
-
-    @classmethod
-    def read_file(cls, filename):
-        """Locates and loads a shader on disk with the resources module.
-
-        Parameters
-        ----------
-        filename : str
-
-        Returns
-        -------
-        Shader
-        """
-
-        path = resources.get_shader_file(filename)
-        shader, mtime = _cache.get(path, (None, None))
-        if shader and path.stat().st_mtime == mtime:
-            return shader
-
-        with open(path, "r") as f:
-            src = f.read()
-        shader = _ShaderPreProcessor(src).compile()
-        shader.file = path
-        _cache[path] = (shader, path.stat().st_mtime)
-        return shader
+class _IncludeShader(Shader):
+    _PREPROCESSOR_KWARGS = {"include": True}
 
 
 class _ShaderPreProcessor:
-    _glsl_type_set = set(GLSL_DTYPE_STRINGS)
+    _ENSURE_COMMON_ERROR = (
+        "at a minimum the gamelib glsl preprocessor expects there to be "
+        "a #version directive within the `common` shader stage."
+    )
     _stages_regex = re.compile(
         r"""
             (?P<tag> (\#vert | \#tesc | \#tese | \#geom | \#frag | \A)\s*?\n)
@@ -284,7 +254,19 @@ class _ShaderPreProcessor:
         self.meta = ShaderMetaData({}, {}, {}, {})
         self._current_stage = None
 
-    def compile(self):
+    def compile(self, include=False):
+        if include:
+            return self._compile_include_shader()
+        else:
+            return self._compile_base_shader()
+
+    def _compile_include_shader(self):
+        # an include shader is not split into stages
+        self.common = self.src
+        self._process_common()
+        return ShaderSourceCode(self.common), self.meta
+
+    def _compile_base_shader(self):
         self._split_stages()
         self._process_common()
         self._process_stages()
@@ -298,21 +280,21 @@ class _ShaderPreProcessor:
             "".join(self.stages["frag"]) or None,
         )
 
-        return Shader(code, self.meta)
+        return code, self.meta
 
     def _process_common(self):
-        self.common = self._process(self.common)
+        self.common = self._process_stage(self.common)
 
     def _process_stages(self):
         for k, v in self.stages.items():
             if not v:
                 continue
             self._current_stage = k
-            self.stages[k] = self.common + self._process(v)
+            self.stages[k] = self.common + self._process_stage(v)
 
-    def _process(self, raw):
+    def _process_stage(self, stage_src):
         return self._points_of_interest_regex.sub(
-            self._handle_replacement, raw
+            self._handle_replacement, stage_src
         )
 
     def _split_stages(self):
@@ -325,6 +307,7 @@ class _ShaderPreProcessor:
                     if k in tag:
                         self.stages[k] = m.group("body")
                         break
+        assert self.common, self._ENSURE_COMMON_ERROR
 
     def _handle_replacement(self, m):
         kind = m.lastgroup
@@ -343,8 +326,12 @@ class _ShaderPreProcessor:
 
     def _handle_include(self, directive):
         _, raw_filename = directive.split()
-        filename = raw_filename.strip(" <>'\"")
-        shader = Shader.read_file(filename)
+        filename = raw_filename.strip(" <>'\"\n")
+
+        shader = _IncludeShader(filename)
+        self.meta.functions.update(shader.meta.functions)
+        self.meta.uniforms.update(shader.meta.uniforms)
+
         return shader.code.common
 
     def _handle_function(self, function):

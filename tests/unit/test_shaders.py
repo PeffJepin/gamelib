@@ -38,7 +38,7 @@ void main()
     int i = 5;
 }
 """
-    shader = shaders.Shader.parse(src)
+    shader = shaders.Shader(src=src)
     expected_template = """
 #version 330
 
@@ -71,7 +71,7 @@ out vec4 frag;
 void main() {}
 """
 
-    shader = shaders.Shader.parse(src)
+    shader = shaders.Shader(src=src)
     expected_vertex_attributes = (
         shaders.TokenDesc("v_pos", gl.vec3, 1),
         shaders.TokenDesc("scale", gl.float, 1),
@@ -105,7 +105,7 @@ uniform mat4 u_mat4[2];
 void main() {}
 """
 
-    shader = shaders.Shader.parse(src)
+    shader = shaders.Shader(src=src)
     expected_uniforms = (
         shaders.TokenDesc("u_float", gl.float, 1),
         shaders.TokenDesc("u_vec4", gl.vec4, 1),
@@ -124,9 +124,9 @@ def test_shader_source_code_hash():
 in vec3 v_pos;
 void main(){}
 """
-    shader1 = shaders.Shader.parse(src)
-    shader2 = shaders.Shader.parse(src)
-    shader3 = shaders.Shader.parse(src + "some difference")
+    shader1 = shaders.Shader(src=src)
+    shader2 = shaders.Shader(src=src)
+    shader3 = shaders.Shader(src=src + "some difference")
 
     assert hash(shader1) == hash(shader2)
     assert hash(shader1) != hash(shader3)
