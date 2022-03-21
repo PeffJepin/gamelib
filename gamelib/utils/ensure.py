@@ -24,7 +24,7 @@ class _Enforcer:
         if self.ensure.condition():
             if self._owner is not None:
                 args = (self._owner, *args)
-            self.func(*args, **kwargs)
+            return self.func(*args, **kwargs)
         else:
             raise AssertionError(
                 f"{self.ensure.error_message}\n"
