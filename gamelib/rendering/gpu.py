@@ -12,7 +12,6 @@ from gamelib.rendering import shaders
 from gamelib.rendering import buffers
 from gamelib.rendering import textures
 
-_cached_shaders = dict()
 _cached_assets = dict()
 
 
@@ -20,7 +19,12 @@ class GPUInstructions:
     """Common functions for issuing commands to the gpu."""
 
     def __init__(
-        self, shader, mode=gl.TRIANGLES, instanced=(), **data_sources
+        self,
+        shader,
+        mode=gl.TRIANGLES,
+        instanced=(),
+        automatic_hot_reloading=False,
+        **data_sources,
     ):
         """Initialize a new instruction.
 
@@ -33,6 +37,9 @@ class GPUInstructions:
             OpenGL constant mode for rendering.
         instanced : tuple, optional
             The names of vertex attributes that should be instanced attributes.
+        automatic_hot_reloading : bool
+            Should changes in shader files be listened for and shaders reloaded
+            automatically when a change is detected?
         **data_sources : Any
             The keys should map to inputs for the specified shader and the
             values can be either np.ndarrays or buffers.Buffer instances.
@@ -58,7 +65,7 @@ class GPUInstructions:
         self._fetch_textures()
         self._prev = time.time()
         self._dt = np.zeros(1, gl.float)
-        gamelib.subscribe(HotReloadEvent, self._hot_reload)
+        self._hot_reloading = automatic_hot_reloading
 
     def source(self, **data_sources):
         """Use these data sources."""
@@ -70,16 +77,14 @@ class GPUInstructions:
         dt = self._prev - t
         self._prev = t
         self._dt[0] = dt
+        if self._hot_reloading and self.shader.has_been_modified:
+            if self.shader.try_hot_reload():
+                self.vao.flag_dirty()
         self.vao.update()
 
     def _bind_textures(self):
         for binding, texture in self._textures.items():
             texture.gl.use(binding)
-
-    def _hot_reload(self, _):
-        if self.shader.file is not None:
-            self.shader = shaders.Shader.read_file(self._shader_name)
-            self.vao.use_shader(self.shader)
 
     def _fetch_textures(self):
         i = 0
@@ -103,9 +108,17 @@ class GPUInstructions:
 class TransformFeedback(GPUInstructions):
     """Use the GPU to transform some data."""
 
-    def __init__(self, shader, mode=gl.POINTS, **data_sources):
+    def __init__(
+        self,
+        shader,
+        mode=gl.POINTS,
+        automatic_hot_reloading=False,
+        **data_sources,
+    ):
         self.sources = data_sources
-        super().__init__(shader, mode)
+        super().__init__(
+            shader, mode, automatic_hot_reloading=automatic_hot_reloading
+        )
 
     def source(self, **data_sources):
         self.sources.update(data_sources)
@@ -207,7 +220,7 @@ class VertexArray:
 
         Parameters
         ----------
-        shader : ShaderData
+        shader : shaders.Shader
         instanced : optional, Sequence
         indices : optional, np.ndarray | buffers.Buffer
         auto : optional, bool
@@ -229,7 +242,8 @@ class VertexArray:
         self._uniforms_in_use = dict()
         self._buffer_ids = dict()
         self._generated_buffers = list()
-        self.use_shader(shader)
+
+        self.shader = shader
         self.use_sources(**data_sources)
         self.source_indices(indices)
         self.check_global_uniforms(**data_sources)
@@ -292,7 +306,7 @@ class VertexArray:
 
         format_tuples = []
         for name, buffer in self._buffers_in_use.items():
-            moderngl_attr = self.shader_glo[name]
+            moderngl_attr = self.shader.glo[name]
             strtype = moderngl_attr.shape
             if strtype == "I":
                 # conform to moderngl expected strfmt dtypes
@@ -315,32 +329,7 @@ class VertexArray:
             if isinstance(buffer, buffers.AutoBuffer):
                 buffer.update()
         for uniform in self._uniforms_in_use.values():
-            uniform.update(self.shader_glo)
-
-    def use_shader(self, shader):
-        """Use the new given shader. The only use case for this right now is
-        for hot reloading.
-
-        Parameters
-        ----------
-        shader : ShaderData
-        """
-
-        self.shader = shader
-        cached = _cached_shaders.get(shader, None)
-        if cached:
-            self.shader_glo = cached
-        else:
-            self.shader_glo = gamelib.get_context().program(
-                vertex_shader=shader.code.vert,
-                tess_control_shader=shader.code.tesc,
-                tess_evaluation_shader=shader.code.tese,
-                geometry_shader=shader.code.geom,
-                fragment_shader=shader.code.frag,
-                varyings=shader.meta.vertex_outputs,
-            )
-            _cached_shaders[shader] = self.shader_glo
-        self._dirty = True
+            uniform.update(self.shader.glo)
 
     def use_source(self, name, source):
         """Set a source uniform/buffer.
@@ -421,6 +410,9 @@ class VertexArray:
             if name not in data_sources and name in glob:
                 self._integrate_uniform(name, glob[name])
 
+    def flag_dirty(self):
+        self._dirty = True
+
     def _integrate_buffer(self, attribute, source):
         if attribute not in self.shader.meta.attributes:
             self._raise_invalid_source(attribute)
@@ -490,7 +482,7 @@ class VertexArray:
             self._glo.release()
         ibo = self._index_buffer.gl if self._index_buffer else None
         self._glo = gamelib.get_context().vertex_array(
-            self.shader_glo,
+            self.shader.glo,
             self._buffer_format_tuples,
             index_buffer=ibo,
             index_element_size=4,

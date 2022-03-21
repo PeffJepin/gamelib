@@ -5,11 +5,7 @@ data model.
 """
 
 import numpy as np
-
-# noinspection PyUnresolvedReferences
 from moderngl.error import Error
-
-# noinspection PyUnresolvedReferences
 from moderngl import (
     TRIANGLES,
     TRIANGLE_FAN,
@@ -24,6 +20,31 @@ from moderngl import (
     LINES_ADJACENCY,
     PATCHES,
 )
+from moderngl.program import Program as GLShader
+
+import gamelib
+from gamelib import utils
+
+ensure_opengl = utils.Ensure(
+    lambda: gamelib.get_context() is not None,
+    "An active OpenGL Context is required to call this function, "
+    "Perhaps you haven't yet called gamelib.init().",
+)
+
+
+@ensure_opengl
+def make_shader_glo(
+    vert, tesc=None, tese=None, geom=None, frag=None, varyings=()
+):
+    return gamelib.get_context().program(
+        vertex_shader=vert,
+        fragment_shader=frag,
+        geometry_shader=geom,
+        tess_control_shader=tesc,
+        tess_evaluation_shader=tese,
+        varyings=varyings,
+    )
+
 
 _int = int
 _float = float

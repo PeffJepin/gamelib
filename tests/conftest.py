@@ -9,6 +9,7 @@ import pytest
 from PIL import Image
 
 from gamelib.core import events
+from gamelib.core import resources
 from gamelib.rendering.textures import ImageAsset
 
 
@@ -197,6 +198,26 @@ def glsl_dtype_and_input(request):
     # against the minimum supported glsl version #version 330
     dtype, value = request.param
     yield dtype, value
+
+
+@pytest.fixture
+def shaderdir(tempdir):
+    directory = tempdir / "shaders"
+    directory.mkdir()
+    yield directory
+    shutil.rmtree(directory)
+
+
+@pytest.fixture
+def write_shader_to_disk(shaderdir):
+    def writer(filename, src):
+        fn = filename if filename.endswith(".glsl") else filename + ".glsl"
+        with open(shaderdir / fn, "w") as f:
+            f.write(src)
+        # update resource module after writing new files
+        resources.set_content_roots(shaderdir)
+
+    return writer
 
 
 def assert_approx(iter1, iter2, rel=1e-6):

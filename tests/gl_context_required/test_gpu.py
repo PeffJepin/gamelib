@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import pytest
 import gamelib
@@ -51,7 +53,7 @@ class TestVertexArray:
             shader, v_pos=np.arange(9), f_color=np.array([1.0, 1.0, 1.0, 1.0])
         )
 
-        assert vao1.shader_glo is vao2.shader_glo
+        assert vao1.shader is vao2.shader
 
     def test_sourcing_an_attached_buffer_with_an_array(self, shader):
         buffer = buffers.Buffer(np.arange(9), gl.vec3)
@@ -191,14 +193,14 @@ class TestTransformFeedback:
         data_in = np.arange(10, dtype=gl.float)
         instructions = gpu.TransformFeedback(
             shader="""
-#version 330
-#vert
-in float data_in;
-out float data_out;
-void main() {
-    data_out = 2 * data_in;
-}
-"""
+                #version 330
+                #vert
+                in float data_in;
+                out float data_out;
+                void main() {
+                    data_out = 2 * data_in;
+                }
+            """
         )
         assert_approx(data_in * 2, instructions.transform(data_in=data_in))
 
@@ -429,6 +431,54 @@ class TestVaoIntegration:
         instructions.source(in_value=list2)
 
         assert np.all(instructions.transform() == [111, 123, 111, 123])
+
+    def test_automatic_hot_reloading_shaders_when_the_new_shader_is_valid(
+        self, write_shader_to_disk
+    ):
+        src = """
+            #version 330
+            #vert
+            const int test_val = %s;
+            out int out_val;
+            void main()
+            {
+                out_val = test_val;
+            }
+        """
+        write_shader_to_disk("test", src % 123)
+        instructions = gpu.TransformFeedback(
+            "test", automatic_hot_reloading=True
+        )
+
+        assert instructions.transform(1) == 123
+
+        time.sleep(0.01)
+        write_shader_to_disk("test", src % 321)
+        assert instructions.transform(1) == 321
+
+    def test_automatic_hot_reloading_shaders_when_the_new_shader_is_invalid(
+        self, write_shader_to_disk
+    ):
+        src = """
+            #version 330
+            #vert
+            const int test_val = %s;
+            out int out_val;
+            void main()
+            {
+                out_val = test_val;
+            }
+        """
+        write_shader_to_disk("test", src % 123)
+        instructions = gpu.TransformFeedback(
+            "test", automatic_hot_reloading=True
+        )
+
+        assert instructions.transform(1) == 123
+
+        time.sleep(0.01)
+        write_shader_to_disk("test", src % "invalid")
+        assert instructions.transform(1) == 123
 
 
 class TestUniformBlock:

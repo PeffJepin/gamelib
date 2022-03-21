@@ -93,7 +93,7 @@ import pathlib
 import re
 
 from typing import Dict
-from typing import Tuple
+from typing import List
 from typing import Optional
 from typing import NamedTuple
 
@@ -103,15 +103,12 @@ from gamelib.core import resources
 from gamelib.core import gl
 
 
-# TODO: Test nested includes
-# TODO: Test hot reloading
 # TODO: Test function defualt arguments
 # TODO: Test line number debugging
-# TODO: Maybe shaders loaded as includes should be their own object, since they don't have stages
-# TODO: Shaders with includes need to know that they have includes for hot reloading
 # TODO: This module docstring and documentation needs to be updated.
 # TODO: Look over this modules entire API before finishing with it
 # TODO: Include some default gamelib glsl libraries available for includes
+# TODO: Documentation once finished with this module
 
 # Shaders loaded from files are cached with a record of the file's
 # previously modified time to facilitate automatic hot reloading
@@ -149,6 +146,7 @@ class ShaderMetaData(NamedTuple):
     vertex_outputs: Dict[str, TokenDesc]
     uniforms: Dict[str, TokenDesc]
     functions: Dict[str, FunctionDesc]
+    includes: List["_IncludeShader"]
 
 
 class ShaderSourceCode(NamedTuple):
@@ -171,7 +169,117 @@ class Shader:
     meta: ShaderMetaData
     file: Optional[pathlib.Path] = None
 
-    def __new__(cls, name=None, *, src=None):
+    _initialized: bool
+    _gl_initialized: bool
+    _glo: gl.GLShader
+
+    def __new__(cls, name=None, *, src=None, no_cache=False, **kwargs):
+        cls._usage(name, src)
+
+        # we might want return an existing shader instead of passing
+        # control over to __init__
+        if name is not None and not no_cache:
+            path = resources.get_shader_file(name)
+            if path in _cache:
+                return _cache[path]
+
+        obj = object.__new__(cls)
+        obj._initialized = False
+        obj._gl_initialized = False
+        return obj
+
+    def __init__(self, name=None, *, src=None, init_gl=True, **kwargs):
+        if self._initialized:
+            return
+
+        if name is not None:
+            path = resources.get_shader_file(name)
+            with open(path, "r") as f:
+                src = f.read()
+            _cache[path] = self
+            self._mtime_ns = path.stat().st_mtime_ns
+        else:
+            path = None
+            self._mtime_ns = None
+
+        code, meta = _ShaderPreProcessor(
+            src, **self._PREPROCESSOR_KWARGS
+        ).compile()
+        self.code = code
+        self.meta = meta
+        self.file = path
+
+        if init_gl:
+            self._init_gl()
+
+        self._initialized = True
+
+    def __hash__(self):
+        return hash(self.code)
+
+    def __repr__(self):
+        lines = []
+        if self.code.vert:
+            lines.append("vertex shader:")
+            lines.append(self.code.vert)
+        if self.code.tesc:
+            lines.append("tesselation control shader:")
+            lines.append(self.code.tesc)
+        if self.code.tese:
+            lines.append("tesselation evaluation shader:")
+            lines.append(self.code.tese)
+        if self.code.geom:
+            lines.append("geometry shader:")
+            lines.append(self.code.geom)
+        if self.code.frag:
+            lines.append("fragment shader:")
+            lines.append(self.code.frag)
+        return "\n".join(lines)
+
+    @property
+    def has_been_modified(self):
+        if self.file is None:
+            return False
+        return any(
+            shader.file.stat().st_mtime_ns != shader._mtime_ns
+            for shader in [self] + self.meta.includes
+        )
+
+    @property
+    def glo(self):
+        if self._glo is None:
+            self._init_gl()
+        return self._glo
+
+    def try_hot_reload(self):
+        # FIXME: The need for a logging module is growing
+        if not self.has_been_modified:
+            print("This shader hasn't been modified")
+            return False
+        try:
+            code, meta = self._recompile()
+            glo = self._make_glo(code, meta)
+            self._glo = glo
+            self.code = code
+            self.meta = meta
+            self._set_file_mod_times()
+            return True
+        except gl.Error as exc:
+            print(exc)
+            self._set_file_mod_times()
+            return False
+
+    def _recompile(self):
+        with open(self.file, "r") as f:
+            src = f.read()
+        return _ShaderPreProcessor(src, no_cache=True).compile()
+
+    def _set_file_mod_times(self):
+        for shader in [self] + self.meta.includes:
+            shader._mtime_ns = shader.file.stat().st_mtime_ns
+
+    @staticmethod
+    def _usage(name, src):
         if name is not None and src is not None:
             raise ValueError(
                 "Shaders can either be sourced from a python "
@@ -184,37 +292,26 @@ class Shader:
                 "either a filename or source string."
             )
 
-        # we might want return an existing shader instead of passing
-        # control over to __init__
-        if name is not None:
-            path = resources.get_shader_file(name)
-            if path in _cache:
-                return _cache[path]
+    def _init_gl(self):
+        self._glo = self._make_glo(self.code, self.meta)
 
-        return object.__new__(cls)
-
-    def __init__(self, name=None, *, src=None):
-        if name is not None:
-            path = resources.get_shader_file(name)
-            with open(path, "r") as f:
-                src = f.read()
-            _cache[path] = self
-        else:
-            path = None
-
-        code, meta = _ShaderPreProcessor(src).compile(
-            **self._PREPROCESSOR_KWARGS
+    @staticmethod
+    def _make_glo(code, meta):
+        return gl.make_shader_glo(
+            vert=code.vert,
+            tesc=code.tesc,
+            tese=code.tese,
+            geom=code.geom,
+            frag=code.frag,
+            varyings=meta.vertex_outputs,
         )
-        self.code = code
-        self.meta = meta
-        self.file = path
-
-    def __hash__(self):
-        return hash(self.code)
 
 
 class _IncludeShader(Shader):
     _PREPROCESSOR_KWARGS = {"include": True}
+
+    def _init_gl(self):
+        return
 
 
 class _ShaderPreProcessor:
@@ -241,7 +338,7 @@ class _ShaderPreProcessor:
         re.VERBOSE | re.DOTALL | re.MULTILINE,
     )
 
-    def __init__(self, src):
+    def __init__(self, src, include=False, no_cache=False):
         self.common = ""
         self.stages = {
             "vert": "",
@@ -251,11 +348,13 @@ class _ShaderPreProcessor:
             "frag": "",
         }
         self.src = src
-        self.meta = ShaderMetaData({}, {}, {}, {})
+        self.meta = ShaderMetaData({}, {}, {}, {}, [])
         self._current_stage = None
+        self._include = include
+        self._no_cache = no_cache
 
-    def compile(self, include=False):
-        if include:
+    def compile(self):
+        if self._include:
             return self._compile_include_shader()
         else:
             return self._compile_base_shader()
@@ -328,9 +427,11 @@ class _ShaderPreProcessor:
         _, raw_filename = directive.split()
         filename = raw_filename.strip(" <>'\"\n")
 
-        shader = _IncludeShader(filename)
+        shader = _IncludeShader(filename, no_cache=self._no_cache)
         self.meta.functions.update(shader.meta.functions)
         self.meta.uniforms.update(shader.meta.uniforms)
+        self.meta.includes.append(shader)
+        self.meta.includes.extend(shader.meta.includes)
 
         return shader.code.common
 
@@ -366,7 +467,7 @@ class _ShaderPreProcessor:
         # (glsl_keyword) (glsl_dtype) (name) [length (optional)];
         # returns the token desc object
         _, glsl_type, name = raw.split()
-        name = name.strip()[:-1]  # remove ;
+        name = name.strip()[:-1]  # remove ; and surrounding whitespace
         if name.endswith("]"):
             name, raw_lenstr = name.split("[")
             length = int(raw_lenstr[:-1])
