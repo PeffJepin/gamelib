@@ -1,6 +1,6 @@
-from gamelib.utils import (
-    MethodMarker,
-)
+import pytest
+
+from gamelib.utils import MethodMarker, ensure, Ensure
 
 
 class ExampleClass:
@@ -72,3 +72,58 @@ def test_creating_a_new_decorator():
         ): instance.custom_decorator
     }
     assert MethodMarker.lookup(instance, type="my_type") == expected
+
+
+def test_ensure_decorator_when_true():
+    @ensure(lambda: True, "HEY!")
+    def example():
+        pass
+
+    # should not error
+    example()
+
+
+def test_ensure_decorator_when_false():
+    @ensure(lambda: False, "HEY!")
+    def example():
+        pass
+
+    with pytest.raises(AssertionError) as excinfo:
+        example()
+    assert "HEY!" == str(excinfo.value)
+
+
+def test_ensure_on_a_method():
+    cond = True
+
+    class Example:
+        @ensure(lambda: cond, "HEY!")
+        def example(self):
+            pass
+
+    e = Example()
+    e.example()
+
+    cond = False
+    with pytest.raises(AssertionError) as excinfo:
+        e.example()
+    assert "HEY!" == str(excinfo.value)
+
+
+def test_custom_ensure_with_class_instance():
+    cond = True
+    myensure = Ensure(lambda: cond, "HEY!")
+    
+    @myensure
+    def example():
+        pass
+
+    example()
+
+    cond = False
+    with pytest.raises(AssertionError) as excinfo:
+        example()
+
+    assert "HEY!" == str(excinfo.value)
+
+    
