@@ -1,94 +1,3 @@
-"""This module is responsible for inspecting and manipulating glsl shader
-code.
-
-Notes
---------
-Given a simple shader like shown below, the following shows the formats gamelib
-expects a shader to take.
-
-// vertex shader
-#version 330
-in vec3 v_pos;
-void main() {
-    gl_Position = vec4(v_pos, 1.0);
-}
-
-// fragment shader
-#version 330
-out vec4 frag;
-void main() {
-    frag = vec4(1.0, 1.0, 1.0, 1.0);
-}
-
-Each stage can be given separately, with the shader stage specified in whatever
-function call it is being passed into.
-
-Alternatively, this module includes some pre-processing directives for
-specifying a shader as a single string like so:
-
-c   #version 330
-
-    #vert
-v   in vec3 v_pos;
-v   void main() {
-v       gl_Position = vec4(v_pos, 1.0);
-v   }
-
-    #frag
-f   out vec4 frag;
-f   void main() {
-f       frag = vec4(1.0, 1.0, 1.0, 1.0);
-f   }
-
-In the 'gutter' above the letters v and f indicate which lines will end up in
-the vertex and fragment shaders respectively. The shader stage directives are
-as follows:
-    "#vert" : vertex shader
-    "#tesc" : tessellation control shader
-    "#tese" : tessellation evaluation shader
-    "#geom" : geometry shader
-    "#frag" : fragment shader
-
-A shader stage marked by a directive like shown above begins on the line
-immediately after the directive, and continues until the end of main().
-
-Note that #version 330 is marked with a c for common. Anything outside of a
-marked shader stage is considered common to all stages, and will be injected
-at the beginning of the shader before its own source code.
-
-Shaders can also be provided as files on disk. Much like using strings, shaders
-from a file can either be a collection of files:
-    (shader.vert, shader.frag)
-Or they can be given as a single file likes:
-    shader.glsl
-
-Finally, this module also implements an #include directive for injecting some
-code. Given the following:
-
-    // colors.glsl
-    vec4 my_red_color = vec4(1.0, 0.0, 0.0, 1.0);
-    vec4 my_blue_color = vec4(0.0, 1.0, 0.0, 1.0);
-    vec4 my_green_color = vec4(0.0, 0.0, 1.0, 1.0);
-
-    // fragment shader
-    #include <colors>
-    out vec4 frag;
-    void main() {
-        frag = my_red_color;
-    }
-    // #include <colors.glsl> also acceptable
-
-This fragment shader would expand to:
-    // fragment shader
-    vec4 my_red_color = vec4(1.0, 0.0, 0.0, 1.0);
-    vec4 my_blue_color = vec4(0.0, 1.0, 0.0, 1.0);
-    vec4 my_green_color = vec4(0.0, 0.0, 1.0, 1.0);
-    out vec4 frag;
-    void main() {
-        frag = my_red_color;
-    }
-"""
-
 import pathlib
 import re
 
@@ -110,8 +19,6 @@ from gamelib.core import gl
 # TODO: Include some default gamelib glsl libraries available for includes
 # TODO: Documentation once finished with this module
 
-# Shaders loaded from files are cached with a record of the file's
-# previously modified time to facilitate automatic hot reloading
 _cache: Dict[pathlib.Path, "Shader"] = dict()
 
 
@@ -159,6 +66,25 @@ class ShaderSourceCode(NamedTuple):
     geom: Optional[str] = None
     frag: Optional[str] = None
 
+    def __repr__(self):
+        lines = []
+        if self.vert:
+            lines.append("vertex shader:")
+            lines.append(self.vert)
+        if self.tesc:
+            lines.append("tesselation control shader:")
+            lines.append(self.tesc)
+        if self.tese:
+            lines.append("tesselation evaluation shader:")
+            lines.append(self.tese)
+        if self.geom:
+            lines.append("geometry shader:")
+            lines.append(self.geom)
+        if self.frag:
+            lines.append("fragment shader:")
+            lines.append(self.frag)
+        return "\n".join(lines)
+
 
 class Shader:
     """Entry point into the module for preprocessing glsl code."""
@@ -170,44 +96,24 @@ class Shader:
     file: Optional[pathlib.Path] = None
 
     _initialized: bool
+    _mtime_ns: float
     _gl_initialized: bool
     _glo: gl.GLShader
 
     def __new__(cls, name=None, *, src=None, no_cache=False, **kwargs):
         cls._usage(name, src)
-
-        # we might want return an existing shader instead of passing
-        # control over to __init__
-        if name is not None and not no_cache:
-            path = resources.get_shader_file(name)
-            if path in _cache:
-                return _cache[path]
-
-        obj = object.__new__(cls)
-        obj._initialized = False
-        obj._gl_initialized = False
-        return obj
+        return cls._get_object(name, no_cache)
 
     def __init__(self, name=None, *, src=None, init_gl=True, **kwargs):
         if self._initialized:
+            # __new__ might return a cached shader..
+            # in that case we don't want to recompile the shader
             return
 
         if name is not None:
-            path = resources.get_shader_file(name)
-            with open(path, "r") as f:
-                src = f.read()
-            _cache[path] = self
-            self._mtime_ns = path.stat().st_mtime_ns
+            self._init_from_file(name)
         else:
-            path = None
-            self._mtime_ns = None
-
-        code, meta = _ShaderPreProcessor(
-            src, **self._PREPROCESSOR_KWARGS
-        ).compile()
-        self.code = code
-        self.meta = meta
-        self.file = path
+            self._init_from_src(src)
 
         if init_gl:
             self._init_gl()
@@ -216,25 +122,6 @@ class Shader:
 
     def __hash__(self):
         return hash(self.code)
-
-    def __repr__(self):
-        lines = []
-        if self.code.vert:
-            lines.append("vertex shader:")
-            lines.append(self.code.vert)
-        if self.code.tesc:
-            lines.append("tesselation control shader:")
-            lines.append(self.code.tesc)
-        if self.code.tese:
-            lines.append("tesselation evaluation shader:")
-            lines.append(self.code.tese)
-        if self.code.geom:
-            lines.append("geometry shader:")
-            lines.append(self.code.geom)
-        if self.code.frag:
-            lines.append("fragment shader:")
-            lines.append(self.code.frag)
-        return "\n".join(lines)
 
     @property
     def has_been_modified(self):
@@ -270,6 +157,9 @@ class Shader:
             return False
 
     def _recompile(self):
+        assert (
+            self.file
+        ), "cannot recompile shader sourced with a python string"
         with open(self.file, "r") as f:
             src = f.read()
         return _ShaderPreProcessor(src, no_cache=True).compile()
@@ -277,6 +167,43 @@ class Shader:
     def _set_file_mod_times(self):
         for shader in [self] + self.meta.includes:
             shader._mtime_ns = shader.file.stat().st_mtime_ns
+
+    def _init_gl(self):
+        self._glo = self._make_glo(self.code, self.meta)
+
+    def _init_from_src(self, src):
+        self.file = None
+        self._mtime_ns = None
+        code, meta = _ShaderPreProcessor(
+            src, **self._PREPROCESSOR_KWARGS
+        ).compile()
+        self.code = code
+        self.meta = meta
+
+    def _init_from_file(self, filename):
+        path = resources.get_shader_file(filename)
+        with open(path, "r") as f:
+            src = f.read()
+        self._mtime_ns = path.stat().st_mtime_ns
+        self.file = path
+        code, meta = _ShaderPreProcessor(
+            src, **self._PREPROCESSOR_KWARGS
+        ).compile()
+        self.code = code
+        self.meta = meta
+
+    @classmethod
+    def _get_object(cls, name, no_cache):
+        if name is not None and not no_cache:
+            path = resources.get_shader_file(name)
+            if path in _cache:
+                return _cache[path]
+        obj = object.__new__(cls)
+        obj._initialized = False
+        obj._gl_initialized = False
+        if name is not None:
+            _cache[path] = obj
+        return obj
 
     @staticmethod
     def _usage(name, src):
@@ -291,9 +218,6 @@ class Shader:
                 "No source specified for this shader, please supply "
                 "either a filename or source string."
             )
-
-    def _init_gl(self):
-        self._glo = self._make_glo(self.code, self.meta)
 
     @staticmethod
     def _make_glo(code, meta):
@@ -315,10 +239,6 @@ class _IncludeShader(Shader):
 
 
 class _ShaderPreProcessor:
-    _ENSURE_COMMON_ERROR = (
-        "at a minimum the gamelib glsl preprocessor expects there to be "
-        "a #version directive within the `common` shader stage."
-    )
     _stages_regex = re.compile(
         r"""
             (?P<tag> (\#vert | \#tesc | \#tese | \#geom | \#frag | \A)\s*?\n)
@@ -406,7 +326,11 @@ class _ShaderPreProcessor:
                     if k in tag:
                         self.stages[k] = m.group("body")
                         break
-        assert self.common, self._ENSURE_COMMON_ERROR
+        if not self.common:
+            raise ValueError(
+                "at a minimum the gamelib glsl preprocessor expects there to be "
+                "a #version directive within the `common` shader stage."
+            )
 
     def _handle_replacement(self, m):
         kind = m.lastgroup
