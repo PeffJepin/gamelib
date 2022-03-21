@@ -90,7 +90,9 @@ def test_ensure_decorator_when_false():
 
     with pytest.raises(AssertionError) as excinfo:
         example()
-    assert "HEY!" == str(excinfo.value)
+    error_message = str(excinfo.value)
+    assert "HEY!" in error_message
+    assert repr(example) in error_message
 
 
 def test_ensure_on_a_method():
@@ -107,13 +109,15 @@ def test_ensure_on_a_method():
     cond = False
     with pytest.raises(AssertionError) as excinfo:
         e.example()
-    assert "HEY!" == str(excinfo.value)
+    error_message = str(excinfo.value)
+    assert "HEY!" in error_message
+    assert repr(Example.example) in error_message
 
 
 def test_custom_ensure_with_class_instance():
     cond = True
     myensure = Ensure(lambda: cond, "HEY!")
-    
+
     @myensure
     def example():
         pass
@@ -124,6 +128,6 @@ def test_custom_ensure_with_class_instance():
     with pytest.raises(AssertionError) as excinfo:
         example()
 
-    assert "HEY!" == str(excinfo.value)
-
-    
+    error_message = str(excinfo.value)
+    assert "HEY!" in error_message
+    assert repr(example) in error_message

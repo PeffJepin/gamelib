@@ -1,6 +1,7 @@
 def ensure(condition, error_message):
     def wrap(func):
         return _Enforcer(func, Ensure(condition, error_message))
+
     return wrap
 
 
@@ -25,7 +26,13 @@ class _Enforcer:
                 args = (self._owner, *args)
             self.func(*args, **kwargs)
         else:
-            raise AssertionError(self.ensure.error_message)
+            raise AssertionError(
+                f"{self.ensure.error_message}\n"
+                f"This message resulted from trying to call: {self!r}"
+            )
 
     def __set_name__(self, owner, name):
         self._owner = owner
+
+    def __repr__(self):
+        return repr(self.func)
