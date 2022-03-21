@@ -149,12 +149,12 @@ class Shader:
             self._glo = glo
             self.code = code
             self.meta = meta
-            self._set_file_mod_times()
             return True
         except gl.Error as exc:
             print(exc)
-            self._set_file_mod_times()
             return False
+        finally:
+            self._set_file_mod_times()
 
     def _recompile(self):
         assert (
