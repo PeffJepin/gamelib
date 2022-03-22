@@ -63,28 +63,37 @@ class ShaderSourceCode(NamedTuple):
 
     def __repr__(self):
         lines = []
+        lines.append("common:")
+        lines.append(self.common)
         if self.vert:
             lines.append("vertex shader:")
-            lines.append(self.vert)
+            lines.append(self.vert.replace(self.common, ""))
         if self.tesc:
             lines.append("tesselation control shader:")
-            lines.append(self.tesc)
+            lines.append(self.tesc.replace(self.common, ""))
         if self.tese:
             lines.append("tesselation evaluation shader:")
-            lines.append(self.tese)
+            lines.append(self.tese.replace(self.common, ""))
         if self.geom:
             lines.append("geometry shader:")
-            lines.append(self.geom)
+            lines.append(self.geom.replace(self.common, ""))
         if self.frag:
             lines.append("fragment shader:")
-            lines.append(self.frag)
+            lines.append(self.frag.replace(self.common, ""))
         return "\n".join(lines)
+
+    def __iter__(self):
+        yield self.common
+        for stage in (self.vert, self.tesc, self.tese, self.geom, self.frag):
+            if stage:
+                yield stage.replace(self.common, "")
 
 
 class Shader:
     """Entry point into the module for preprocessing glsl code."""
 
     _PREPROCESSOR_KWARGS = {}
+    source_string_number = 0  # always 0 except for include shaders
 
     code: ShaderSourceCode
     meta: ShaderMetaData
@@ -145,7 +154,7 @@ class Shader:
             self.code = code
             self.meta = meta
             return True
-        except gl.Error as exc:
+        except GLSLCompilerError as exc:
             print(exc)
             return False
         finally:
@@ -198,18 +207,7 @@ class Shader:
                 varyings=meta.vertex_outputs,
             )
         except gl.Error as exc:
-            raise self._improve_gl_error_message(exc)
-
-    def _improve_gl_error_message(self, exc):
-        error_message = str(exc)
-        improved_error_message = f"This error occured in %s:\n{error_message}"
-        m = re.search(r"(\d:\d)", error_message)
-        if m:
-            source_string_number = int(m.group()[0])
-            for shader in self.meta.includes:
-                if shader.source_string_number == source_string_number:
-                    return gl.Error(improved_error_message % shader.file)
-        return exc
+            raise GLSLCompilerError(exc, self)
 
     @classmethod
     def _get_object(cls, name, no_cache):
@@ -253,6 +251,62 @@ class _IncludeShader(Shader):
 
     def _init_gl(self):
         return
+
+
+class GLSLCompilerError(Exception):
+    def __init__(self, exc: gl.Error, shader: "Shader"):
+        error_message = str(exc)
+        m = re.search(r"(\d+:\d+)", error_message)
+        if not m:
+            return super().__init__(error_message)
+
+        source_string_number, line_number = map(int, m.group().split(":"))
+        self.source_string_number = source_string_number
+        self.line_number = line_number
+
+        offending_shader = self._find_offending_shader(shader)
+        if not offending_shader:
+            return super().__init__(error_message)
+        offending_code = self._find_offending_line(offending_shader)
+
+        improved_error_message = (
+            f"GLSLCompilerError occured in the file:\n{offending_shader.file}\n"
+            f"\nThis is the offending code (line {line_number}):\n{offending_code}\n"
+            f"\nThis is the original error message:\n{error_message}"
+        )
+        super().__init__(improved_error_message)
+
+    def _find_offending_shader(self, base_shader):
+        if self.source_string_number == 0:
+            return base_shader
+        for shader in base_shader.meta.includes:
+            if shader.source_string_number == self.source_string_number:
+                return shader
+
+    def _find_offending_line(self, shader):
+        entire_code = []
+        for stage in shader.code:
+            entire_code.extend(stage.splitlines())
+
+        skip = False
+        ln = 1
+        for line in entire_code:
+            if line.strip().startswith("#line"):
+                _, directive_ln, directive_ssn = line.split()
+                directive_ln = int(directive_ln)
+                directive_ssn = int(directive_ssn)
+                if directive_ssn != self.source_string_number:
+                    skip = True
+                else:
+                    skip = False
+                    ln = directive_ln
+            elif ln == self.line_number and not skip:
+                return line.strip()
+            elif not skip:
+                ln += 1
+        if ln == self.line_number:
+            return line
+        return "couldn't locate error line in source code"
 
 
 class _ShaderPreProcessor:
@@ -324,11 +378,7 @@ class _ShaderPreProcessor:
         return code, self.meta
 
     def _process_common(self):
-        self.common = self._process_stage(self.common)
-        prefix = "\n" if self.common[-1] != "\n" else ""
-        if prefix == "\n":
-            self._line_number += 1
-        self.common += f"{prefix}#line {self._line_number}\n"
+        self.common = self._process_points_of_interest(self.common)
 
     def _process_stages(self):
         for k, v in self.stages.items():
@@ -338,8 +388,16 @@ class _ShaderPreProcessor:
             self.stages[k] = self.common + self._process_stage(v)
 
     def _process_stage(self, stage_src):
+        # we've stripped out the #stage directive so take account for that
+        self._line_number += 1
+        # remember the line number for the start of this stage
+        ln = self._line_number
+        processed = self._process_points_of_interest(stage_src)
+        return f"#line {ln} 0\n{processed}"
+
+    def _process_points_of_interest(self, src):
         return self._points_of_interest_regex.sub(
-            self._handle_replacement, stage_src
+            self._handle_replacement, src
         )
 
     def _split_stages(self):
