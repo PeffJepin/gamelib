@@ -12,11 +12,7 @@ from gamelib.core import resources
 from gamelib.core import gl
 
 
-# TODO: Test line number debugging
-# TODO: This module docstring and documentation needs to be updated.
-# TODO: Look over this modules entire API before finishing with it
-# TODO: Include some default gamelib glsl libraries available for includes
-# TODO: Documentation once finished with this module
+# TODO: One pass at refactoring and some documentation where needed and this module should be good for some time.
 
 _cache: Dict[pathlib.Path, "Shader"] = dict()
 
@@ -240,7 +236,7 @@ class _IncludeShader(Shader):
 class _ShaderPreProcessor:
     _stages_regex = re.compile(
         r"""
-            (?P<tag> (\#vert | \#tesc | \#tese | \#geom | \#frag | \A)\s*?\n)
+            (?P<tag> (\#vert | \#tesc | \#tese | \#geom | \#frag | \A)\s*?\n?)
             (?P<body> .*?)
             (?= (\#vert | \#tesc | \#tese | \#geom | \#frag | \Z))
         """,
@@ -253,11 +249,13 @@ class _ShaderPreProcessor:
             | (?P<uniform> \b uniform \s \w+ \s \w+ (\[\d+\])?;)
             | (?P<attribute> \b in \s \w+ \s \w+ (\[\d+\])?;)
             | (?P<vertex_output> \b out \s \w+ \s \w+ (\[\d+\])?;)
+            | (?P<newline> \n )
         """,
         re.VERBOSE | re.DOTALL | re.MULTILINE,
     )
 
     def __init__(self, src, include=False, no_cache=False):
+        self.lines = 1
         self.common = ""
         self.stages = {
             "vert": "",
@@ -282,6 +280,7 @@ class _ShaderPreProcessor:
         # an include shader is not split into stages
         self.common = self.src
         self._process_common()
+        self.common = "#line 1\n" + self.common
         return ShaderSourceCode(self.common), self.meta
 
     def _compile_base_shader(self):
@@ -302,6 +301,10 @@ class _ShaderPreProcessor:
 
     def _process_common(self):
         self.common = self._process_stage(self.common)
+        prefix = "\n" if self.common[-1] != "\n" else ""
+        if prefix == "\n":
+            self.lines += 1
+        self.common += f"{prefix}#line {self.lines}\n"
 
     def _process_stages(self):
         for k, v in self.stages.items():
@@ -345,6 +348,9 @@ class _ShaderPreProcessor:
             return self._handle_attribute(value)
         elif kind == "vertex_output":
             return self._handle_vertex_output(value)
+        elif kind == "newline":
+            self.lines += 1
+            return "\n"
 
     def _handle_include(self, directive):
         _, raw_filename = directive.split()
@@ -362,14 +368,18 @@ class _ShaderPreProcessor:
         if self._function_is_glsl_builtin(function):
             return function
 
-        desc = self._build_function_desc(function)
+        desc, new_lines = self._build_function_desc(function)
 
         definition = self.meta.functions.get(desc.name)
         if definition is not None:
-            return self._match_definition_signature(definition, desc)
+            cleaned = self._match_definition_signature(definition, desc)
         else:
             self.meta.functions[desc.name] = desc
-            return self._clean_function_definition(desc)
+            cleaned = self._clean_function_definition(desc)
+        # keep line breaks for accurate error messages when glsl
+        # code has errors.
+        keepme = "\n" * new_lines
+        return f"{cleaned[:-1]}{keepme})"
 
     def _function_is_glsl_builtin(self, function):
         name = function.split("(")[0]
@@ -408,7 +418,6 @@ class _ShaderPreProcessor:
             if v is None:
                 args[i] = defdesc.defaults[i]
 
-        print(args)
         return f"{funcdesc.name}({', '.join(args)})"
 
     def _clean_function_definition(self, funcdesc):
@@ -420,21 +429,23 @@ class _ShaderPreProcessor:
         name, args_str = function[:i], function[i + 1 : -1]
         if not args_str.strip():
             desc = FunctionDesc(name, (), ())
+            new_lines = 0
         else:
-            args, defaults = self._split_function_args(args_str)
+            args, defaults, new_lines = self._split_function_args(args_str)
             if not self._check_default_arguments_syntax(defaults):
                 raise SyntaxError(
                     "Arguments with default values should not appear before "
                     f"purely positional arguments: {function}"
                 )
             desc = FunctionDesc(name, args, defaults)
-        return desc
+        return desc, new_lines
 
     def _split_function_args(self, args_str):
         args = []
         prev = 0
         open_parens = 0
         close_parens = 0
+        new_lines = 0
         for i, c in enumerate(args_str):
             if c == "(":
                 open_parens += 1
@@ -443,8 +454,10 @@ class _ShaderPreProcessor:
             elif c == "," and open_parens == close_parens:
                 args.append(args_str[prev:i])
                 prev = i + 1
+            elif c == "\n":
+                new_lines += 1
         args.append(args_str[prev:])
-        return self._split_argument_names_from_defaults(args)
+        return *self._split_argument_names_from_defaults(args), new_lines
 
     def _split_argument_names_from_defaults(self, args_list):
         args = []

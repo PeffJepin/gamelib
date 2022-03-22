@@ -230,7 +230,7 @@ void main()
     """
     expected = """
 #version 330
-void func1() 
+void func1()
 {
 }
 void func2(int i, vec2 p, int j)

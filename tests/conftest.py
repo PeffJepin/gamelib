@@ -233,12 +233,12 @@ def compare_glsl(src1, src2):
     cleaned1 = "\n".join(
         line.strip()
         for line in src1.splitlines()
-        if line.strip() not in ("", "\n")
+        if _filter_glsl_line_condition(line)
     )
     cleaned2 = "\n".join(
         line.strip()
         for line in src2.splitlines()
-        if line.strip() not in ("", "\n")
+        if _filter_glsl_line_condition(line)
     )
     if cleaned1 != cleaned2:
         print("shader1 source")
@@ -247,3 +247,9 @@ def compare_glsl(src1, src2):
         print("shader2 source")
         print(cleaned2)
     return cleaned1 == cleaned2
+
+
+def _filter_glsl_line_condition(line):
+    ln = line.strip()
+    return ln not in ("", "\n") and not ln.startswith("#line")
+
