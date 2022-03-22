@@ -187,6 +187,30 @@ class Shader:
         self.code = code
         self.meta = meta
 
+    def _make_glo(self, code, meta):
+        try:
+            return gl.make_shader_glo(
+                vert=code.vert,
+                tesc=code.tesc,
+                tese=code.tese,
+                geom=code.geom,
+                frag=code.frag,
+                varyings=meta.vertex_outputs,
+            )
+        except gl.Error as exc:
+            raise self._improve_gl_error_message(exc)
+
+    def _improve_gl_error_message(self, exc):
+        error_message = str(exc)
+        improved_error_message = f"This error occured in %s:\n{error_message}"
+        m = re.search(r"(\d:\d)", error_message)
+        if m:
+            source_string_number = int(m.group()[0])
+            for shader in self.meta.includes:
+                if shader.source_string_number == source_string_number:
+                    return gl.Error(improved_error_message % shader.file)
+        return exc
+
     @classmethod
     def _get_object(cls, name, no_cache):
         if name is not None and not no_cache:
@@ -214,20 +238,18 @@ class Shader:
                 "either a filename or source string."
             )
 
-    @staticmethod
-    def _make_glo(code, meta):
-        return gl.make_shader_glo(
-            vert=code.vert,
-            tesc=code.tesc,
-            tese=code.tese,
-            geom=code.geom,
-            frag=code.frag,
-            varyings=meta.vertex_outputs,
-        )
-
 
 class _IncludeShader(Shader):
     _PREPROCESSOR_KWARGS = {"include": True}
+
+    # used with glsl #line preprocessor directive to identify which
+    # file an error will come from.
+    source_string_number: int
+
+    def __init__(self, *args, source_string_number, **kwargs):
+        assert source_string_number is not None
+        self.source_string_number = source_string_number
+        super().__init__(*args, **kwargs)
 
     def _init_gl(self):
         return
@@ -255,7 +277,6 @@ class _ShaderPreProcessor:
     )
 
     def __init__(self, src, include=False, no_cache=False):
-        self.lines = 1
         self.common = ""
         self.stages = {
             "vert": "",
@@ -266,6 +287,9 @@ class _ShaderPreProcessor:
         }
         self.src = src
         self.meta = ShaderMetaData({}, {}, {}, {}, [])
+
+        self._line_number = 1
+        self._include_number = 1
         self._current_stage = None
         self._include = include
         self._no_cache = no_cache
@@ -280,7 +304,7 @@ class _ShaderPreProcessor:
         # an include shader is not split into stages
         self.common = self.src
         self._process_common()
-        self.common = "#line 1\n" + self.common
+        self.common = f"#line 1 {self._include_number}\n" + self.common
         return ShaderSourceCode(self.common), self.meta
 
     def _compile_base_shader(self):
@@ -303,8 +327,8 @@ class _ShaderPreProcessor:
         self.common = self._process_stage(self.common)
         prefix = "\n" if self.common[-1] != "\n" else ""
         if prefix == "\n":
-            self.lines += 1
-        self.common += f"{prefix}#line {self.lines}\n"
+            self._line_number += 1
+        self.common += f"{prefix}#line {self._line_number}\n"
 
     def _process_stages(self):
         for k, v in self.stages.items():
@@ -349,14 +373,20 @@ class _ShaderPreProcessor:
         elif kind == "vertex_output":
             return self._handle_vertex_output(value)
         elif kind == "newline":
-            self.lines += 1
+            self._line_number += 1
             return "\n"
 
     def _handle_include(self, directive):
         _, raw_filename = directive.split()
         filename = raw_filename.strip(" <>'\"\n")
 
-        shader = _IncludeShader(filename, no_cache=self._no_cache)
+        shader = _IncludeShader(
+            filename,
+            source_string_number=self._include_number,
+            no_cache=self._no_cache,
+        )
+        self._include_number += 1
+
         self.meta.functions.update(shader.meta.functions)
         self.meta.uniforms.update(shader.meta.uniforms)
         self.meta.includes.append(shader)

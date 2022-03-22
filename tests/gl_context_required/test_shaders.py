@@ -63,7 +63,7 @@ def test_line_number_on_error_base_case(write_shader_to_disk):
     with pytest.raises(gl.Error) as excinfo:
         shader = shaders.Shader("test")
 
-    assert "0:3" in str(excinfo.value)
+    assert ":3" in str(excinfo.value)
 
 
 def test_line_number_on_error_with_includes(write_shader_to_disk):
@@ -84,7 +84,7 @@ def test_line_number_on_error_with_includes(write_shader_to_disk):
     with pytest.raises(gl.Error) as excinfo:
         shader = shaders.Shader("test")
 
-    assert "0:4" in str(excinfo.value)
+    assert ":4" in str(excinfo.value)
 
 
 def test_line_number_on_error_after_multiline_functions(write_shader_to_disk):
@@ -109,7 +109,7 @@ def test_line_number_on_error_after_multiline_functions(write_shader_to_disk):
     with pytest.raises(gl.Error) as excinfo:
         shader = shaders.Shader("test")
 
-    assert "0:13" in str(excinfo.value)
+    assert ":13" in str(excinfo.value)
 
 
 def test_error_lines_number_from_inside_an_include_shader(
@@ -131,4 +131,6 @@ def test_error_lines_number_from_inside_an_include_shader(
     with pytest.raises(gl.Error) as excinfo:
         shader = shaders.Shader("test")
 
-    assert "0:3" in str(excinfo.value)
+    error_message = str(excinfo.value)
+    assert ":3" in error_message
+    assert "test_include.glsl" in error_message
