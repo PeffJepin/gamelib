@@ -150,3 +150,103 @@ def test_error_when_name_and_src_are_both_given():
         shader = Shader("filename", src="my source string")
 
     assert "mutually exclusive" in str(excinfo.value).lower()
+
+
+@pytest.mark.parametrize(
+    "sig,desc",
+    (
+        # fmt: off
+        ("func1()", shaders.FunctionDesc("func1", (), ())),
+        ("func2(int i, int j)", shaders.FunctionDesc("func2", ("int i", "int j"), (None, None))),
+        ("func3(int i, int j=1)", shaders.FunctionDesc("func3", ("int i", "int j"), (None, "1"))),
+        ("func4(vec2 p=vec2(1, 3), int i=1)", shaders.FunctionDesc("func4", ("vec2 p", "int i"), ("vec2(1, 3)", "1"))),
+        # fmt: on
+    ),
+)
+def test_function_parsing(sig, desc):
+    src = (
+        """
+#version 330
+#vert
+void %s {}
+void main() {}
+    """
+        % sig
+    )
+
+    assert Shader(src=src).meta.functions[desc.name] == desc
+
+
+def test_kwargs_after_positional():
+    src = """
+#version 330
+#vert
+void my_func(int i, int j=2, int k) {}
+void main() {}
+    """
+
+    with pytest.raises(SyntaxError) as excinfo:
+        Shader(src=src)
+    assert "default values" in str(excinfo.value)
+
+
+def test_function_parsing_with_multiline_syntax():
+    src = """
+#version 330
+#vert
+void my_func(int i,
+             vec2 p=vec2(1, 1),
+             int j=2
+             ) {}
+void main() {}
+    """
+
+    shader = Shader(src=src)
+    expected_desc = shaders.FunctionDesc(
+        "my_func", ("int i", "vec2 p", "int j"), (None, "vec2(1, 1)", "2")
+    )
+    assert shader.meta.functions["my_func"] == expected_desc
+
+
+def test_functions_are_replaced_with_proper_glsl_syntax():
+    src = """
+#version 330
+#vert
+void func1()
+{
+}
+void func2(int i, vec2 p=vec2(2, 2), int j=3)
+{
+}
+
+void main()
+{
+    func1();
+    func2(2);
+    func2(2, vec2(3, 3), 4);
+    func2(i=2, p=vec2(3, 3), j=4);
+    func2(i=2, j=4);
+}
+    """
+    expected = """
+#version 330
+void func1() 
+{
+}
+void func2(int i, vec2 p, int j)
+{
+}
+
+void main()
+{
+    func1();
+    func2(2, vec2(2, 2), 3);
+    func2(2, vec2(3, 3), 4);
+    func2(2, vec2(3, 3), 4);
+    func2(2, vec2(2, 2), 4);
+}
+    """
+
+    shader = Shader(src=src)
+
+    assert compare_glsl(shader.code.vert, expected)

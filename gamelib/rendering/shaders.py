@@ -12,7 +12,6 @@ from gamelib.core import resources
 from gamelib.core import gl
 
 
-# TODO: Test function defualt arguments
 # TODO: Test line number debugging
 # TODO: This module docstring and documentation needs to be updated.
 # TODO: Look over this modules entire API before finishing with it
@@ -360,7 +359,117 @@ class _ShaderPreProcessor:
         return shader.code.common
 
     def _handle_function(self, function):
-        return function
+        if self._function_is_glsl_builtin(function):
+            return function
+
+        desc = self._build_function_desc(function)
+
+        definition = self.meta.functions.get(desc.name)
+        if definition is not None:
+            return self._match_definition_signature(definition, desc)
+        else:
+            self.meta.functions[desc.name] = desc
+            return self._clean_function_definition(desc)
+
+    def _function_is_glsl_builtin(self, function):
+        name = function.split("(")[0]
+        if (
+            name in gl.GLSL_DTYPE_STRINGS
+            or name in gl.GLSL_BUILTIN_FUNCTION_STRINGS
+        ):
+            return True
+
+    def _match_definition_signature(self, defdesc, funcdesc):
+        # a definition might look something like:
+        # func(int i, int j=2, int k=3)
+        # and a call might look something like this:
+        # func(1, 2, k=4)
+        if len(defdesc.arguments) == 0:
+            return f"{funcdesc.name}()"
+
+        args = [None] * len(defdesc.arguments)
+        for i, (arg, value) in enumerate(
+            zip(funcdesc.arguments, funcdesc.defaults)
+        ):
+            if value is None:
+                # we already know that poistional and kwargs are in the
+                # correct order so positional args can be left unchanged
+                args[i] = arg
+            else:
+                # we can determine the correct order for kwargs from the
+                # definition, remember in the definition dtypes are present
+                for i, dtype_and_name in enumerate(defdesc.arguments):
+                    name = dtype_and_name.split(" ")[1]
+                    if name == arg:
+                        args[i] = value
+                        break
+        # fill any remaining None values with defaults
+        for i, v in enumerate(args):
+            if v is None:
+                args[i] = defdesc.defaults[i]
+
+        print(args)
+        return f"{funcdesc.name}({', '.join(args)})"
+
+    def _clean_function_definition(self, funcdesc):
+        # we just need to strip out the default values
+        return f"{funcdesc.name}({', '.join(funcdesc.arguments)})"
+
+    def _build_function_desc(self, function):
+        i = function.find("(")
+        name, args_str = function[:i], function[i + 1 : -1]
+        if not args_str.strip():
+            desc = FunctionDesc(name, (), ())
+        else:
+            args, defaults = self._split_function_args(args_str)
+            if not self._check_default_arguments_syntax(defaults):
+                raise SyntaxError(
+                    "Arguments with default values should not appear before "
+                    f"purely positional arguments: {function}"
+                )
+            desc = FunctionDesc(name, args, defaults)
+        return desc
+
+    def _split_function_args(self, args_str):
+        args = []
+        prev = 0
+        open_parens = 0
+        close_parens = 0
+        for i, c in enumerate(args_str):
+            if c == "(":
+                open_parens += 1
+            elif c == ")":
+                close_parens += 1
+            elif c == "," and open_parens == close_parens:
+                args.append(args_str[prev:i])
+                prev = i + 1
+        args.append(args_str[prev:])
+        return self._split_argument_names_from_defaults(args)
+
+    def _split_argument_names_from_defaults(self, args_list):
+        args = []
+        defaults = []
+        for a in args_list:
+            split_on_eq = a.split("=")
+            if len(split_on_eq) == 1:
+                args.append(split_on_eq[0].strip())
+                defaults.append(None)
+            else:
+                args.append(split_on_eq[0].strip())
+                defaults.append(split_on_eq[1].strip())
+
+        return tuple(args), tuple(defaults)
+
+    def _check_default_arguments_syntax(self, defaults):
+        can_be_positional = True
+
+        for val in defaults:
+            if val is not None:
+                can_be_positional = False
+            elif can_be_positional is False:
+                return False
+
+        return True
 
     def _handle_uniform(self, uniform):
         desc = self._create_token_desc(uniform)
