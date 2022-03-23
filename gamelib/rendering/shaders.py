@@ -12,43 +12,73 @@ from gamelib.core import resources
 from gamelib.core import gl
 
 
-# TODO: One pass at refactoring and some documentation where needed and this module should be good for some time.
+# TODO: Module docstring
 
 _cache: Dict[pathlib.Path, "Shader"] = dict()
 
 
-class TokenDesc(NamedTuple):
-    """Data describing a token parsed from glsl source code."""
-
+class GLSLUniform(NamedTuple):
     name: str
     dtype: np.dtype
-    length: int  # array length if token is an array, else 1
-    dtype_str: Optional[str] = None
+    length: int
+
+
+class GLSLAttribute(NamedTuple):
+    name: str
+    dtype: np.dtype
+    length: int
+
+
+class GLSLVertexOutput(NamedTuple):
+    name: str
+    dtype: np.dtype
+    length: int
+
+
+class GLSLSampler(NamedTuple):
+    name: str
+    dtype_str: str
+
+
+class GLSLFunctionDefinition:
+    name: str
+    params: tuple
+    defaults: tuple
+    index_lookup: dict
+
+    def __init__(self, name, params, defaults):
+        self.name = name
+        self.params = params
+        self.defaults = defaults
+        self.index_lookup = {p.split()[1]: i for (i, p) in enumerate(params)}
+
+    def __repr__(self):
+        sig = []
+        for p, d in zip(self.params, self.defaults):
+            if d is None:
+                sig.append(p)
+            else:
+                sig.append(f"{p}={d}")
+        return f"{self.name}({', '.join(sig)})"
 
     def __eq__(self, other):
-        return (
-            isinstance(other, TokenDesc)
-            and self.name == other.name
-            and self.dtype == other.dtype
-            and self.length == other.length
-        )
-
-
-class FunctionDesc(NamedTuple):
-    name: str
-    arguments: tuple
-    defaults: tuple
+        return repr(self) == repr(other)
 
 
 class ShaderMetaData(NamedTuple):
     """A collection of metadata on tokens parsed from a single
     glsl source file."""
 
-    attributes: Dict[str, TokenDesc]
-    vertex_outputs: Dict[str, TokenDesc]
-    uniforms: Dict[str, TokenDesc]
-    functions: Dict[str, FunctionDesc]
+    attributes: Dict[str, GLSLAttribute]
+    vertex_outputs: Dict[str, GLSLVertexOutput]
+    uniforms: Dict[str, GLSLUniform]
+    functions: Dict[str, GLSLFunctionDefinition]
     includes: List["_IncludeShader"]
+    samplers: List[GLSLSampler]
+
+    @classmethod
+    def empty(cls):
+        return cls(dict(), dict(), dict(), dict(), list(), list())
 
 
 class ShaderSourceCode(NamedTuple):
@@ -93,7 +123,6 @@ class Shader:
     """Entry point into the module for preprocessing glsl code."""
 
     _PREPROCESSOR_KWARGS = {}
-    source_string_number = 0  # always 0 except for include shaders
 
     code: ShaderSourceCode
     meta: ShaderMetaData
@@ -105,10 +134,28 @@ class Shader:
     _glo: gl.GLShader
 
     def __new__(cls, name=None, *, src=None, no_cache=False, **kwargs):
+        """Either return a cached shader or create a new one."""
+
         cls._usage(name, src)
         return cls._get_object(name, no_cache)
 
     def __init__(self, name=None, *, src=None, init_gl=True, **kwargs):
+        """Initialize the shader object. This includes preprocessing and
+        potentially initializing an OpenGL program object.
+
+        Parameters
+        ----------
+        name : str, optional
+            The filename of this shader if it exists as a file on disk.
+            This file should be discoverable by the resources module.
+        src : str, optional
+            If not sourced from a file you can provide a string directly.
+        no_cache : bool
+            Mainly for internal use, bypasses the cache if True.
+        init_gl : bool
+            If True this object will immediately generate and OpenGL program.
+        """
+
         if self._initialized:
             # __new__ might return a cached shader..
             # in that case we don't want to recompile the shader
@@ -124,11 +171,18 @@ class Shader:
 
         self._initialized = True
 
-    def __hash__(self):
-        return hash(self.code)
-
     @property
     def has_been_modified(self):
+        """This simply checks the previous modification time on this shaders
+        file all files included in it and returns True if any of them have been
+        modified since last checked. Always False if this shader was initialized
+        from a python string.
+
+        Returns
+        -------
+        bool
+        """
+
         if self.file is None:
             return False
         return any(
@@ -138,6 +192,10 @@ class Shader:
 
     @property
     def glo(self):
+        """Gets the internal OpenGL object for use in rendering. If that object
+        has not already been initialized access to this property will do so, so
+        you must have an initialized OpenGL context before accessing this."""
+
         if self._glo is None:
             self._init_gl()
         return self._glo
@@ -215,6 +273,7 @@ class Shader:
             path = resources.get_shader_file(name)
             if path in _cache:
                 return _cache[path]
+
         obj = object.__new__(cls)
         obj._initialized = False
         obj._gl_initialized = False
@@ -241,28 +300,28 @@ class _IncludeShader(Shader):
     _PREPROCESSOR_KWARGS = {"include": True}
 
     # used with glsl #line preprocessor directive to identify which
-    # file an error will come from.
+    # file an error is coming from.
     source_string_number: int
 
     def __init__(self, *args, source_string_number, **kwargs):
-        assert source_string_number is not None
         self.source_string_number = source_string_number
         super().__init__(*args, **kwargs)
 
     def _init_gl(self):
+        # an include shader is just going to have it's source
+        # included in another shader. We should never try to
+        # initialize an OpenGL program object with this.
         return
 
 
 class GLSLCompilerError(Exception):
-    def __init__(self, exc: gl.Error, shader: "Shader"):
-        error_message = str(exc)
-        m = re.search(r"(\d+:\d+)", error_message)
-        if not m:
-            return super().__init__(error_message)
+    """Since our preprocessor can build shaders from multiple files we have to
+    do some extra work to provide a clear source for an error raised by the
+    GLSL compiler. This exception takes care of that."""
 
-        source_string_number, line_number = map(int, m.group().split(":"))
-        self.source_string_number = source_string_number
-        self.line_number = line_number
+    def __init__(self, exc: gl.Error, shader: "Shader"):
+        self._inspect_gl_exception(exc)
+        error_message = str(exc)
 
         offending_shader = self._find_offending_shader(shader)
         if not offending_shader:
@@ -271,10 +330,20 @@ class GLSLCompilerError(Exception):
 
         improved_error_message = (
             f"GLSLCompilerError occured in the file:\n{offending_shader.file}\n"
-            f"\nThis is the offending code (line {line_number}):\n{offending_code}\n"
+            f"\nThis is the offending code (line {self.line_number}):\n{offending_code}\n"
             f"\nThis is the original error message:\n{error_message}"
         )
         super().__init__(improved_error_message)
+
+    def _inspect_gl_exception(self, exc):
+        error_message = str(exc)
+        m = re.search(r"(\d+:\d+)", error_message)
+        if not m:
+            return super().__init__(error_message)
+
+        source_string_number, line_number = map(int, m.group().split(":"))
+        self.source_string_number = source_string_number
+        self.line_number = line_number
 
     def _find_offending_shader(self, base_shader):
         if self.source_string_number == 0:
@@ -292,25 +361,44 @@ class GLSLCompilerError(Exception):
         ln = 1
         for line in entire_code:
             if line.strip().startswith("#line"):
-                _, directive_ln, directive_ssn = line.split()
+                # the #line directive can appear in two forms:
+                # either #line (line number) or
+                # #line (line number) (shader source number)
+                _, directive_ln, *directive_ssn = line.split()
+                directive_ssn = int(directive_ssn[0]) if directive_ssn else 0
                 directive_ln = int(directive_ln)
-                directive_ssn = int(directive_ssn)
                 if directive_ssn != self.source_string_number:
+                    # this case means that the following lines belong
+                    # to a shader included with the offending shader from
+                    # a separate file. we are going to ignore lines from this
+                    # until we come across another #line directive that matches
+                    # the source string number of the shader that the error
+                    # actually originated from
                     skip = True
                 else:
+                    # we now know that we are no longer in an included shader
+                    # so we can correct our line number and continue searching
+                    # for the line that threw the error
                     skip = False
                     ln = directive_ln
-            elif ln == self.line_number and not skip:
+            elif not skip and ln == self.line_number:
                 return line.strip()
             elif not skip:
                 ln += 1
+
         if ln == self.line_number:
             return line
         return "couldn't locate error line in source code"
 
 
 class _ShaderPreProcessor:
-    _stages_regex = re.compile(
+    """This class is responsible for preprocessing GLSL shaders to add
+    new features not included in the built-in glsl preprocessor. It is meant
+    for internal use and will be invoked when Shader object are created.
+    Refer to the module docstring for documentation on what features this
+    preprocessor implements."""
+
+    _STAGES_REGEX = re.compile(
         r"""
             (?P<tag> (\#vert | \#tesc | \#tese | \#geom | \#frag | \A)\s*?\n?)
             (?P<body> .*?)
@@ -318,7 +406,7 @@ class _ShaderPreProcessor:
         """,
         re.VERBOSE | re.DOTALL,
     )
-    _points_of_interest_regex = re.compile(
+    _POINTS_OF_INTEREST_REGEX = re.compile(
         r"""
             (?P<include> \#include \s .*? $)
             | (?P<function> \b \w+ \( [^;{]* \) )
@@ -331,17 +419,17 @@ class _ShaderPreProcessor:
     )
 
     def __init__(self, src, include=False, no_cache=False):
-        self.common = ""
-        self.stages = {
+        self._common = ""
+        self._stages = {
             "vert": "",
             "tesc": "",
             "tese": "",
             "geom": "",
             "frag": "",
         }
-        self.src = src
-        self.meta = ShaderMetaData({}, {}, {}, {}, [])
-
+        self._src = src
+        self._meta = ShaderMetaData.empty()
+        self._function_handler = _FunctionPreprocessor(self._meta)
         self._line_number = 1
         self._include_number = 1
         self._current_stage = None
@@ -356,10 +444,10 @@ class _ShaderPreProcessor:
 
     def _compile_include_shader(self):
         # an include shader is not split into stages
-        self.common = self.src
+        self._common = self._src
         self._process_common()
-        self.common = f"#line 1 {self._include_number}\n" + self.common
-        return ShaderSourceCode(self.common), self.meta
+        self._common = f"#line 1 {self._include_number}\n" + self._common
+        return ShaderSourceCode(self._common), self._meta
 
     def _compile_base_shader(self):
         self._split_stages()
@@ -367,25 +455,25 @@ class _ShaderPreProcessor:
         self._process_stages()
 
         code = ShaderSourceCode(
-            self.common,
-            "".join(self.stages["vert"]) or None,
-            "".join(self.stages["tesc"]) or None,
-            "".join(self.stages["tese"]) or None,
-            "".join(self.stages["geom"]) or None,
-            "".join(self.stages["frag"]) or None,
+            self._common,
+            "".join(self._stages["vert"]) or None,
+            "".join(self._stages["tesc"]) or None,
+            "".join(self._stages["tese"]) or None,
+            "".join(self._stages["geom"]) or None,
+            "".join(self._stages["frag"]) or None,
         )
 
-        return code, self.meta
+        return code, self._meta
 
     def _process_common(self):
-        self.common = self._process_points_of_interest(self.common)
+        self._common = self._process_points_of_interest(self._common)
 
     def _process_stages(self):
-        for k, v in self.stages.items():
+        for k, v in self._stages.items():
             if not v:
                 continue
             self._current_stage = k
-            self.stages[k] = self.common + self._process_stage(v)
+            self._stages[k] = self._common + self._process_stage(v)
 
     def _process_stage(self, stage_src):
         # we've stripped out the #stage directive so take account for that
@@ -396,21 +484,21 @@ class _ShaderPreProcessor:
         return f"#line {ln} 0\n{processed}"
 
     def _process_points_of_interest(self, src):
-        return self._points_of_interest_regex.sub(
+        return self._POINTS_OF_INTEREST_REGEX.sub(
             self._handle_replacement, src
         )
 
     def _split_stages(self):
-        for m in self._stages_regex.finditer(self.src):
+        for m in self._STAGES_REGEX.finditer(self._src):
             tag = m.group("tag").strip()
             if not tag:
-                self.common = m.group("body")
+                self._common = m.group("body")
             else:
-                for k in self.stages:
+                for k in self._stages:
                     if k in tag:
-                        self.stages[k] = m.group("body")
+                        self._stages[k] = m.group("body")
                         break
-        if not self.common:
+        if not self._common:
             raise ValueError(
                 "at a minimum the gamelib glsl preprocessor expects there to be "
                 "a #version directive within the `common` shader stage."
@@ -445,109 +533,217 @@ class _ShaderPreProcessor:
         )
         self._include_number += 1
 
-        self.meta.functions.update(shader.meta.functions)
-        self.meta.uniforms.update(shader.meta.uniforms)
-        self.meta.includes.append(shader)
-        self.meta.includes.extend(shader.meta.includes)
+        self._meta.functions.update(shader.meta.functions)
+        self._meta.uniforms.update(shader.meta.uniforms)
+        self._meta.includes.append(shader)
+        self._meta.includes.extend(shader.meta.includes)
 
         return shader.code.common
 
     def _handle_function(self, function):
-        if self._function_is_glsl_builtin(function):
-            return function
+        try:
+            return self._function_handler.handle_function_replacement(function)
+        except SyntaxError as exc:
+            # capture syntax errors from the function preprocessor
+            # and add line number information before raising the error
+            raise SyntaxError(
+                f"This error occured on line {self._line_number}:\n"
+                f"{str(exc)}"
+            )
 
-        desc, new_lines = self._build_function_desc(function)
-
-        definition = self.meta.functions.get(desc.name)
-        if definition is not None:
-            cleaned = self._match_definition_signature(definition, desc)
+    def _handle_uniform(self, raw_match):
+        desc = self._create_uniform_desc(raw_match)
+        if isinstance(desc, GLSLSampler):
+            self._meta.samplers.append(desc)
         else:
-            self.meta.functions[desc.name] = desc
-            cleaned = self._clean_function_definition(desc)
-        # keep line breaks for accurate error messages when glsl
-        # code has errors.
-        keepme = "\n" * new_lines
-        return f"{cleaned[:-1]}{keepme})"
+            self._meta.uniforms[desc.name] = desc
+        return raw_match
 
-    def _function_is_glsl_builtin(self, function):
-        name = function.split("(")[0]
+    def _handle_attribute(self, raw_match):
+        if self._current_stage == "vert":
+            desc = self._create_attribute_desc(raw_match)
+            self._meta.attributes[desc.name] = desc
+        return raw_match
+
+    def _handle_vertex_output(self, raw_match):
+        if self._current_stage == "vert":
+            desc = self._create_vertex_output_desc(raw_match)
+            self._meta.vertex_outputs[desc.name] = desc
+        return raw_match
+
+    def _create_uniform_desc(self, raw):
+        _, dtype, name, length = self._parse_kw_dtype_name_len(raw)
+        if dtype == "sampler2D":
+            return GLSLSampler(name, dtype)
+        return GLSLUniform(name, dtype, length)
+
+    def _create_vertex_output_desc(self, raw):
+        _, dtype, name, length = self._parse_kw_dtype_name_len(raw)
+        return GLSLVertexOutput(name, dtype, length)
+
+    def _create_attribute_desc(self, raw):
+        _, dtype, name, length = self._parse_kw_dtype_name_len(raw)
+        return GLSLAttribute(name, dtype, length)
+
+    def _parse_kw_dtype_name_len(self, raw):
+        # given a line like the following, parse out each component
+        # (glsl_keyword) (glsl_dtype) (name) [length (optional)];
+        m = re.search(
+            r"""
+            (?P<keyword> \w+) \s
+            (?P<dtype> \w+) \s
+            (?P<name> \w+)
+            \[? (?P<length>  \d+ )? \]? ;
+            """,
+            raw,
+            re.VERBOSE,
+        )
+        kw, dtype, name, maybe_length = m.groups()
+        length = int(maybe_length) if maybe_length else 1
+        return kw, getattr(gl, dtype), name, length
+
+
+class _FunctionPreprocessor:
+    """This class handles GLSL function related preprocessing. It is separate
+    simply because it's starting to accrue quite a lot of logic."""
+
+    _current_raw_match: str
+    _current_newline_count: int
+
+    def __init__(self, metadata):
+        self._meta = metadata
+        self._current_raw_match = ""
+        self._current_newline_count = 0
+
+    def handle_function_replacement(self, raw_match):
+        name, sig = self._split_name_and_signature(raw_match)
         if (
             name in gl.GLSL_DTYPE_STRINGS
             or name in gl.GLSL_BUILTIN_FUNCTION_STRINGS
         ):
-            return True
+            # if this is a glsl built-in then we're not going to touch it
+            return raw_match
+        elif name not in self._meta.functions:
+            # if it's not a built-in function and it's not already registered
+            # in the metadata, then this must be the function definition.
+            return self._handle_function_definition(name, sig)
+        else:
+            # otherwise its a call to a user defined function
+            return self._handle_function_call(name, sig)
 
-    def _match_definition_signature(self, defdesc, funcdesc):
-        # a definition might look something like:
-        # func(int i, int j=2, int k=3)
-        # and a call might look something like this:
-        # func(1, 2, k=4)
-        if len(defdesc.arguments) == 0:
-            return f"{funcdesc.name}()"
+    def _handle_function_definition(self, name, sig):
+        desc = self._create_function_definition_object(name, sig)
+        self._meta.functions[name] = desc
+        sig = ", ".join(desc.params)
+        return f"{name}({sig}{self._line_cnt_preservation})"
 
-        args = [None] * len(defdesc.arguments)
-        for i, (arg, value) in enumerate(
-            zip(funcdesc.arguments, funcdesc.defaults)
-        ):
-            if value is None:
-                # we already know that poistional and kwargs are in the
-                # correct order so positional args can be left unchanged
-                args[i] = arg
+    def _create_function_definition_object(self, name, sig):
+        names, defaults = self._split_signature(sig) if sig else ((), ())
+        return GLSLFunctionDefinition(name, names, defaults)
+
+    def _handle_function_call(self, name, sig):
+        definition_desc = self._meta.functions[name]
+        if not sig:
+            missing_positional_params = [
+                param
+                for (param, default) in zip(
+                    definition_desc.params, definition_desc.defaults
+                )
+                if default is None
+            ]
+            if any(missing_positional_params):
+                raise SyntaxError(
+                    f"Missing positional parameters {missing_positional_params}"
+                    f" in function call: {self._current_raw_match}"
+                )
+
+            sig = ", ".join(definition_desc.defaults)
+            return f"{name}({sig}{self._line_cnt_preservation})"
+
+        return self._build_proper_glsl_function_call(
+            name, sig, definition_desc
+        )
+
+    def _build_proper_glsl_function_call(self, name, sig, definition_desc):
+        # we always have a left value, and sometimes have a right value
+        # if right is not None, then we're looking at a keyword argument
+        # if right is None, then we're looking at a positional argument
+        left, right = self._split_signature(sig)
+        args = [None] * len(definition_desc.params)
+
+        for i, (vl, vr) in enumerate(zip(left, right)):
+            if vr is None:
+                # at this point we know positional args come first, so we can
+                # consume positional args out of left as long as right is None
+                args[i] = vl
             else:
-                # we can determine the correct order for kwargs from the
-                # definition, remember in the definition dtypes are present
-                for i, dtype_and_name in enumerate(defdesc.arguments):
-                    name = dtype_and_name.split(" ")[1]
-                    if name == arg:
-                        args[i] = value
-                        break
-        # fill any remaining None values with defaults
+                # once right is no longer None we're handling kwargs
+                argindex = definition_desc.index_lookup.get(vl)
+                if argindex is None:
+                    raise SyntaxError(
+                        "Unknown keyword argument {vl!r} found in "
+                        f"the function call {self._current_raw_match}"
+                    )
+                args[argindex] = vr
+
+        # finally we need to fill in remaining None values with defaults
         for i, v in enumerate(args):
             if v is None:
-                args[i] = defdesc.defaults[i]
+                default = definition_desc.defaults[i]
+                if default is None:
+                    raise SyntaxError(
+                        f"Missing value given for parameter {definition_desc.params[i]} "
+                        f"in the function call {self._current_raw_match}"
+                    )
+                args[i] = default
 
-        return f"{funcdesc.name}({', '.join(args)})"
+        sig = ", ".join(args)
+        return f"{name}({sig}{self._line_cnt_preservation})"
 
-    def _clean_function_definition(self, funcdesc):
-        # we just need to strip out the default values
-        return f"{funcdesc.name}({', '.join(funcdesc.arguments)})"
+    @property
+    def _line_cnt_preservation(self):
+        # might look for a more elegant solution to this problem in
+        # the future but this works just fine for now
+        ln_cnt = self._current_newline_count
+        self._current_newline_count = 0
+        return "\n" * ln_cnt
 
-    def _build_function_desc(self, function):
-        i = function.find("(")
-        name, args_str = function[:i], function[i + 1 : -1]
-        if not args_str.strip():
-            desc = FunctionDesc(name, (), ())
-            new_lines = 0
-        else:
-            args, defaults, new_lines = self._split_function_args(args_str)
-            if not self._check_default_arguments_syntax(defaults):
-                raise SyntaxError(
-                    "Arguments with default values should not appear before "
-                    f"purely positional arguments: {function}"
-                )
-            desc = FunctionDesc(name, args, defaults)
-        return desc, new_lines
+    def _split_signature(self, sig):
+        # given a signature my_func(int i, int j=1, vec2 p=vec2(1, 2))
+        # split into ('int i', 'int j', 'vec2 p'), (None, '1', 'vec2(1, 2)')
 
-    def _split_function_args(self, args_str):
-        args = []
+        # this might also be used on a function call, something like:
+        # my_func(1, 2, p=vec2(1, 1))
+        # splits to: (1, 2, 'p'), (None, None, 'vec2(1, 1)')
+
+        params = self._split_signature_into_parameters(sig)
+        name_or_value, value_or_none = self._split_positional_and_kwds(params)
+        self._error_if_positional_args_after_kwargs(value_or_none)
+        return name_or_value, value_or_none
+
+    def _split_signature_into_parameters(self, sig):
+        # given a signature my_func(int i, int j=1, vec2 p=vec2(1, 2))
+        # split into ['int i', 'int j=1', 'vec2 p=vec2(1, 2)']
+        params = []
         prev = 0
         open_parens = 0
         close_parens = 0
-        new_lines = 0
-        for i, c in enumerate(args_str):
+        for i, c in enumerate(sig):
             if c == "(":
                 open_parens += 1
             elif c == ")":
                 close_parens += 1
             elif c == "," and open_parens == close_parens:
-                args.append(args_str[prev:i])
+                params.append(sig[prev:i])
                 prev = i + 1
             elif c == "\n":
-                new_lines += 1
-        args.append(args_str[prev:])
-        return *self._split_argument_names_from_defaults(args), new_lines
+                self._current_newline_count += 1
+        params.append(sig[prev:])
+        return params
 
-    def _split_argument_names_from_defaults(self, args_list):
+    def _split_positional_and_kwds(self, args_list):
+        # given a list ['int i', 'int j=1', 'vec2 p=vec2(1, 2)']
+        # split into ('int i', 'int j', 'vec2 p'), (None, '1', 'vec2(1, 2)')
         args = []
         defaults = []
         for a in args_list:
@@ -558,53 +754,24 @@ class _ShaderPreProcessor:
             else:
                 args.append(split_on_eq[0].strip())
                 defaults.append(split_on_eq[1].strip())
-
         return tuple(args), tuple(defaults)
 
-    def _check_default_arguments_syntax(self, defaults):
+    def _error_if_positional_args_after_kwargs(self, kwds):
+        # pass in an iterable that evaluates to true where there is a kwarg
         can_be_positional = True
-
-        for val in defaults:
-            if val is not None:
+        for kw in kwds:
+            if kw:
                 can_be_positional = False
-            elif can_be_positional is False:
-                return False
+            elif not can_be_positional:
+                raise SyntaxError(
+                    "Arguments with default values should not appear before "
+                    f"purely positional arguments: {self._current_raw_match}"
+                )
 
-        return True
-
-    def _handle_uniform(self, uniform):
-        desc = self._create_token_desc(uniform)
-        self.meta.uniforms[desc.name] = desc
-
-        return uniform
-
-    def _handle_attribute(self, attribute):
-        if self._current_stage != "vert":
-            pass
-        else:
-            desc = self._create_token_desc(attribute)
-            self.meta.attributes[desc.name] = desc
-
-        return attribute
-
-    def _handle_vertex_output(self, output):
-        if self._current_stage != "vert":
-            pass
-        else:
-            desc = self._create_token_desc(output)
-            self.meta.vertex_outputs[desc.name] = desc
-
-        return output
-
-    def _create_token_desc(self, raw):
-        # given a line like the following:
-        # (glsl_keyword) (glsl_dtype) (name) [length (optional)];
-        # returns the token desc object
-        _, glsl_type, name = raw.split()
-        name = name.strip()[:-1]  # remove ; and surrounding whitespace
-        if name.endswith("]"):
-            name, raw_lenstr = name.split("[")
-            length = int(raw_lenstr[:-1])
-        else:
-            length = 1
-        return TokenDesc(name, getattr(gl, glsl_type), length, glsl_type)
+    @staticmethod
+    def _split_name_and_signature(raw_match):
+        i = raw_match.find("(")
+        name, sig = raw_match[:i], raw_match[i + 1 : -1]
+        # important not to strip the signature because we want to
+        # keep count of newlines to preserve line number for errors
+        return name.strip(), sig

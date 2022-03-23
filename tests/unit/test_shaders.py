@@ -79,10 +79,10 @@ void main() {}
 
     shader = Shader(src=src)
     expected_vertex_attributes = (
-        shaders.TokenDesc("v_pos", gl.vec3, 1),
-        shaders.TokenDesc("scale", gl.float, 1),
+        shaders.GLSLAttribute("v_pos", gl.vec3, 1),
+        shaders.GLSLAttribute("scale", gl.float, 1),
     )
-    expected_vertex_output = shaders.TokenDesc("world_pos", gl.vec3, 1)
+    expected_vertex_output = shaders.GLSLVertexOutput("world_pos", gl.vec3, 1)
 
     for tok in expected_vertex_attributes:
         assert shader.meta.attributes[tok.name] == tok
@@ -113,29 +113,14 @@ void main() {}
 
     shader = Shader(src=src)
     expected_uniforms = (
-        shaders.TokenDesc("u_float", gl.float, 1),
-        shaders.TokenDesc("u_vec4", gl.vec4, 1),
-        shaders.TokenDesc("u_mat4", gl.mat4, 2),
+        shaders.GLSLUniform("u_float", gl.float, 1),
+        shaders.GLSLUniform("u_vec4", gl.vec4, 1),
+        shaders.GLSLUniform("u_mat4", gl.mat4, 2),
     )
 
     for tok in expected_uniforms:
         assert shader.meta.uniforms[tok.name] == tok
     assert len(shader.meta.uniforms) == 3
-
-
-def test_shader_source_code_hash():
-    src = """
-#version 330
-#vert
-in vec3 v_pos;
-void main(){}
-"""
-    shader1 = Shader(src=src)
-    shader2 = Shader(src=src)
-    shader3 = Shader(src=src + "some difference")
-
-    assert hash(shader1) == hash(shader2)
-    assert hash(shader1) != hash(shader3)
 
 
 def test_error_when_no_source_is_given():
@@ -156,10 +141,10 @@ def test_error_when_name_and_src_are_both_given():
     "sig,desc",
     (
         # fmt: off
-        ("func1()", shaders.FunctionDesc("func1", (), ())),
-        ("func2(int i, int j)", shaders.FunctionDesc("func2", ("int i", "int j"), (None, None))),
-        ("func3(int i, int j=1)", shaders.FunctionDesc("func3", ("int i", "int j"), (None, "1"))),
-        ("func4(vec2 p=vec2(1, 3), int i=1)", shaders.FunctionDesc("func4", ("vec2 p", "int i"), ("vec2(1, 3)", "1"))),
+        ("func1()", shaders.GLSLFunctionDefinition("func1", (), ())),
+        ("func2(int i, int j)", shaders.GLSLFunctionDefinition("func2", ("int i", "int j"), (None, None))),
+        ("func3(int i, int j=1)", shaders.GLSLFunctionDefinition("func3", ("int i", "int j"), (None, "1"))),
+        ("func4(vec2 p=vec2(1, 3), int i=1)", shaders.GLSLFunctionDefinition("func4", ("vec2 p", "int i"), ("vec2(1, 3)", "1"))),
         # fmt: on
     ),
 )
@@ -178,8 +163,7 @@ void main() {}
 
 
 def test_kwargs_after_positional():
-    src = """
-#version 330
+    src = """#version 330
 #vert
 void my_func(int i, int j=2, int k) {}
 void main() {}
@@ -187,7 +171,44 @@ void main() {}
 
     with pytest.raises(SyntaxError) as excinfo:
         Shader(src=src)
-    assert "default values" in str(excinfo.value)
+    error_message = str(excinfo.value)
+
+    assert "default values" in error_message
+    assert "line 3" in error_message
+
+
+def test_missing_positional_args():
+    src = """#version 330
+#vert
+void my_func(int i, int j=2) {}
+void main() {
+    my_func(j=1);
+}
+    """
+
+    with pytest.raises(SyntaxError) as excinfo:
+        Shader(src=src)
+    error_message = str(excinfo.value).lower()
+
+    assert "missing" in error_message
+    assert "line 5" in error_message
+
+
+def test_unknown_kwarg():
+    src = """#version 330
+#vert
+void my_func(int i, int j=2) {}
+void main() {
+    my_func(h=1);
+}
+    """
+
+    with pytest.raises(SyntaxError) as excinfo:
+        Shader(src=src)
+    error_message = str(excinfo.value).lower()
+
+    assert "unknown" in error_message
+    assert "line 5" in error_message
 
 
 def test_function_parsing_with_multiline_syntax():
@@ -202,7 +223,7 @@ void main() {}
     """
 
     shader = Shader(src=src)
-    expected_desc = shaders.FunctionDesc(
+    expected_desc = shaders.GLSLFunctionDefinition(
         "my_func", ("int i", "vec2 p", "int j"), (None, "vec2(1, 1)", "2")
     )
     assert shader.meta.functions["my_func"] == expected_desc

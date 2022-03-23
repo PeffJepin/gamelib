@@ -89,19 +89,18 @@ class GPUInstructions:
     def _fetch_textures(self):
         i = 0
         samplers = dict()
-        for name, uniform in self.shader.meta.uniforms.items():
-            if uniform.dtype_str == "sampler2D":
-                asset = _cached_assets.get(name, None)
-                if asset is None:
-                    path = resources.get_image_file(name)
-                    asset = textures.ImageAsset(name, path)
-                    _cached_assets[name] = asset
-                if asset.texture is None:
-                    asset.upload_texture(gamelib.get_context())
-                value_wrapper = np.array([i], gamelib.core.gl.sampler2D)
-                samplers[name] = value_wrapper
-                self._textures[i] = asset.texture
-                i += 1
+        for sampler in self.shader.meta.samplers:
+            asset = _cached_assets.get(sampler.name, None)
+            if asset is None:
+                path = resources.get_image_file(sampler.name)
+                asset = textures.ImageAsset(sampler.name, path)
+                _cached_assets[sampler.name] = asset
+            if asset.texture is None:
+                asset.upload_texture(gamelib.get_context())
+            value_wrapper = np.array([i], gamelib.core.gl.sampler2D)
+            samplers[sampler.name] = value_wrapper
+            self._textures[i] = asset.texture
+            i += 1
         self.source(**samplers)
 
 
