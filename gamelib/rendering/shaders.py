@@ -1,3 +1,106 @@
+"""
+This module handles loading and doing some additional preprocessing on glsl
+source code files. It is generally expected that glsl source code will be
+located within a directory discoverable by the resources module, however glsl
+source can also be given as a python string.
+
+The most important thing to understand about this module is that it includes
+a custom glsl preprocessor, so there are a few things you need to understand to
+write shaders compatible with this module.
+
+
+Preprocessor Features
+---------------------
+
+Here is a list of features implemented by the gamelib preprocessor.
+Note that the only one you must be familiar with is the stage directive.
+
+ - Stage Directives (#vert, #tesc, #tese, #geom, #frag)
+ - Include Directive (#include "anotherfile.glsl")
+ - Keyword / default function parameters
+ - Metadata parsing
+
+
+Examples
+--------
+
+STAGES
+
+ Generally an OpenGL program would be specified as some number of separate
+ strings, each representing a different shader stage. Gamelib expects glsl
+ source to be provided as a single file / string with stage directives to mark
+ the different shader stages. Note the `c`, `v`, `f` values to the left of the
+ following glsl code indicate which shader stage the code falls into.
+
+
+ c   #version 330        // The version directive should still come first
+ c                       // Anything before the first stage is considered
+ c                       // `common` and included at the head of each stage
+     #vert
+ v   in vec2 v_pos;      // All `c` marked lines will be injected automatically
+ v   void main()         // before the code written into a stage section
+ v   {
+ v       ...
+ v   }
+ v
+     #frag
+ f   out vec4 frag;
+ f   void main()
+ f   {
+ f       ...
+ f   }
+
+
+INCLUDES
+
+ Using just the common section of the stages you could include shared functions
+ or values for example, but this still wouldn't allow for sharing any code
+ between shaders. For this there is also an #include directive implemented.
+ A shader included with the #include directive should not include a #version
+ directive at it's head and should not be marked up into stages. The files to be
+ included should be discoverable by the resources module.
+
+ // The preprocessor will load this file, process it and replace this line.
+ #include my_library.glsl
+
+
+DEFAULT FUNCTION PARAMETERS
+
+ The preprocessor also adds keyword / default arguments:
+
+ // The preprocessor will parse this signature and replace it with valid glsl
+ void my_function(int i, int j=1, vec2 p=vec2(1, 2))
+ {
+     ...
+ }
+
+ // This definition is replaced with:
+ void my_function(int i, int j, vec2 p)
+ {
+     ...
+ }
+
+ // The preprocessor will analyze function calls and restructure them into valid
+ // glsl code.
+
+ my_function(1);
+ my_function(1, 1, vec2(1, 2));      // fills in defaults
+
+ my_function(2, p=vec2(1, 1), j=3);
+ my_function(2, 3, vec2(1, 1));      // parses and corrects kwarg order
+
+ my_function(1, 2, vec2(3, 4));
+ my_function(1, 2, vec2(3, 4));      // can still be called normally
+
+ my_function();                      // SyntaxError, positional args must be given
+
+
+METADATA PARSING
+
+ The preprocessor also collects metadata about the shader, which is mostly for
+ internal use. Check out the `ShaderMetaData` class to see what is collected.
+"""
+
 import pathlib
 import re
 
@@ -11,8 +114,6 @@ import numpy as np
 from gamelib.core import resources
 from gamelib.core import gl
 
-
-# TODO: Module docstring
 
 _cache: Dict[pathlib.Path, "Shader"] = dict()
 
@@ -537,7 +638,6 @@ class _ShaderPreProcessor:
         self._meta.uniforms.update(shader.meta.uniforms)
         self._meta.includes.append(shader)
         self._meta.includes.extend(shader.meta.includes)
-
         return shader.code.common
 
     def _handle_function(self, function):

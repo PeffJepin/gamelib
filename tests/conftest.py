@@ -252,4 +252,3 @@ def compare_glsl(src1, src2):
 def _filter_glsl_line_condition(line):
     ln = line.strip()
     return ln not in ("", "\n") and not ln.startswith("#line")
-

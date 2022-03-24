@@ -1,10 +1,35 @@
 def ensure(condition, error_message):
+    """Decorator which ensures a condition is true before the decorated
+    function is called. If not, it prints the error message.
+
+    Example
+    -------
+    @ensure(lamda: window.exists, "You need to initialize the window first!")
+    def resize_window():
+        ...
+    """
+
     def wrap(func):
         return _Enforcer(func, condition, error_message)
+
     return wrap
 
 
 class Ensure:
+    """Creates a reusable version of the ensure decorator.
+
+    Example
+    -------
+    ensure_window = Ensure(
+        lambda: window.exists,
+        "You need to initialize the window first!"
+    )
+
+    @ensure_window
+    def resize_window():
+        ...
+    """
+
     def __init__(self, condition, error_message):
         self.condition = condition
         self.error_message = error_message
