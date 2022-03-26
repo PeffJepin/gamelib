@@ -193,6 +193,27 @@ class Ray:
         else:
             return False
 
+    def intersects_triangles(self, triangles):
+        """Given an array of triangles, returns an array containing the
+        distances at which this ray intersects those triangles.
+
+        Parameters
+        ----------
+        triangles : np.ndarray
+            This array should have shape (n, 3, 3)
+
+        Returns
+        -------
+        np.ndarray:
+            Given an array of shape (n, 3, 3) returns an array of shape (n,).
+            Values will either be the distance to the collision point, or -1
+            for misses.
+        """
+
+        return ray_triangle_intersections(
+            triangles, self.origin, self.direction
+        )
+
     def _recursive_check_bvh(self, bvh_node, minimum=MAX_DISTANCE):
         def choose_order(node):
             """Choose which branches to prioritize."""

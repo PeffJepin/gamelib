@@ -1,10 +1,7 @@
-import math
-
 import pytest
 import numpy as np
 
 from gamelib.geometry import collisions
-from gamelib.geometry import transforms
 from gamelib.geometry import base
 from gamelib.geometry import gridmesh
 from gamelib.core import gl
@@ -12,102 +9,112 @@ from gamelib.core import gl
 from ..conftest import assert_approx
 
 
+@pytest.fixture
+def ray_from_000_to_111():
+    yield collisions.Ray(origin=(0, 0, 0), direction=(1, 1, 1))
+
+
+def triangle(p1: tuple, p2: tuple, p3: tuple) -> np.ndarray:
+    # composes points into a np array representing the triangle
+    return np.array([p1, p2, p3], gl.vec3)
+
+
+def triangles(*tris: np.ndarray) -> np.ndarray:
+    # stacks triangles from the `triangle` function into a single array
+    return np.stack(tris, 0)
+
+
+class TestRayTringleIntersections:
+    def test_all_should_intersect(self, ray_from_000_to_111):
+        tris = triangles(
+            triangle((1, 0, 0), (0, 1, 0), (0, 0, 1)),
+            triangle((2, 0, 0), (0, 2, 0), (0, 0, 2))
+        )
+
+        intersections = ray_from_000_to_111.intersects_triangles(tris)
+
+        assert np.all(intersections != -1)
+
+    def test_all_should_not_intersect(self, ray_from_000_to_111):
+        tris = triangles(
+            triangle((0, 0, 1), (1, 0, 0), (1, 0, 1)),
+            triangle((0, 0, 2), (2, 0, 0), (2, 0, 2))
+        )
+
+        intersections = ray_from_000_to_111.intersects_triangles(tris)
+
+        assert np.all(intersections == -1)
+
+    def test_some_should_intersect(self, ray_from_000_to_111):
+        tris = triangles(
+            triangle((1, 0, 0), (0, 1, 0), (0, 0, 1)),
+            triangle((0, 0, 2), (2, 0, 0), (2, 0, 2))
+        )
+
+        intersections = ray_from_000_to_111.intersects_triangles(tris)
+
+        assert intersections[0] != -1
+        assert intersections[1] == -1
+
+    def test_intersection_distances(self):
+        ray = collisions.Ray(origin=(0.1, 0.1, 1), direction=(0, 0, -1))
+
+        # the distance for each intersection should be the z difference
+        tris = triangles(
+            triangle((1, 0, 0), (0, 1, 0), (0, 0, 0)),
+            triangle((1, 0, -1), (0, 1, -1), (0, 0, -1)),
+        )
+
+        intersections = ray.intersects_triangles(tris)
+
+        assert intersections[0] == pytest.approx(1)
+        assert intersections[1] == pytest.approx(2)
+
+
 @pytest.mark.parametrize(
-    "ray_origin, ray_dir, intersects_tri1, intersects_tri2",
-    (
-        ((0.5, -1, 0.1), (0, 1, 0), True, False),
-        ((-0.5, -1, 0.1), (0, 1, 0), False, True),
-        ((-10.5, -1, 0.1), (0, 1, 0), False, False),
-    ),
-)
-def test_ray_triangles_intersection(
-    ray_origin, ray_dir, intersects_tri1, intersects_tri2
-):
-    tri1 = np.array([(0, 0, 0), (1, 0, 0), (1, 0, 1)], gl.vec3)
-    tri2 = np.array([(0, 0, 0), (-1, 0, 0), (-1, 0, 1)], gl.vec3)
-    triangles = np.stack((tri1, tri2), 0)
-
-    result = collisions.ray_triangle_intersections(
-        triangles=triangles, origin=ray_origin, dir=ray_dir
-    )
-
-    if intersects_tri1:
-        assert result[0] != -1
-    else:
-        assert result[0] == -1
-
-    if intersects_tri2:
-        assert result[1] != -1
-    else:
-        assert result[1] == -1
-
-
-@pytest.mark.parametrize(
-    "ray_origin, ray_dir, distance",
-    (
-        ((1, -1, 1), (0, 1, 0), 1),
-        ((1, -0.5, 1), (0, 1, 0), 0.5),
-        ((1, -1, 2), (0, 1, -1), math.sqrt(2)),
-    ),
-)
-def test_ray_triangles_intersection_distance(ray_origin, ray_dir, distance):
-    triangle = np.array([(0, 0, 0), (2, 0, 0), (1, 0, 2)], gl.vec3)
-    triangle = triangle.reshape((1, 3, 3))
-
-    result = collisions.ray_triangle_intersections(
-        triangle, ray_origin, ray_dir
-    )
-
-    assert result[0] == pytest.approx(distance)
-
-
-@pytest.mark.parametrize(
-    "triangle, intersects",
+    "tri, intersects",
     (
         # fmt: off
         # edge intersections
-        (np.array([(4, 2, 4), (2, 4, 4), (2, 2, 4)], gl.vec3), True),
-        (np.array([(2, 4, 4), (4, 6, 4), (2, 6, 4)], gl.vec3), True),
-        (np.array([(4, 6, 4), (6, 4, 4), (6, 6, 4)], gl.vec3), True),
-        (np.array([(6, 4, 4), (4, 2, 4), (6, 2, 4)], gl.vec3), True),
+        (triangle((4, 2, 4), (2, 4, 4), (2, 2, 4)), True),
+        (triangle((2, 4, 4), (4, 6, 4), (2, 6, 4)), True),
+        (triangle((4, 6, 4), (6, 4, 4), (6, 6, 4)), True),
+        (triangle((6, 4, 4), (4, 2, 4), (6, 2, 4)), True),
 
-        (np.array([(4, 4, 2), (2, 4, 4), (2, 4, 2)], gl.vec3), True),
-        (np.array([(2, 4, 4), (4, 4, 6), (2, 4, 6)], gl.vec3), True),
-        (np.array([(4, 4, 6), (6, 4, 4), (6, 4, 6)], gl.vec3), True),
-        (np.array([(6, 4, 4), (4, 4, 2), (6, 4, 2)], gl.vec3), True),
+        (triangle((4, 4, 2), (2, 4, 4), (2, 4, 2)), True),
+        (triangle((2, 4, 4), (4, 4, 6), (2, 4, 6)), True),
+        (triangle((4, 4, 6), (6, 4, 4), (6, 4, 6)), True),
+        (triangle((6, 4, 4), (4, 4, 2), (6, 4, 2)), True),
 
-        (np.array([(4, 4, 2), (4, 2, 4), (4, 2, 2)], gl.vec3), True),
-        (np.array([(4, 2, 4), (4, 4, 6), (4, 2, 6)], gl.vec3), True),
-        (np.array([(4, 4, 6), (4, 6, 4), (4, 6, 6)], gl.vec3), True),
-        (np.array([(4, 6, 4), (4, 4, 2), (4, 6, 2)], gl.vec3), True),
+        (triangle((4, 4, 2), (4, 2, 4), (4, 2, 2)), True),
+        (triangle((4, 2, 4), (4, 4, 6), (4, 2, 6)), True),
+        (triangle((4, 4, 6), (4, 6, 4), (4, 6, 6)), True),
+        (triangle((4, 6, 4), (4, 4, 2), (4, 6, 2)), True),
 
         # vertex / face intersections
-        (np.array([(2, 2, 4), (4, 4, 4), (6, 2, 4)], gl.vec3), True),
-        (np.array([(2, 2, 4), (4, 4, 4), (2, 6, 4)], gl.vec3), True),
-        (np.array([(2, 6, 4), (4, 4, 4), (6, 6, 4)], gl.vec3), True),
-        (np.array([(6, 6, 4), (4, 4, 4), (6, 2, 4)], gl.vec3), True),
-        (np.array([(2, 4, 6), (4, 4, 4), (6, 4, 6)], gl.vec3), True),
-        (np.array([(2, 4, 2), (4, 4, 4), (6, 4, 2)], gl.vec3), True),
+        (triangle((2, 2, 4), (4, 4, 4), (6, 2, 4)), True),
+        (triangle((2, 2, 4), (4, 4, 4), (2, 6, 4)), True),
+        (triangle((2, 6, 4), (4, 4, 4), (6, 6, 4)), True),
+        (triangle((6, 6, 4), (4, 4, 4), (6, 2, 4)), True),
+        (triangle((2, 4, 6), (4, 4, 4), (6, 4, 6)), True),
+        (triangle((2, 4, 2), (4, 4, 4), (6, 4, 2)), True),
 
-        # triangle face intersection
-        (np.array([(0.9, 4.9, 2.9), (4.9, 0.9, 2.9), (4, 4, 7)], gl.vec3), True),
+        # tri face intersection
+        (triangle((0.9, 4.9, 2.9), (4.9, 0.9, 2.9), (4, 4, 7)), True),
 
         # some near misses
-        (np.array([(2.9, 2.9, 2.9), (2, 2, 2), (1, 1, 1)], gl.vec3), False),
-        (np.array([(5.1, 5.1, 5.1), (6, 6, 6), (7, 7, 7)], gl.vec3), False),
+        (triangle((2.9, 2.9, 2.9), (2, 2, 2), (1, 1, 1)), False),
+        (triangle((5.1, 5.1, 5.1), (6, 6, 6), (7, 7, 7)), False),
         # fmt: on
     ),
 )
-def test_aabb_triangle_intersections(triangle, intersects):
+def test_aabb_tri_intersections(tri, intersects):
     aabb = collisions.AABB((3, 3, 3), (5, 5, 5))
-    always_intersects = np.array([(4, 4, 4), (3, 3, 3), (5, 5, 5)], gl.vec3)
-    never_intersects = np.array([(0, 0, 0), (1, 1, 1), (2, 2, 2)], gl.vec3)
+    tris = triangles(tri)
 
-    triangles = np.stack((always_intersects, never_intersects, triangle), 0)
-    expected = np.array([True, False, intersects], bool)
+    result = collisions.aabb_triangle_intersections(aabb, tris)
 
-    actual = collisions.aabb_triangle_intersections(aabb, triangles)
-    assert np.all(expected == actual)
+    assert result[0] == intersects
 
 
 def test_zone_does_not_grow_to_accomidate_clipped_triangles():
@@ -161,6 +168,13 @@ def test_zone_does_shrink_when_not_clipping_triangles():
 
 
 class TestBVH:
+    # TODO: I'm not sure how I feel about some of these tests. On the one hand
+    # they are terribly hard to read and reason about. On the other hand, they 
+    # do assert the correct behavior. I think that my strategy on testing this 
+    # should be revisited when the collision implementations are inevitably 
+    # rewritten in C. As written they at least allow me to tinker with the
+    # current implementation without worrying about unknowingly breaking it.
+
     def test_creating_from_geometry(self):
         # fmt: off
         vertices = np.array([
@@ -283,19 +297,19 @@ class TestBVH:
 
 
 class TestAABB:
-    def test_getting_the_center(self):
+    def test_calculating_the_center_from_the_bounds(self):
         aabb = collisions.AABB((0, 0, 0), (2, 4, 8))
 
         assert aabb.center == (1, 2, 4)
 
-    def test_setting_the_center(self):
+    def test_setting_the_center_to_reposition_the_bounds(self):
         aabb = collisions.AABB((0, 0, 0), (2, 4, 6))
         aabb.center = (0, 0, 0)
 
         assert aabb.min == (-1, -2, -3)
         assert aabb.max == (1, 2, 3)
 
-    def test_equality(self):
+    def test_equality_comparison(self):
         assert collisions.AABB((0, 0, 0), (1, 1, 1)) == collisions.AABB(
             (0, 0, 0), (1, 1, 1)
         )
@@ -373,43 +387,3 @@ class TestRay:
         ray = collisions.Ray((100, 100, -1), (2, 2, -1))
 
         assert ray.collides_bvh(bvh) is False
-
-    def test_transforming_a_ray_into_object_space(self):
-        transform = transforms.Transform(
-            (10, 20, 30), (4, 4, 8), (0, 0, 1), 90
-        )
-        ray = collisions.Ray((10, 0, 30), (0, 1, 0))
-
-        ray.to_object_space(transform)
-
-        assert_approx(ray.origin, (-5, 0, 0))
-        assert_approx(ray.direction, (1, 0, 0))
-
-    def test_transforming_multiple_times(self):
-        transform1 = transforms.Transform(
-            (10, 20, 30), (4, 4, 8), (0, 0, 1), 90
-        )
-        transform2 = transforms.Transform(
-            (10, 40, 30), (4, 4, 8), (0, 0, 1), 90
-        )
-        ray = collisions.Ray((10, 0, 30), (0, 1, 0))
-
-        ray.to_object_space(transform1)
-        ray.to_object_space(transform2)
-
-        # the second transform should still have access to the original ray
-        # data and transform according to that.
-        assert_approx(ray.origin, (-10, 0, 0))
-        assert_approx(ray.direction, (1, 0, 0))
-
-    def test_resetting_transform(self):
-        transform = transforms.Transform(
-            (10, 20, 30), (4, 4, 8), (0, 0, 1), 90
-        )
-        ray = collisions.Ray((10, 0, 30), (0, 1, 0))
-
-        ray.to_object_space(transform)
-        ray.reset_transform()
-
-        assert_approx(ray.origin, (10, 0, 30))
-        assert_approx(ray.direction, (0, 1, 0))
