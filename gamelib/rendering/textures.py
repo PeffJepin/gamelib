@@ -159,7 +159,8 @@ class ImageAsset(Asset):
         self._im = None
 
     def load(self):
-        self._im = Image.open(self.path).transpose(Image.FLIP_TOP_BOTTOM)
+        self._im = Image.open(self.path).transpose(
+            Image.Transpose.FLIP_TOP_BOTTOM)
         self._px_depth = len(self._im.getbands())
 
     def free(self):
