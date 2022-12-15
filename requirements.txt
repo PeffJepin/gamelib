@@ -1,5 +1,5 @@
 moderngl >=5.6, <6.0
 moderngl-window >=2.4, <3.0
 numpy == 1.22.0
-Pillow==9.2.0, < 10
+Pillow==9.3.0, < 10
 pygame >= 2.1.0, < 3.0
