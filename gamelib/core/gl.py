@@ -5,7 +5,6 @@ data model.
 """
 
 import numpy as np
-from moderngl.error import Error
 from moderngl import (
     TRIANGLES,
     TRIANGLE_FAN,
@@ -19,8 +18,10 @@ from moderngl import (
     LINE_LOOP,
     LINES_ADJACENCY,
     PATCHES,
+    Error,
 )
-from moderngl.program import Program as GLShader
+
+from moderngl import Program as GLShader
 
 import gamelib
 from gamelib import utils
